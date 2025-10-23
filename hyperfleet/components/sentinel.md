@@ -2,7 +2,7 @@
 
 **What**
 
-Implement a Kubernetes Operator called "HyperFleet Sentinel" that continuously polls the HyperFleet API for resources (clusters, node pools, etc.) and publishes reconciliation events directly to the message broker to trigger adapter processing. The Sentinel acts as the "watchful guardian" of the HyperFleet system with simple, configurable backoff intervals. Multiple Sentinel deployments can be configured via CRD to handle different shards of resources for horizontal scalability.
+Implement a "HyperFleet Sentinel" service that continuously polls the HyperFleet API for resources (clusters, node pools, etc.) and publishes reconciliation events directly to the message broker to trigger adapter processing. The Sentinel acts as the "watchful guardian" of the HyperFleet system with simple, configurable backoff intervals. Multiple Sentinel deployments can be configured via YAML configuration files to handle different shards of resources for horizontal scalability.
 
 **Pattern Reusability**: The Sentinel is designed as a generic reconciliation operator that can watch ANY HyperFleet resource type, not just clusters. Future deployments can include:
 - **Cluster Sentinel** (this epic) - watches clusters
@@ -30,19 +30,19 @@ The Sentinel solves these problems by:
 
 **Acceptance Criteria:**
 
-- SentinelConfig CRD defined and installed
-- Kubernetes Operator deployed as single replica per shard
-- Operator reads configuration from SentinelConfig CR
+- Configuration schema defined in Go structs with proper validation tags
+- Service deployed as single replica per shard
+- Service reads configuration from YAML files with environment variable overrides
 - Polls HyperFleet API for resources matching shard criteria
 - Uses `status.lastTransitionTime` from adapter status updates for backoff calculation
 - Creates CloudEvents for resources based on simple decision logic
 - Publishes events directly to message broker (GCP Pub/Sub or RabbitMQ)
 - Configurable backoff intervals (not-ready vs ready)
-- Sharding support via label selectors in CRD
+- Sharding support via label selectors in configuration
 - Metrics exposed for monitoring (reconciliation rate, event publishing, errors)
 - Integration tests verify decision logic and backoff behavior with adapter status updates
 - Graceful shutdown and error handling implemented
-- Multiple operators can run simultaneously with different shards
+- Multiple services can run simultaneously with different shards
 
 ---
 
@@ -67,9 +67,13 @@ Adapter fails transiently
 
 ```mermaid
 flowchart TD
-    Start([Start Reconcile Loop]) --> ReadConfig[Read SentinelConfig CRD<br/>- backoffNotReady: 10s<br/>- backoffReady: 30m<br/>- shardSelector: region=us-east<br/>- broker configuration]
+    Init([Service Startup]) --> ReadConfig[Load YAML Configuration<br/>- backoffNotReady: 10s<br/>- backoffReady: 30m<br/>- shardSelector: region=us-east<br/>- broker configuration]
 
-    ReadConfig --> FetchClusters[Fetch Clusters with Shard Filter<br/>GET /api/hyperfleet/v1/clusters<br/>?labels=region=us-east]
+    ReadConfig --> Validate{Configuration<br/>Valid?}
+    Validate -->|No| Exit[Exit with Error]
+    Validate -->|Yes| StartLoop([Start Polling Loop])
+
+    StartLoop --> FetchClusters[Fetch Clusters with Shard Filter<br/>GET /api/hyperfleet/v1/clusters<br/>?labels=region=us-east]
 
     FetchClusters --> ForEach{For Each Cluster}
 
@@ -88,15 +92,19 @@ flowchart TD
     Skip --> NextCluster
 
     NextCluster -->|Yes| ForEach
-    NextCluster -->|No| Requeue[Requeue After Poll Interval<br/>5 seconds]
+    NextCluster -->|No| Sleep[Sleep Poll Interval<br/>5 seconds]
 
-    Requeue --> Start
+    Sleep --> StartLoop
 
-    style Start fill:#e1f5e1
+    style Init fill:#d4edda
+    style ReadConfig fill:#fff3cd
+    style Validate fill:#fff3cd
+    style Exit fill:#f8d7da
+    style StartLoop fill:#e1f5e1
     style PublishEvent fill:#ffe1e1
     style Skip fill:#e1e5ff
-    style ReadConfig fill:#fff4e1
     style FetchClusters fill:#fff4e1
+    style Sleep fill:#f0f0f0
 ```
 
 **Multiple Operator Deployments (Sharding)**:
@@ -105,21 +113,21 @@ flowchart TD
 graph LR
     subgraph US-East["Cluster Sentinel (us-east)"]
         direction TB
-        Config1[SentinelConfig:<br/>cluster-sentinel-us-east]
+        Config1[YAML Config:<br/>sentinel-us-east.yaml]
         Shard1[Shard Selector:<br/>region=us-east]
         Config1 --> Shard1
     end
 
     subgraph US-West["Cluster Sentinel (us-west)"]
         direction TB
-        Config2[SentinelConfig:<br/>cluster-sentinel-us-west]
+        Config2[YAML Config:<br/>sentinel-us-west.yaml]
         Shard2[Shard Selector:<br/>region=us-west]
         Config2 --> Shard2
     end
 
     subgraph EU-West["Cluster Sentinel (eu-west)"]
         direction TB
-        Config3[SentinelConfig:<br/>cluster-sentinel-eu-west]
+        Config3[YAML Config:<br/>sentinel-eu-west.yaml]
         Shard3[Shard Selector:<br/>region=eu-west]
         Config3 --> Shard3
     end
@@ -186,44 +194,37 @@ The operator uses two configurable backoff intervals:
 | NOT Ready     | 10 seconds   | Cluster being provisioned - check frequently |
 | Ready         | 30 minutes   | Cluster stable - periodic health check |
 
-**Configuration** (via SentinelConfig CRD):
+**Configuration** (via YAML file):
 ```yaml
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: SentinelConfig
-metadata:
-  name: cluster-sentinel-us-east
-  namespace: hyperfleet-system
-spec:
-  # Resource type this sentinel watches
-  resourceType: clusters
+# Sentinel Configuration for US East
+resource_type: clusters  # Resource to watch: clusters, nodepools, manifests, workloads
 
-  # Backoff when resource status != "Ready"
-  backoffNotReady: 10s
+# Polling configuration
+poll_interval: 5s
+backoff_not_ready: 10s   # Backoff when resource status != "Ready"
+backoff_ready: 30m       # Backoff when resource status == "Ready"
 
-  # Backoff when resource status == "Ready"
-  backoffReady: 30m
+# Shard selector - only process resources matching these labels
+shard_selector: "region=us-east"
 
-  # Shard selector - only process resources matching these labels
-  shardSelector:
-    matchLabels:
-      region: us-east
+# HyperFleet API configuration
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  timeout: 10s
+  # token: Override via HYPERFLEET_API_TOKEN="secret-token"
 
-  # HyperFleet API configuration
-  hyperfleetAPI:
-    url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
-    timeout: 10s
+# Message broker configuration
+broker:
+  type: gcp-pubsub
+  topic: hyperfleet-events
+  project_id: hyperfleet-prod
+  # credentials: Override via BROKER_CREDENTIALS="path/to/credentials.json"
 
-  # Message broker configuration
-  broker:
-    type: gcp-pubsub  # or "rabbitmq"
-    topic: hyperfleet-events
-    projectID: hyperfleet-prod  # For GCP Pub/Sub
-    # Alternative for RabbitMQ:
-    # url: amqp://guest:guest@rabbitmq:5672/
-    # exchange: hyperfleet-events
-
-  # Poll interval for fetching resources
-  pollInterval: 5s
+  # Alternative for RabbitMQ:
+  # type: rabbitmq
+  # url: amqp://guest:guest@rabbitmq:5672/
+  # exchange: hyperfleet-events
+  # credentials: Override via BROKER_CREDENTIALS="sentinel-user:secret-password"
 ```
 
 **Status Tracking**:
@@ -251,8 +252,8 @@ When adapters post status updates, they update the `lastTransitionTime`, which t
 - Flexibility - different configurations per shard (e.g., different backoff for dev vs prod)
 
 **How Sharding Works**:
-1. Each Sentinel deployment references ONE SentinelConfig CR
-2. SentinelConfig defines `resourceType` (clusters, nodepools, etc.) and `shardSelector` (Kubernetes label selector)
+1. Each Sentinel deployment uses ONE YAML configuration file
+2. Configuration file defines `resource_type` (clusters, nodepools, etc.) and `shard_selector` (label selector)
 3. Sentinel only fetches resources matching the resource type and shard selector
 4. Multiple Sentinels can run simultaneously with non-overlapping selectors
 5. Each Sentinel publishes to the same broker topic/exchange (fan-out to adapters)
@@ -260,213 +261,83 @@ When adapters post status updates, they update the `lastTransitionTime`, which t
 **Example Sharding Strategy**:
 
 ```yaml
+# File: sentinel-us-east.yaml
 # Deployment 1: US East clusters
----
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: SentinelConfig
-metadata:
-  name: cluster-sentinel-us-east
-spec:
-  resourceType: clusters
-  shardSelector:
-    matchLabels:
-      region: us-east
-  backoffNotReady: 10s
-  backoffReady: 30m
-  broker:
-    type: gcp-pubsub
-    topic: hyperfleet-events
-    projectID: hyperfleet-prod
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cluster-sentinel-us-east
-spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-      - name: sentinel
-        args:
-        - --config=cluster-sentinel-us-east
+resource_type: clusters
+poll_interval: 5s
+backoff_not_ready: 10s
+backoff_ready: 30m
+shard_selector: "region=us-east"
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  timeout: 10s
+
+broker:
+  type: gcp-pubsub
+  topic: hyperfleet-events
+  project_id: hyperfleet-prod
 
 ---
-# Deployment 2: US West clusters
----
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: SentinelConfig
-metadata:
-  name: cluster-sentinel-us-west
-spec:
-  resourceType: clusters
-  shardSelector:
-    matchLabels:
-      region: us-west
-  backoffNotReady: 15s  # Different config!
-  backoffReady: 1h
-  broker:
-    type: gcp-pubsub
-    topic: hyperfleet-events
-    projectID: hyperfleet-prod
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cluster-sentinel-us-west
-spec:
-  replicas: 1
+# File: sentinel-us-west.yaml
+# Deployment 2: US West clusters (different config!)
+resource_type: clusters
+poll_interval: 5s
+backoff_not_ready: 15s  # Different backoff!
+backoff_ready: 1h       # Different backoff!
+shard_selector: "region=us-west"
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  timeout: 10s
+
+broker:
+  type: gcp-pubsub
+  topic: hyperfleet-events
+  project_id: hyperfleet-prod
 
 ---
-# Future: NodePool Sentinel
----
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: SentinelConfig
-metadata:
-  name: nodepool-sentinel
-spec:
-  resourceType: nodepools  # Different resource type!
-  shardSelector: {}  # Watch all node pools
-  backoffNotReady: 5s
-  backoffReady: 10m
-  broker:
-    type: gcp-pubsub
-    topic: hyperfleet-events
-    projectID: hyperfleet-prod
+# File: sentinel-nodepools.yaml
+# Future: NodePool Sentinel (different resource type!)
+resource_type: nodepools
+poll_interval: 5s
+backoff_not_ready: 5s
+backoff_ready: 10m
+# shard_selector: "" # Watch all node pools
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  timeout: 10s
+
+broker:
+  type: gcp-pubsub
+  topic: hyperfleet-events
+  project_id: hyperfleet-prod
 ```
 
 ---
 
-## Operator Components
+## Service Components
 
-### 1. SentinelConfig CRD
+### 1. Config Loader
 
-**Purpose**: Configuration and sharding for HyperFleet Sentinels
-
-```yaml
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: sentinelconfigs.hyperfleet.redhat.com
-spec:
-  group: hyperfleet.redhat.com
-  names:
-    kind: SentinelConfig
-    listKind: SentinelConfigList
-    plural: sentinelconfigs
-    singular: sentinelconfig
-    shortNames:
-    - sc
-  scope: Namespaced
-  versions:
-  - name: v1alpha1
-    served: true
-    storage: true
-    schema:
-      openAPIV3Schema:
-        type: object
-        properties:
-          spec:
-            type: object
-            required:
-            - resourceType
-            - hyperfleetAPI
-            - broker
-            properties:
-              resourceType:
-                type: string
-                description: "HyperFleet resource type to watch (clusters, nodepools, etc.)"
-                enum:
-                - clusters
-                - nodepools
-              backoffNotReady:
-                type: string
-                default: "10s"
-                description: "Backoff interval for resources NOT in Ready state"
-              backoffReady:
-                type: string
-                default: "30m"
-                description: "Backoff interval for resources in Ready state"
-              shardSelector:
-                type: object
-                description: "Label selector for resource sharding"
-                properties:
-                  matchLabels:
-                    type: object
-                    additionalProperties:
-                      type: string
-                  matchExpressions:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        key:
-                          type: string
-                        operator:
-                          type: string
-                        values:
-                          type: array
-                          items:
-                            type: string
-              hyperfleetAPI:
-                type: object
-                required:
-                - url
-                properties:
-                  url:
-                    type: string
-                    description: "HyperFleet API base URL"
-                  timeout:
-                    type: string
-                    default: "10s"
-              broker:
-                type: object
-                required:
-                - type
-                - topic
-                properties:
-                  type:
-                    type: string
-                    enum:
-                    - gcp-pubsub
-                    - rabbitmq
-                    description: "Message broker type"
-                  topic:
-                    type: string
-                    description: "Topic/Exchange name for publishing events"
-                  projectID:
-                    type: string
-                    description: "GCP Project ID (required for gcp-pubsub)"
-                  url:
-                    type: string
-                    description: "Broker URL (required for rabbitmq)"
-                  exchange:
-                    type: string
-                    description: "Exchange name (optional for rabbitmq, defaults to topic)"
-              pollInterval:
-                type: string
-                default: "5s"
-                description: "How often to poll HyperFleet API"
-```
-
-### 2. Config Loader
-
-**Responsibility**: Watch SentinelConfig CR and load configuration
+**Responsibility**: Load configuration from YAML files with environment variable overrides
 
 **Key Functions**:
-- `Load(ctx)` - Fetch SentinelConfig CR from Kubernetes API
-- `BuildLabelSelector(cfg)` - Convert `shardSelector` to Kubernetes label selector
+- `Load(configPath)` - Load configuration from YAML file
+- `BuildLabelSelector(cfg)` - Convert `shard_selector` to label selector
 
 **Implementation Requirements**:
-- Watch SentinelConfig CR for changes
-- Parse duration strings (backoffNotReady, backoffReady, pollInterval, timeout)
-- Parse resourceType field to determine which HyperFleet resources to fetch
+- Load configuration from YAML file path specified via command-line flag
+- Parse duration strings (backoff_not_ready, backoff_ready, poll_interval, timeout)
+- Parse resource_type field to determine which HyperFleet resources to fetch
 - Parse broker configuration (type, topic, credentials)
-- Convert label selector from CR spec to `labels.Selector` type
+- Support environment variable overrides for sensitive fields (API tokens, credentials)
 - Handle missing or invalid configuration gracefully
 - Return structured configuration object for use by reconciler
+- Validate required fields and enum values
 
-### 3. Resource Watcher
+### 2. Resource Watcher
 
 **Responsibility**: Fetch resources from HyperFleet API with shard filtering
 
@@ -481,7 +352,7 @@ spec:
 - Handle API errors and timeouts gracefully
 - Parse status information including `status.lastTransitionTime` from adapter updates
 
-### 4. Decision Engine (Simplified)
+### 3. Decision Engine (Simplified)
 
 **Responsibility**: Simple time-based decision logic based on adapter status updates
 
@@ -513,7 +384,7 @@ spec:
 - No generation/observedGeneration logic
 - Clear logging of decision reasoning
 
-### 5. Message Publisher
+### 4. Message Publisher
 
 **Responsibility**: Publish CloudEvents to message broker
 
@@ -551,30 +422,31 @@ spec:
 - Return error if publish fails
 - Include retry logic with exponential backoff
 
-### 6. Main Reconciler
+### 5. Main Reconciler
 
-**Responsibility**: Orchestrate reconciliation loop with configuration reloading
+**Responsibility**: Orchestrate reconciliation loop with periodic polling
 
 **Key Functions**:
-- `Reconcile(ctx, req)` - Main reconciliation loop
-- `SetupWithManager(mgr)` - Register controller with manager
+- `Run(ctx)` - Main reconciliation loop
+- `Start()` - Initialize and start the service
 
-**Reconciliation Steps**:
+**Initialization Steps** (executed once at startup):
 1. **Load Configuration**:
-   - Fetch SentinelConfig CR from Kubernetes
+   - Load configuration from YAML file specified via command-line flag
    - Parse backoff intervals, shard selector, broker config, and resource type
-   - Update DecisionEngine if config changed
+   - Apply environment variable overrides for sensitive fields
    - Initialize MessagePublisher with broker config
-   - Log configuration updates
+   - Log configuration details and validate all required fields
 
-2. **Fetch Resources**:
+**Polling Loop Steps** (repeated every poll_interval):
+1. **Fetch Resources**:
    - Build label selector from shard configuration
-   - Determine resource endpoint from resourceType (e.g., /clusters, /nodepools)
+   - Determine resource endpoint from resource_type (e.g., /clusters, /nodepools)
    - Call ResourceWatcher.FetchResources(ctx, resourceType, selector)
    - Log resource count and shard information
    - Record metric for pending resources
 
-3. **Evaluate Each Resource**:
+2. **Evaluate Each Resource**:
    - For each resource, call DecisionEngine.Evaluate(resource, now)
    - If decision is "publish event":
      - Create CloudEvent with resource metadata
@@ -586,23 +458,24 @@ spec:
      - Log skip reason at debug level
      - Increment resources_skipped metric
 
-4. **Requeue**:
-   - Return `Result{RequeueAfter: cfg.PollInterval}`
-   - Default: 5 seconds
+3. **Sleep and Repeat**:
+   - Sleep for configured poll_interval (default: 5 seconds)
+   - Repeat the loop
 
-**Setup**:
-- Watch SentinelConfig CR for changes
-- Trigger reconciliation when CR is created/updated
-- Use controller-runtime framework
+**Service Architecture**:
+- **Single-phase initialization**: Load configuration once during startup, fail fast if invalid
+- **Stateless polling loop**: No configuration reloading during runtime
+- **Simple service model**: No Kubernetes controller pattern, just periodic polling
+- **Graceful shutdown**: Support clean termination on SIGTERM/SIGINT
 
 **Error Handling**:
-- On config load failure: requeue after 30 seconds
-- On resource fetch failure: requeue after poll interval
+- On config load failure: exit with error code
+- On resource fetch failure: log error, wait poll interval, retry
 - On event publishing failure: log error, record metric, continue to next resource
 
 ---
 
-## Operator Deployment
+## Service Deployment
 
 ### Kubernetes Deployment (Single Replica, No Leader Election)
 
@@ -635,18 +508,32 @@ spec:
         command:
         - /sentinel
         args:
-        - --config=cluster-sentinel-default  # Name of SentinelConfig CR
-        - --namespace=hyperfleet-system
+        - --config=/etc/sentinel/config.yaml  # Path to YAML config file
         - --metrics-bind-address=:8080
         - --health-probe-bind-address=:8081
         env:
-        - name: POD_NAMESPACE
+        # HYPERFLEET_API_TOKEN="secret-token"
+        - name: HYPERFLEET_API_TOKEN
           valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: /var/secrets/google/key.json  # For GCP Pub/Sub
+            secretKeyRef:
+              name: sentinel-secrets
+              key: api-token
+        # GCP_PROJECT_ID="production-project"
+        - name: GCP_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: sentinel-config
+              key: gcp-project-id
+        # BROKER_CREDENTIALS="path/to/credentials.json"
+        - name: BROKER_CREDENTIALS
+          valueFrom:
+            secretKeyRef:
+              name: sentinel-secrets
+              key: broker-credentials
         volumeMounts:
+        - name: config
+          mountPath: /etc/sentinel
+          readOnly: true
         - name: gcp-credentials
           mountPath: /var/secrets/google
           readOnly: true
@@ -677,6 +564,9 @@ spec:
             cpu: 100m
             memory: 128Mi
       volumes:
+      - name: config
+        configMap:
+          name: sentinel-config
       - name: gcp-credentials
         secret:
           secretName: gcp-pubsub-credentials
@@ -691,44 +581,43 @@ metadata:
   name: hyperfleet-sentinel
   namespace: hyperfleet-system
 ---
-# Role for reading SentinelConfig CR
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+# ConfigMap with sentinel configuration
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: hyperfleet-sentinel
+  name: sentinel-config
   namespace: hyperfleet-system
-rules:
-- apiGroups:
-  - hyperfleet.redhat.com
-  resources:
-  - sentinelconfigs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - hyperfleet.redhat.com
-  resources:
-  - sentinelconfigs/status
-  verbs:
-  - get
+data:
+  config.yaml: |
+    resource_type: clusters
+    poll_interval: 5s
+    backoff_not_ready: 10s
+    backoff_ready: 30m
+    shard_selector: "region=us-east"
+
+    hyperfleet_api:
+      endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+      timeout: 30s
+
+    broker:
+      type: gcp-pubsub
+      topic: hyperfleet-events
+      project_id: hyperfleet-prod
+  gcp-project-id: "hyperfleet-prod"
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+# Secret with sensitive configuration
+apiVersion: v1
+kind: Secret
 metadata:
-  name: hyperfleet-sentinel
+  name: sentinel-secrets
   namespace: hyperfleet-system
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: hyperfleet-sentinel
-subjects:
-- kind: ServiceAccount
-  name: hyperfleet-sentinel
-  namespace: hyperfleet-system
+type: Opaque
+data:
+  api-token: <base64-encoded-api-token>
+  broker-credentials: <base64-encoded-credentials>
 ```
 
-**Note**: No leader election RBAC needed since we run single replica per deployment. Sharding provides horizontal scaling instead.
+**Note**: No RBAC needed since the service only reads configuration from mounted ConfigMap and Secret volumes. No Kubernetes API access required.
 
 ---
 
@@ -736,22 +625,22 @@ subjects:
 
 ### Prometheus Metrics
 
-The Sentinel must expose the following Prometheus metrics:
+The Sentinel service must expose the following Prometheus metrics:
 
 | Metric Name | Type | Labels | Description |
 |-------------|------|--------|-------------|
 | `hyperfleet_sentinel_pending_resources` | Gauge | `shard`, `resource_type` | Number of resources in this shard |
 | `hyperfleet_sentinel_events_published_total` | Counter | `shard`, `resource_type` | Total number of events published to broker |
 | `hyperfleet_sentinel_resources_skipped_total` | Counter | `shard`, `resource_type`, `ready_state` | Total number of resources skipped due to backoff |
-| `hyperfleet_sentinel_reconcile_duration_seconds` | Histogram | `shard`, `resource_type` | Time spent in reconciliation loop |
+| `hyperfleet_sentinel_poll_duration_seconds` | Histogram | `shard`, `resource_type` | Time spent in each polling cycle |
 | `hyperfleet_sentinel_api_errors_total` | Counter | `shard`, `resource_type`, `operation` | Total API errors by operation (fetch_resources, config_load) |
 | `hyperfleet_sentinel_broker_errors_total` | Counter | `shard`, `resource_type`, `broker_type` | Total broker publishing errors |
-| `hyperfleet_sentinel_config_reloads_total` | Counter | `shard`, `resource_type` | Total SentinelConfig reloads |
+| `hyperfleet_sentinel_config_loads_total` | Counter | `shard`, `resource_type` | Total configuration loads at startup |
 
 **Implementation Requirements**:
-- Use controller-runtime metrics registry
-- All metrics must include `shard` label (from label selector string)
-- All metrics must include `resource_type` label (from SentinelConfig resourceType field)
+- Use standard Prometheus Go client library
+- All metrics must include `shard` label (from shard selector string)
+- All metrics must include `resource_type` label (from configuration resource_type field)
 - `ready_state` label values: "ready" or "not_ready"
 - `operation` label values: "fetch_resources", "config_load"
 - `broker_type` label values: "gcp-pubsub", "rabbitmq"
