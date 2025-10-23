@@ -1,0 +1,43 @@
+# Sentinel Configuration
+# Simple YAML configuration for HyperFleet Sentinel service
+# This replaces the previous CRD-based configuration approach
+#
+# Note: Broker configuration is in a separate file (broker-config.yaml)
+# to allow sharing the same broker config between Sentinel and Adapters
+
+# === RESOURCE MONITORING ===
+resource_type: clusters  # Resource to watch: clusters, nodepools, manifests, workloads
+
+# === POLLING CONFIGURATION ===
+poll_interval: 5s         # How often to check the API
+backoff_not_ready: 10s    # Wait time for resources still provisioning
+backoff_ready: 30m        # Wait time for stable/ready resources
+
+# === RESOURCE SELECTOR (optional) ===
+# Label selector for filtering which resources this Sentinel instance monitors
+# Note: This is NOT true sharding - there is no component ensuring that all
+# sentinels collectively select all resources without gaps or overlaps.
+# Multiple Sentinels can watch overlapping or different resource sets.
+resource_selector: "region=us-east"
+
+# === HYPERFLEET API ===
+hyperfleet_api:
+  endpoint: https://api.hyperfleet.example.com
+  timeout: 30s
+  # token: Override via HYPERFLEET_API_TOKEN="secret-token"
+
+# === MESSAGE DATA COMPOSITION ===
+# Defines how to construct the CloudEvent data payload from resource fields
+# This allows Sentinel to be generic across different resource types
+# Uses Go template syntax with dot notation for field access
+#
+# Template supports dot notation for nested fields:
+# - .id                    → Direct field from resource
+# - .ownerResource.id      → Nested field
+# - .metadata.labels.region → Label value
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  cluster_id: .ownerResource.id      # For nodepools: link to parent cluster
+  generation: .generation            # Track resource version for stale event handling
+  region: .metadata.labels.region
