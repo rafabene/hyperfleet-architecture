@@ -626,56 +626,471 @@ The `data` field is a **JSONB object** that adapters can use to send structured 
 
 ---
 
-## Cluster Object with Aggregated Status
+## YAML Aggregation Configuration
 
-When you GET a cluster, it contains **aggregated status** from all adapters. The detailed ClusterStatus objects exist separately.
+HyperFleet uses **configuration-driven status aggregation** to determine cluster phases and conditions from adapter statuses. This allows flexible customization of aggregation rules without code changes.
 
-### Cluster Object Structure (MVP)
+### Configuration Structure
+
+The aggregation configuration is defined in YAML format and specifies:
+
+1. **Required adapters** for each phase
+2. **Phase transition rules** based on adapter conditions
+3. **Cluster condition generation** rules
+4. **Timeout and retry policies**
+
+### Example Aggregation Configuration
+
+```yaml
+# config/aggregation.yaml
+# Required adapters that must complete before cluster is considered ready
+requiredAdapters:
+  - validation
+  - dns
+  - infrastructure
+  - hypershift
+
+# Optional adapters (failures don't block cluster ready state)
+optionalAdapters:
+  - monitoring
+  - logging
+
+# Pub/Sub configuration for adapter notifications
+pubsub:
+  provider: "rabbitmq"  # or "gcp-pubsub"
+  topics:
+    clusterEvents: "hyperfleet.cluster.events"
+    statusUpdates: "hyperfleet.status.updates"
+  retryPolicy:
+    maxRetries: 3
+    retryInterval: "30s"
+
+# Cluster conditions generation rules
+# These define HOW to evaluate each condition AND the reason/message templates
+clusterConditions:
+  - type: "AllAdaptersReady"
+    evaluate:
+      allRequiredAdapters:
+        conditions:
+          - type: "Available"
+            status: "True"
+    templates:
+      true:
+        reason: "AllRequiredAdaptersAvailable"
+        message: "All required adapters completed successfully"
+      false:
+        reason: "RequiredAdaptersNotReady"
+        message: "{{.FailedCount}} of {{.TotalCount}} required adapters not ready: {{.FailedAdapterNames}}"
+
+  - type: "AdaptersUnhealthy"
+    evaluate:
+      anyAdapter:
+        conditions:
+          - type: "Health"
+            status: "False"
+    templates:
+      true:
+        reason: "HealthCheckFailures"
+        message: "{{.UnhealthyAdapterNames}} experiencing health issues"
+      false:
+        reason: "AllAdaptersHealthy"
+        message: "All adapters are healthy"
+
+  - type: "AdaptersFailed"
+    evaluate:
+      anyRequiredAdapter:
+        conditions:
+          - type: "Available"
+            status: "False"
+          - type: "Health"
+            status: "True"
+    templates:
+      true:
+        reason: "RequiredAdapterFailure"
+        message: "Required adapters failed: {{.FailedAdapterNames}}. {{.FirstFailureMessage}}"
+      false:
+        reason: "NoAdapterFailures"
+        message: "No required adapter failures detected"
+
+  - type: "ProvisioningInProgress"
+    evaluate:
+      anyAdapter:
+        conditions:
+          - type: "Applied"
+            status: "True"
+          - type: "Available"
+            status: "False"
+    templates:
+      true:
+        reason: "AdaptersWorking"
+        message: "{{.WorkingCount}} of {{.TotalCount}} adapters actively provisioning resources"
+      false:
+        reason: "NoActiveProvisioning"
+        message: "No adapters currently provisioning"
+
+  - type: "AllAdaptersReporting"
+    evaluate:
+      allRequiredAdapters:
+        conditions:
+          - type: "observedGeneration"
+            status: "current"
+    templates:
+      true:
+        reason: "AllAdaptersReported"
+        message: "All required adapters reported status for current generation"
+      false:
+        reason: "AdaptersNotStarted"
+        message: "Waiting for adapters to begin processing cluster request"
+
+  - type: "ValidationPassed"
+    evaluate:
+      adapter: "validation"
+      conditions:
+        - type: "Available"
+          status: "True"
+    templates:
+      true:
+        reason: "AllValidationChecksPassed"
+        message: "Validation adapter completed all checks successfully"
+      false:
+        reason: "ValidationFailed"
+        message: "{{.AdapterFailureMessage}}"
+
+  - type: "InfrastructureReady"
+    evaluate:
+      adapter: "infrastructure"
+      conditions:
+        - type: "Available"
+          status: "True"
+    templates:
+      true:
+        reason: "AllResourcesProvisioned"
+        message: "Infrastructure adapter provisioned all required resources"
+      false:
+        reason: "InfrastructureNotReady"
+        message: "{{.AdapterFailureMessage}}"
+
+  - type: "DNSConfigured"
+    evaluate:
+      adapter: "dns"
+      conditions:
+        - type: "Available"
+          status: "True"
+    templates:
+      true:
+        reason: "AllRecordsCreated"
+        message: "DNS adapter created all required records"
+      false:
+        reason: "DNSNotConfigured"
+        message: "{{.AdapterFailureMessage}}"
+
+# Phase evaluation rules (phases evaluated in hardcoded priority order)
+# Note: Phase priority is hardcoded in business logic, not configured here
+# Phases reference clusterConditions defined above - no duplication!
+phases:
+  degraded:
+    description: "Cluster operational but with health issues"
+    requiredConditions:
+      - type: "AdaptersUnhealthy"
+        status: "True"
+
+  failed:
+    description: "One or more required adapters failed"
+    requiredConditions:
+      - type: "AdaptersFailed"
+        status: "True"
+
+  ready:
+    description: "All required adapters completed successfully"
+    requiredConditions:
+      - type: "AllAdaptersReady"
+        status: "True"
+      - type: "ValidationPassed"
+        status: "True"
+
+  provisioning:
+    description: "One or more adapters are actively provisioning resources"
+    requiredConditions:
+      - type: "ProvisioningInProgress"
+        status: "True"
+
+  pending:
+    description: "Waiting for adapters to start processing"
+    requiredConditions:
+      - type: "AllAdaptersReporting"
+        status: "False"
+
+# Error handling and policies
+policies:
+  staleThreshold: "10m"  # Consider status stale after 10 minutes
+  staleAction: "degraded"  # Move to degraded if stale
+  maxRetries: 3
+  retryInterval: "30s"
+
+# Default behavior for missing adapters
+defaultBehavior:
+  missingAdapter: "pending"    # Default to pending phase
+  timeout: "10m"              # Wait timeout before marking failed
+```
+
+### Configuration Loading
+
+The aggregation configuration is loaded at API startup.
+
+### Custom Aggregation Rules
+
+Organizations can provide custom aggregation configurations by:
+
+1. **Environment-specific configs** - Different rules for dev/staging/prod
+2. **Cluster-type configs** - Different rules for different workload types
+3. **Tenant-specific configs** - Multi-tenant environments with custom rules
+
+---
+
+## Cluster and Status Objects
+
+For better performance and separation of concerns, cluster metadata and status are served via separate endpoints:
+
+- **GET** `/v1/clusters/{id}` - Cluster metadata only
+- **GET** `/v1/clusters/{id}/status` - Aggregated status only
+- **GET** `/v1/clusters/{id}/statuses` - Detailed adapter statuses
+
+### Cluster Object Structure
+
+**GET** `/v1/clusters/{id}`
 
 ```json
 {
   "id": "cls-550e8400",
   "name": "my-cluster",
   "generation": 1,
-  "spec": { /* cluster spec */ },
-  "status": {
-    "phase": "Ready",
-    "adapters": [
-      {
-        "name": "validation",
-        "available": "True",
-        "observedGeneration": 1
-      },
-      {
-        "name": "dns",
-        "available": "True",
-        "observedGeneration": 1
-      },
-      {
-        "name": "infrastructure",
-        "available": "True",
-        "observedGeneration": 1
-      }
-    ],
-    "lastUpdated": "2025-10-17T12:05:00Z"
+  "spec": {
+    "cloud": "aws",
+    "region": "us-east-1",
+    "domain": "example.com",
+    "networking": {
+      "clusterNetwork": "10.128.0.0/14",
+      "serviceNetwork": "172.30.0.0/16"
+    },
+    "hypershift": {
+      "version": "4.14.0",
+      "releaseImage": "quay.io/openshift-release-dev/ocp-release:4.14.0"
+    }
+  },
+  "metadata": {
+    "createdAt": "2025-10-17T12:00:00Z",
+    "updatedAt": "2025-10-17T12:05:00Z",
+    "labels": {
+      "environment": "production",
+      "team": "platform"
+    }
   }
 }
 ```
 
-### Status Phase (MVP)
+### Cluster Status Structure
 
-The `phase` field is calculated by aggregating all adapter `available` conditions:
+**GET** `/v1/clusters/{id}/status`
 
-- **`Ready`** - All required adapters have `available: "True"` for current generation
-- **`Not Ready`** - One or more adapters have `available: "False"` or haven't reported yet
+```json
+{
+  "phase": "Ready",
+  "phaseDescription": "All required adapters completed successfully",
+  "conditions": [
+    {
+      "type": "AllAdaptersReady",
+      "status": "True",
+      "reason": "AllRequiredAdaptersAvailable",
+      "message": "All required adapters completed successfully",
+      "lastTransitionTime": "2025-10-17T12:05:00Z"
+    },
+    {
+      "type": "ValidationPassed",
+      "status": "True",
+      "reason": "AllValidationChecksPassed",
+      "message": "Validation adapter completed all checks successfully",
+      "lastTransitionTime": "2025-10-17T12:02:00Z"
+    },
+    {
+      "type": "InfrastructureReady",
+      "status": "True",
+      "reason": "AllResourcesProvisioned",
+      "message": "Infrastructure adapter provisioned all required resources",
+      "lastTransitionTime": "2025-10-17T12:04:30Z"
+    },
+    {
+      "type": "DNSConfigured",
+      "status": "True",
+      "reason": "AllRecordsCreated",
+      "message": "DNS adapter created all required records",
+      "lastTransitionTime": "2025-10-17T12:05:00Z"
+    }
+  ],
+  "adapters": [
+    {
+      "name": "validation",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "dns",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "infrastructure",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "hypershift",
+      "available": "True",
+      "observedGeneration": 1
+    }
+  ],
+  "lastUpdated": "2025-10-17T12:05:00Z"
+}
+```
 
-**Phase Calculation**:
-1. Get list of required adapters (e.g., `["validation", "dns", "infrastructure"]`)
-2. For each adapter:
-   - Check if `observedGeneration === cluster.generation`
-   - Check if `available === "True"`
-3. If all adapters are `True` and current → `phase: "Ready"`
-4. Otherwise → `phase: "Not Ready"`
+### Status Phases
+
+The `phase` field represents the overall cluster state based on adapter statuses and is calculated using the aggregation configuration:
+
+#### 1. **Pending**
+- **When**: Cluster created but adapters haven't started processing yet
+- **Condition**: No adapters have reported status or all are waiting for preconditions
+- **Example**: Cluster just created, validation adapter hasn't started
+
+```json
+{
+  "phase": "Pending",
+  "phaseDescription": "Waiting for adapters to start processing",
+  "conditions": [
+    {
+      "type": "AllAdaptersReporting",
+      "status": "False",
+      "reason": "AdaptersNotStarted",
+      "message": "Waiting for adapters to begin processing cluster request"
+    }
+  ]
+}
+```
+
+#### 2. **Provisioning**
+- **When**: One or more adapters are actively working
+- **Condition**: At least one adapter has `Applied: True` but `Available: False`
+- **Example**: Validation completed, DNS adapter running
+
+```json
+{
+  "phase": "Provisioning",
+  "phaseDescription": "One or more adapters are actively provisioning resources",
+  "conditions": [
+    {
+      "type": "ProvisioningInProgress",
+      "status": "True",
+      "reason": "AdaptersWorking",
+      "message": "2 of 4 adapters actively provisioning resources"
+    }
+  ]
+}
+```
+
+#### 3. **Ready**
+- **When**: All required adapters completed successfully
+- **Condition**: All required adapters have `Available: True` and `Health: True` for current generation
+- **Example**: All adapters finished without errors
+
+```json
+{
+  "phase": "Ready",
+  "phaseDescription": "All required adapters completed successfully",
+  "conditions": [
+    {
+      "type": "AllAdaptersReady",
+      "status": "True",
+      "reason": "AllRequiredAdaptersAvailable",
+      "message": "All required adapters completed successfully"
+    }
+  ]
+}
+```
+
+#### 4. **Failed**
+- **When**: One or more required adapters failed (business logic failure)
+- **Condition**: Any required adapter has `Available: False` with `Health: True`
+- **Example**: Validation failed due to missing DNS zone
+
+```json
+{
+  "phase": "Failed",
+  "phaseDescription": "One or more required adapters failed",
+  "conditions": [
+    {
+      "type": "AdaptersFailed",
+      "status": "True",
+      "reason": "RequiredAdapterFailure",
+      "message": "Validation failed: Route53 zone not found for domain example.com"
+    }
+  ]
+}
+```
+
+#### 5. **Degraded**
+- **When**: Cluster operational but has health issues
+- **Condition**: Any adapter has `Health: False` (unexpected errors)
+- **Example**: Infrastructure completed but monitoring adapter has connection issues
+
+```json
+{
+  "phase": "Degraded",
+  "phaseDescription": "Cluster operational but with health issues",
+  "conditions": [
+    {
+      "type": "AdaptersUnhealthy",
+      "status": "True",
+      "reason": "HealthCheckFailures",
+      "message": "Monitoring adapter experiencing API connection failures"
+    }
+  ]
+}
+```
+
+### Phase Calculation Logic
+
+The phase is determined by evaluating adapter statuses using **hardcoded priority logic**:
+
+```
+1. Get aggregation config for cluster type
+2. Evaluate phases in fixed priority order:
+   - degraded (any adapter Health: False) - HIGHEST PRIORITY
+   - failed (any required adapter business failure)
+   - ready (all required adapters Available: True)
+   - provisioning (any adapter actively working)
+   - pending (default/fallback state) - LOWEST PRIORITY
+3. Generate cluster conditions based on configurable rules
+4. Set phase and conditions on cluster status
+```
+
+**Key Design Decision:** Phase priority is **hardcoded in business logic**, not configurable. This ensures critical states like "Degraded" are never hidden by configuration mistakes, and provides consistent, predictable behavior across all environments.
+
+### Phase Transitions
+
+Valid phase transitions follow this flow:
+
+```
+Pending → Provisioning → Ready
+    ↓           ↓          ↓
+  Failed    Failed     Degraded
+    ↓           ↓          ↓
+Provisioning → Ready   Ready
+```
+
+**Key principles**:
+- **Pending** is the initial state
+- **Failed** can transition back to **Provisioning** (retry scenarios)
+- **Degraded** indicates operational but with issues
+- **Ready** is the target end state
 
 ### Accessing Detailed Status
 
@@ -704,6 +1119,420 @@ To check adapter health, you need the detailed ClusterStatus object:
 4. Check if `status === "True"`
 
 If `Health: False`, examine the `message` and `data` fields for debugging details.
+
+---
+
+## Configuration-driven Aggregation
+
+HyperFleet's status aggregation system uses **rule-based evaluation** to determine cluster phase and conditions from adapter statuses. This section explains how the aggregation engine processes configurations and adapter data.
+
+### Aggregation Engine Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Detailed      │    │   Aggregation    │    │   Aggregated    │
+│   Statuses      │───→│     Engine       │───→│    Status       │
+│                 │    │                  │    │                 │
+│ /statuses       │    │ • Rule Processor │    │ /status         │
+│ • Full conditions│   │ • Field Extract  │    │ • phase         │
+│ • JSONB data    │    │ • Condition Gen  │    │ • conditions    │
+│ • Metadata      │    │ • Phase Calc     │    │ • adapters[]    │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                              ↑
+                       ┌──────────────────┐
+                       │  YAML Config     │
+                       │                  │
+                       │ • Phase Rules    │
+                       │ • Conditions     │
+                       │ • Policies       │
+                       └──────────────────┘
+```
+
+**Data Flow:**
+1. **Source**: `GET /v1/clusters/{id}/statuses` - Complete adapter data with all conditions
+2. **Processing**: Aggregation engine extracts key fields and applies rules
+3. **Output**: `GET /v1/clusters/{id}/status` - Lightweight summary for fast access
+
+**Field Mapping:**
+```
+/statuses                           →    /status
+─────────────────────────────────────    ────────────────────────
+adapterStatuses[].adapter           →    adapters[].name
+adapterStatuses[].observedGeneration →    adapters[].observedGeneration
+adapterStatuses[].conditions[       →    adapters[].available
+  type="Available"].status
+
+Config YAML                         →    /status
+─────────────────────────────────────    ────────────────────────
+phases[phaseName].description       →    phaseDescription
+```
+
+### Rule Evaluation Process
+
+The aggregation engine follows this process:
+
+#### 1. **Data Collection**
+```go
+// Collect all adapter statuses for cluster
+adapterStatuses := getAdapterStatuses(clusterId, generation)
+config := getAggregationConfig(clusterType)
+```
+
+#### 2. **Phase Evaluation (Hardcoded Priority)**
+```go
+// Phase evaluation uses hardcoded priority for robustness
+func evaluateClusterPhase(adapterStatuses []AdapterStatus, config AggregationConfig) PhaseResult {
+    // 1. DEGRADED - Highest priority (health issues must be visible)
+    if anyAdapterUnhealthy(adapterStatuses) {
+        return PhaseResult{
+            Name: "Degraded",
+            Description: getPhaseDescription(config, "degraded"),
+        }
+    }
+
+    // 2. FAILED - Business logic failures
+    if anyRequiredAdapterFailed(adapterStatuses, config.RequiredAdapters) {
+        return PhaseResult{
+            Name: "Failed",
+            Description: getPhaseDescription(config, "failed"),
+        }
+    }
+
+    // 3. READY - All required adapters completed successfully
+    if allRequiredAdaptersReady(adapterStatuses, config.RequiredAdapters) {
+        return PhaseResult{
+            Name: "Ready",
+            Description: getPhaseDescription(config, "ready"),
+        }
+    }
+
+    // 4. PROVISIONING - One or more adapters actively working
+    if anyAdapterProvisioning(adapterStatuses) {
+        return PhaseResult{
+            Name: "Provisioning",
+            Description: getPhaseDescription(config, "provisioning"),
+        }
+    }
+
+    // 5. PENDING - Initial state (fallback)
+    return PhaseResult{
+        Name: "Pending",
+        Description: getPhaseDescription(config, "pending"),
+    }
+}
+
+func getPhaseDescription(config AggregationConfig, phaseName string) string {
+    for _, phase := range config.Phases {
+        if phase.Name == phaseName {
+            return phase.Description
+        }
+    }
+    return "" // Fallback if not found
+}
+```
+
+**Why Hardcoded Priority is More Robust:**
+- **Consistent behavior** across all environments and configurations
+- **Prevents misconfiguration** that could hide critical states (e.g., degraded)
+- **Business logic enforced** - health issues always visible regardless of config
+- **Simpler implementation** - no need for complex priority sorting
+- **Predictable outcomes** - phase transitions follow fixed, well-understood rules
+
+#### 3. **Condition Generation**
+```go
+// Generate cluster conditions based on configurable rules
+for _, conditionRule := range config.ClusterConditions {
+    condition := evaluateConditionRule(adapterStatuses, conditionRule)
+    clusterConditions = append(clusterConditions, condition)
+}
+```
+
+**Condition Reason/Message Generation:**
+
+The YAML config defines **HOW** to evaluate conditions **AND** provides templates for `reason` and `message`:
+
+```go
+func evaluateConditionRule(adapterStatuses []AdapterStatus, rule ConditionRule) Condition {
+    result := evaluateRule(adapterStatuses, rule.Evaluate)
+
+    // Get template based on evaluation result
+    var template ConditionTemplate
+    if result {
+        template = rule.Templates.True
+    } else {
+        template = rule.Templates.False
+    }
+
+    // Build context data for template rendering
+    context := buildTemplateContext(adapterStatuses, rule)
+
+    // Render message template with dynamic data
+    message := renderTemplate(template.Message, context)
+
+    return Condition{
+        Type:               rule.Type,
+        Status:             boolToStatus(result),
+        Reason:            template.Reason,        // ← From config template
+        Message:           message,               // ← Rendered from template + context
+        LastTransitionTime: time.Now(),
+    }
+}
+
+func buildTemplateContext(adapterStatuses []AdapterStatus, rule ConditionRule) map[string]interface{} {
+    failedAdapters := getFailedAdapters(adapterStatuses)
+
+    return map[string]interface{}{
+        "FailedCount":             len(failedAdapters),
+        "TotalCount":              len(getRequiredAdapters()),
+        "FailedAdapterNames":      strings.Join(failedAdapters, ", "),
+        "UnhealthyAdapterNames":   strings.Join(getUnhealthyAdapters(adapterStatuses), ", "),
+        "WorkingCount":            getWorkingAdapterCount(adapterStatuses),
+        "AdapterFailureMessage":   getFirstAdapterFailureMessage(adapterStatuses),
+        "FirstFailureMessage":     getFirstFailureMessage(adapterStatuses),
+    }
+}
+```
+
+**Template Variables Available:**
+
+| Variable | Description | Example Value |
+|----------|-------------|---------------|
+| `{{.FailedCount}}` | Number of failed adapters | `"2"` |
+| `{{.TotalCount}}` | Total required adapters | `"4"` |
+| `{{.FailedAdapterNames}}` | Comma-separated failed adapter names | `"validation, dns"` |
+| `{{.UnhealthyAdapterNames}}` | Comma-separated unhealthy adapter names | `"monitoring"` |
+| `{{.WorkingCount}}` | Number of actively working adapters | `"2"` |
+| `{{.AdapterFailureMessage}}` | Specific failure message from adapter | `"Route53 zone not found for domain example.com"` |
+| `{{.FirstFailureMessage}}` | First failure message for debugging | `"Route53 zone not found for domain example.com"` |
+
+**Example Template Rendering:**
+```yaml
+# Config template
+templates:
+  false:
+    reason: "RequiredAdaptersNotReady"
+    message: "{{.FailedCount}} of {{.TotalCount}} required adapters not ready: {{.FailedAdapterNames}}"
+
+# Context data (from adapter statuses)
+{
+  "FailedCount": 2,
+  "TotalCount": 4,
+  "FailedAdapterNames": "validation, dns"
+}
+
+# Rendered result
+{
+  "type": "AllAdaptersReady",
+  "status": "False",
+  "reason": "RequiredAdaptersNotReady",        # ← From template
+  "message": "2 of 4 required adapters not ready: validation, dns"  # ← Rendered
+}
+```
+
+**Benefits of Template-based Approach:**
+
+1. **No source code changes** - Adding new conditions only requires YAML config changes
+2. **Consistent messaging** - Templates ensure uniform message formatting
+3. **Localization ready** - Easy to swap templates for different languages
+4. **Testable** - Template rendering can be unit tested independently
+5. **Flexible** - Can customize messages per environment without code changes
+
+**Adding New Conditions - No Code Changes Required:**
+
+To add a new condition like "HyperShiftReady", just add to YAML config:
+
+```yaml
+clusterConditions:
+  # ... existing conditions ...
+
+  # NEW: Add this to config, no source code changes needed!
+  - type: "HyperShiftReady"
+    evaluate:
+      adapter: "hypershift"
+      conditions:
+        - type: "Available"
+          status: "True"
+    templates:
+      true:
+        reason: "ClusterDeployed"
+        message: "HyperShift cluster deployed and operational"
+      false:
+        reason: "HyperShiftNotReady"
+        message: "{{.AdapterFailureMessage}}"
+```
+
+**Result:** The aggregation engine automatically:
+1. Evaluates the new condition based on hypershift adapter status
+2. Generates reason/message using the templates
+3. Includes it in cluster conditions array
+
+**No Go code changes required!** 🎯
+
+#### 4. **Adapter Status Extraction**
+```go
+// Extract adapter summaries for /status endpoint from detailed /statuses data
+func extractAdapterSummaries(detailedStatus ClusterStatus) []AdapterSummary {
+    var adapters []AdapterSummary
+
+    for _, adapterStatus := range detailedStatus.AdapterStatuses {
+        // Extract the "Available" condition status
+        var availableStatus string = "False" // Default fallback
+        for _, condition := range adapterStatus.Conditions {
+            if condition.Type == "Available" {
+                availableStatus = condition.Status  // "True" or "False"
+                break
+            }
+        }
+
+        // Create adapter summary for /status endpoint
+        summary := AdapterSummary{
+            Name:                adapterStatus.Adapter,        // Direct copy
+            Available:           availableStatus,              // Extracted from Available condition
+            ObservedGeneration:  adapterStatus.ObservedGeneration, // Direct copy
+        }
+
+        adapters = append(adapters, summary)
+    }
+
+    return adapters
+}
+```
+
+**Field Extraction Rules:**
+- **`name`** - Direct copy from `adapterStatus.adapter`
+- **`available`** - Extracted from `conditions[type="Available"].status`
+- **`observedGeneration`** - Direct copy from `adapterStatus.observedGeneration`
+
+**Purpose:** The `/status` endpoint provides a **lightweight projection** of the detailed `/statuses` data, extracting only the essential fields needed for:
+- Quick phase calculation
+- High-level status overview
+- Polling and dashboard displays
+
+**Performance Benefits:**
+- Avoids parsing full condition arrays for basic status checks
+- Enables fast aggregation logic without condition iteration
+- Reduces payload size for frequently-accessed status endpoint
+
+**Example Extraction:**
+```json
+// Source: GET /statuses + Config YAML
+{
+  "adapterStatuses": [
+    {
+      "adapter": "validation",
+      "observedGeneration": 1,
+      "conditions": [
+        {"type": "Available", "status": "True", "reason": "JobSucceeded"},
+        {"type": "Applied", "status": "True", "reason": "JobLaunched"},
+        {"type": "Health", "status": "True", "reason": "NoErrors"}
+      ]
+    }
+  ]
+}
+
+// Config phases.ready.description
+phases:
+  ready:
+    description: "All required adapters completed successfully"
+
+// Result: GET /status
+{
+  "phase": "Ready",                   // ← Calculated from adapter statuses
+  "phaseDescription": "All required adapters completed successfully", // ← From config
+  "adapters": [
+    {
+      "name": "validation",           // ← adapter
+      "available": "True",            // ← conditions[Available].status
+      "observedGeneration": 1         // ← observedGeneration
+    }
+  ]
+}
+```
+
+### Rule Evaluation Logic
+
+#### Phase Rule Evaluation
+
+Each phase rule contains conditions that are evaluated against adapter statuses:
+
+```yaml
+# Example rule evaluation
+phases:
+  ready:
+    rules:
+      - allRequiredAdapters:           # Rule type
+          conditions:                  # Conditions to check
+            - type: "Available"
+              status: "True"
+          observedGeneration: "current" # Generation constraint
+```
+
+**Rule Types**:
+- `allRequiredAdapters` - All required adapters must match conditions
+- `anyRequiredAdapter` - At least one required adapter matches conditions
+- `allAdapters` - All adapters (required + optional) must match
+- `anyAdapter` - At least one adapter matches conditions
+
+#### Condition Rule Evaluation
+
+Cluster conditions are generated by evaluating specific rules:
+
+```yaml
+clusterConditions:
+  - type: "ValidationPassed"
+    evaluate:
+      adapter: "validation"        # Specific adapter
+      conditions:
+        - type: "Available"
+          status: "True"
+
+  - type: "AllAdaptersReady"
+    evaluate:
+      allRequiredAdapters:         # All required adapters
+        conditions:
+          - type: "Available"
+            status: "True"
+          - type: "Health"
+            status: "True"
+```
+
+### Generation Handling
+
+The aggregation engine respects generation constraints to prevent stale data issues:
+
+```yaml
+rules:
+  - allRequiredAdapters:
+      conditions:
+        - type: "Available"
+          status: "True"
+      observedGeneration: "current"  # Only current generation
+```
+
+**Generation Modes**:
+- `current` - Only adapters with observedGeneration == cluster.generation
+- `any` - Accept any generation (useful for graceful transitions)
+- `latest` - Use the highest observedGeneration available
+
+### Error Handling and Fallbacks
+
+The aggregation engine handles various error scenarios:
+
+#### Missing Adapter Status
+```yaml
+# When required adapter hasn't reported yet
+defaultBehavior:
+  missingAdapter: "pending"    # Default to pending phase
+  timeout: "10m"              # Wait timeout before marking failed
+```
+
+#### Stale Status Detection
+```yaml
+policies:
+  staleThreshold: "10m"        # Consider status stale after 10 minutes
+  staleAction: "degraded"      # Move to degraded if stale
+```
+
 
 ---
 
@@ -1061,13 +1890,388 @@ Here's what a complete ClusterStatus object looks like with multiple adapters at
 
 ---
 
+## Complete Cluster Scenarios with Phase Transitions
+
+This section demonstrates how cluster phases and conditions evolve throughout the complete lifecycle, showing the interplay between adapter statuses and cluster aggregation.
+
+### Scenario 1: Successful Cluster Provisioning
+
+#### Stage 1: Initial State (Pending)
+
+**Cluster State**: Just created, no adapters have started yet.
+
+**GET** `/v1/clusters/cls-123/status`
+
+```json
+{
+  "phase": "Pending",
+  "phaseDescription": "Waiting for adapters to start processing",
+  "conditions": [
+    {
+      "type": "AllAdaptersReporting",
+      "status": "False",
+      "reason": "AdaptersNotStarted",
+      "message": "Waiting for adapters to begin processing cluster request",
+      "lastTransitionTime": "2025-10-17T12:00:00Z"
+    }
+  ],
+  "adapters": [],
+  "lastUpdated": "2025-10-17T12:00:00Z"
+}
+```
+
+#### Stage 2: Validation Started (Provisioning)
+
+**Cluster State**: Validation adapter started working.
+
+**GET** `/v1/clusters/cls-123/status`
+
+```json
+{
+  "phase": "Provisioning",
+  "conditions": [
+    {
+      "type": "ProvisioningInProgress",
+      "status": "True",
+      "reason": "AdaptersWorking",
+      "message": "1 of 4 adapters actively provisioning resources",
+      "lastTransitionTime": "2025-10-17T12:00:05Z"
+    },
+    {
+      "type": "ValidationPassed",
+      "status": "False",
+      "reason": "ValidationInProgress",
+      "message": "Validation adapter is currently running checks",
+      "lastTransitionTime": "2025-10-17T12:00:05Z"
+    }
+  ],
+  "adapters": [
+    {
+      "name": "validation",
+      "available": "False",
+      "observedGeneration": 1
+    }
+  ],
+  "lastUpdated": "2025-10-17T12:00:05Z"
+}
+```
+
+#### Stage 3: Validation Complete, DNS Started (Provisioning)
+
+**Cluster State**: Validation succeeded, DNS adapter now working.
+
+**GET** `/v1/clusters/cls-123/status`
+
+```json
+{
+  "phase": "Provisioning",
+  "conditions": [
+    {
+      "type": "ProvisioningInProgress",
+      "status": "True",
+      "reason": "AdaptersWorking",
+      "message": "1 of 4 adapters actively provisioning resources",
+      "lastTransitionTime": "2025-10-17T12:03:00Z"
+    },
+    {
+      "type": "ValidationPassed",
+      "status": "True",
+      "reason": "AllValidationChecksPassed",
+      "message": "Validation adapter completed all checks successfully",
+      "lastTransitionTime": "2025-10-17T12:02:00Z"
+    },
+    {
+      "type": "DNSConfigured",
+      "status": "False",
+      "reason": "DNSProvisioningInProgress",
+      "message": "DNS adapter is creating Route53 records",
+      "lastTransitionTime": "2025-10-17T12:03:00Z"
+    }
+  ],
+  "adapters": [
+    {
+      "name": "validation",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "dns",
+      "available": "False",
+      "observedGeneration": 1
+    }
+  ],
+  "lastUpdated": "2025-10-17T12:03:00Z"
+}
+```
+
+#### Stage 4: All Adapters Complete (Ready)
+
+**Cluster State**: All required adapters completed successfully.
+
+**GET** `/v1/clusters/cls-123/status`
+
+```json
+{
+  "phase": "Ready",
+  "phaseDescription": "All required adapters completed successfully",
+  "conditions": [
+    {
+      "type": "AllAdaptersReady",
+      "status": "True",
+      "reason": "AllRequiredAdaptersAvailable",
+      "message": "All required adapters completed successfully",
+      "lastTransitionTime": "2025-10-17T12:15:00Z"
+    },
+    {
+      "type": "ValidationPassed",
+      "status": "True",
+      "reason": "AllValidationChecksPassed",
+      "message": "Validation adapter completed all checks successfully",
+      "lastTransitionTime": "2025-10-17T12:02:00Z"
+    },
+    {
+      "type": "DNSConfigured",
+      "status": "True",
+      "reason": "AllRecordsCreated",
+      "message": "DNS adapter created all required records",
+      "lastTransitionTime": "2025-10-17T12:05:00Z"
+    },
+    {
+      "type": "InfrastructureReady",
+      "status": "True",
+      "reason": "AllResourcesProvisioned",
+      "message": "Infrastructure adapter provisioned all required resources",
+      "lastTransitionTime": "2025-10-17T12:10:00Z"
+    },
+    {
+      "type": "HyperShiftReady",
+      "status": "True",
+      "reason": "ClusterDeployed",
+      "message": "HyperShift cluster deployed and operational",
+      "lastTransitionTime": "2025-10-17T12:15:00Z"
+    }
+  ],
+  "adapters": [
+    {
+      "name": "validation",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "dns",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "infrastructure",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "hypershift",
+      "available": "True",
+      "observedGeneration": 1
+    }
+  ],
+  "lastUpdated": "2025-10-17T12:15:00Z"
+}
+```
+
+### Scenario 2: Cluster Provisioning with Failure
+
+#### Stage 1: Validation Failure (Failed)
+
+**Cluster State**: Validation adapter failed due to missing DNS zone.
+
+**GET** `/v1/clusters/cls-456/status`
+
+```json
+{
+  "phase": "Failed",
+  "conditions": [
+    {
+      "type": "AdaptersFailed",
+      "status": "True",
+      "reason": "RequiredAdapterFailure",
+      "message": "Validation failed: Route53 zone not found for domain example.com",
+      "lastTransitionTime": "2025-10-17T12:02:00Z"
+    },
+    {
+      "type": "ValidationPassed",
+      "status": "False",
+      "reason": "ValidationFailed",
+      "message": "Route53 zone not found for domain example.com. Create a public hosted zone before provisioning cluster.",
+      "lastTransitionTime": "2025-10-17T12:02:00Z"
+    }
+  ],
+  "adapters": [
+    {
+      "name": "validation",
+      "available": "False",
+      "observedGeneration": 1
+    }
+  ],
+  "lastUpdated": "2025-10-17T12:02:00Z"
+}
+```
+
+#### Stage 2: After Manual Fix - Retry (Provisioning)
+
+**Cluster State**: User created DNS zone, cluster spec updated to generation 2, validation restarted.
+
+**GET** `/v1/clusters/cls-456/status`
+
+```json
+{
+  "phase": "Provisioning",
+  "conditions": [
+    {
+      "type": "ProvisioningInProgress",
+      "status": "True",
+      "reason": "AdaptersWorking",
+      "message": "1 of 4 adapters actively provisioning resources",
+      "lastTransitionTime": "2025-10-17T13:00:05Z"
+    },
+    {
+      "type": "ValidationPassed",
+      "status": "False",
+      "reason": "ValidationInProgress",
+      "message": "Validation adapter is currently running checks",
+      "lastTransitionTime": "2025-10-17T13:00:05Z"
+    }
+  ],
+  "adapters": [
+    {
+      "name": "validation",
+      "available": "False",
+      "observedGeneration": 2
+    }
+  ],
+  "lastUpdated": "2025-10-17T13:00:05Z"
+}
+```
+
+### Scenario 3: Cluster with Health Issues (Degraded)
+
+#### Stage 1: Operational but Unhealthy (Degraded)
+
+**Cluster State**: All adapters completed but monitoring adapter has health issues.
+
+**GET** `/v1/clusters/cls-789/status`
+
+```json
+{
+  "phase": "Degraded",
+  "conditions": [
+    {
+      "type": "AdaptersUnhealthy",
+      "status": "True",
+      "reason": "HealthCheckFailures",
+      "message": "Monitoring adapter experiencing API connection failures",
+      "lastTransitionTime": "2025-10-17T12:20:00Z"
+    },
+    {
+      "type": "AllAdaptersReady",
+      "status": "True",
+      "reason": "AllRequiredAdaptersAvailable",
+      "message": "All required adapters completed successfully",
+      "lastTransitionTime": "2025-10-17T12:15:00Z"
+    },
+    {
+      "type": "ValidationPassed",
+      "status": "True",
+      "reason": "AllValidationChecksPassed",
+      "message": "Validation adapter completed successfully",
+      "lastTransitionTime": "2025-10-17T12:02:00Z"
+    },
+    {
+      "type": "MonitoringConfigured",
+      "status": "False",
+      "reason": "HealthCheckFailures",
+      "message": "Monitoring adapter experiencing connectivity issues",
+      "lastTransitionTime": "2025-10-17T12:20:00Z"
+    }
+  ],
+  "adapters": [
+    {
+      "name": "validation",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "dns",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "infrastructure",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "hypershift",
+      "available": "True",
+      "observedGeneration": 1
+    },
+    {
+      "name": "monitoring",
+      "available": "True",
+      "observedGeneration": 1
+    }
+  ],
+  "lastUpdated": "2025-10-17T12:20:00Z"
+}
+```
+
+### Condition Generation Examples
+
+These examples show how specific cluster conditions are generated based on adapter statuses:
+
+#### AllAdaptersReady Condition
+```yaml
+# Generated when all required adapters have Available: True
+{
+  "type": "AllAdaptersReady",
+  "status": "True",
+  "reason": "AllRequiredAdaptersAvailable",
+  "message": "All required adapters (validation, dns, infrastructure, hypershift) completed successfully",
+  "lastTransitionTime": "2025-10-17T12:15:00Z"
+}
+```
+
+#### ValidationPassed Condition
+```yaml
+# Generated based on validation adapter status
+{
+  "type": "ValidationPassed",
+  "status": "True",
+  "reason": "AllValidationChecksPassed",
+  "message": "Validation adapter completed all checks successfully",
+  "lastTransitionTime": "2025-10-17T12:02:00Z"
+}
+```
+
+#### ProvisioningInProgress Condition
+```yaml
+# Generated when adapters are actively working
+{
+  "type": "ProvisioningInProgress",
+  "status": "True",
+  "reason": "AdaptersWorking",
+  "message": "2 of 4 adapters actively provisioning resources",
+  "lastTransitionTime": "2025-10-17T12:03:00Z"
+}
+```
+
+---
+
 ## Common Status Query Patterns
 
 ### 1. Wait for Specific Adapter
 
 To poll until an adapter completes:
-1. Fetch the cluster repeatedly (e.g., every 5 seconds): `GET /v1/clusters/{clusterId}`
-2. Find the adapter in `status.adapters` array
+1. Fetch the cluster status repeatedly (e.g., every 5 seconds): `GET /v1/clusters/{clusterId}/status`
+2. Find the adapter in `adapters` array
 3. Check if adapter exists (has reported at least once)
 4. Verify `observedGeneration === cluster.generation` (not stale)
 5. Check `available` field:
@@ -1084,17 +2288,17 @@ To poll until an adapter completes:
 ### 2. Check If Cluster is Ready
 
 To verify cluster is fully provisioned:
-1. Fetch cluster: `GET /v1/clusters/{clusterId}`
-2. Check `status.phase === "Ready"`
-3. Optionally verify each adapter in `status.adapters`:
+1. Fetch cluster status: `GET /v1/clusters/{clusterId}/status`
+2. Check `phase === "Ready"`
+3. Optionally verify each adapter in `adapters`:
    - All have `observedGeneration === cluster.generation`
    - All have `available === "True"`
 
 ### 3. Get Failed Adapters
 
 To identify which adapters have failed:
-1. Fetch cluster: `GET /v1/clusters/{clusterId}`
-2. Iterate through `status.adapters`
+1. Fetch cluster status: `GET /v1/clusters/{clusterId}/status`
+2. Iterate through `adapters`
 3. For each adapter:
    - If `observedGeneration < cluster.generation` → stale, skip
    - If `available === "False"`, collect adapter name
@@ -1108,18 +2312,18 @@ To identify which adapters have failed:
 ### 4. Display Adapter Progress
 
 To show progress UI:
-1. Fetch cluster: `GET /v1/clusters/{clusterId}`
-2. For each adapter in `status.adapters`:
-   - `available: "True"` → Completed 
+1. Fetch cluster status: `GET /v1/clusters/{clusterId}/status`
+2. For each adapter in `adapters`:
+   - `available: "True"` → Completed
    - `available: "False"` → Need to check details
 3. Fetch detailed status: `GET /v1/clusters/{clusterId}/statuses?generation={generation}`
 4. For adapters with `available: "False"`:
    - Find adapter in `adapterStatuses` array
    - Check conditions:
-     - `Health: False` → Unhealthy 
-     - `Available: False` with `JobRunning` reason → Running 
+     - `Health: False` → Unhealthy
+     - `Available: False` with `JobRunning` reason → Running
      - `Available: False` with failure reason → Failed
-     - `Applied: False` → Pending 
+     - `Applied: False` → Pending
 5. Display adapter name, status icon, generation, and message from conditions
 
 **Example Output**:
@@ -1262,10 +2466,17 @@ hypershift - pending (gen 0)
 - Retrieved via `GET /v1/clusters/{clusterId}/statuses?generation={gen}`
 - **RESTful design**: Single resource represents complete cluster status
 
-**Cluster Object** (aggregated, lightweight):
-- Contains `status.phase`: "Ready" or "Not Ready" (MVP)
-- Contains `status.adapters`: Array of `{name, available, observedGeneration}`
-- Phase calculated by aggregating all adapter `available` conditions
+**Cluster Status Object** (aggregated, lightweight):
+- Contains `phase`: "Pending", "Provisioning", "Ready", "Failed", or "Degraded"
+- Contains `phaseDescription`: Human-readable description from configuration
+- Contains `conditions`: Array of cluster-level conditions (AllAdaptersReady, etc.)
+- Contains `adapters`: Array of `{name, available, observedGeneration}`
+- Phase calculated by aggregating all adapter `available` conditions using hardcoded priority
+- Retrieved via `GET /v1/clusters/{clusterId}/status`
+
+**Cluster Object** (metadata only):
+- Contains `id`, `name`, `generation`, `spec`, and `metadata`
+- No status information included for performance
 - Retrieved via `GET /v1/clusters/{clusterId}`
 
 ### The Contract
@@ -1285,13 +2496,14 @@ hypershift - pending (gen 0)
 
 ### Key Principles
 
-1. **RESTful design** - ONE ClusterStatus object per cluster with all adapter statuses
-2. **Separation of concerns** - Detailed status separate from cluster object
+1. **Endpoint separation** - Cluster metadata and status served via separate endpoints for performance
+2. **RESTful design** - ONE ClusterStatus object per cluster with all adapter statuses
 3. **Conditions are the contract** - Required by API (Available, Applied, Health)
 4. **Positive assertions** - All condition types should be positive
 5. **Aggregation logic** - Available reflects all sub-conditions
-6. **Health vs Business Logic** - Health is about adapter errors, not validation failures
-7. **Structured data** - Use `data` field for details beyond conditions
-8. **MVP simplicity** - Phase is binary: Ready or Not Ready
+6. **Hardcoded phase priority** - Phase evaluation uses fixed business logic, not configurable rules
+7. **Health vs Business Logic** - Health is about adapter errors, not validation failures
+8. **Structured data** - Use `data` field for details beyond conditions
+9. **Five phases** - Pending → Provisioning → Ready/Failed/Degraded
 
 ---
