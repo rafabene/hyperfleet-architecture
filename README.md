@@ -14,6 +14,33 @@ This repository serves as the **single source of truth** for all architectural d
 
 ---
 
+## Repository Access & MVP Process
+
+**Current Phase**: MVP Development
+
+**Access & Permissions**:
+- All developers in the HyperFleet team are granted **write access** to this repository
+- To support quick iteration during MVP, developers have **approve and merge access** if there are no objections from peers
+- This temporary process enables rapid documentation of decisions and scope changes
+
+**Repository Usage**:
+- This repository primarily records:
+  - Architectural decisions and their rationale
+  - Trade-offs we're accepting during MVP
+  - Changes to MVP scope and priorities
+  - Technical debt we're consciously incurring
+
+**Post-MVP**:
+- Once MVP is complete, we will establish official processes for:
+  - Repository access management
+  - PR review requirements
+  - Approval workflows
+  - Documentation governance
+
+**During MVP, prioritize speed over process while maintaining clear documentation of decisions.**
+
+---
+
 ## Repository Structure
 
 ```
@@ -200,26 +227,26 @@ Example of paying down technical debt:
 
 ### Review and Merge Process
 
+**MVP Process (Current)**:
+- All HyperFleet team developers have approve and merge access
+- You may approve and merge your own PR if:
+  - No objections from peers within reasonable time (~4 hours during work hours)
+  - You've posted the PR in Slack (#forum-hyperfleet) for visibility
+  - The change is well-documented with clear rationale
+- For major architectural changes, consider waiting for at least one peer review
+- **Goal**: Move fast while keeping the team informed
+
 **How to submit changes:**
 1. Create a PR with your documentation updates
 2. Add a clear description of what changed and why
-3. Ping the Team in Slack with the PR link: #forum-hyperfleet
-4. Wait for review from at least one Architecture Team member
+3. Post the PR link in Slack: #hcm-hyperfleet-team
+4. Wait 24 hours(time zone differences between regions) for objections during work hours (or use judgment for urgency). 
+5. Once approve got from the peers and no other objections, it's OK to merge
 
-**Who reviews:**
-- Architecture Team members are automatically notified of PRs
-- For urgent updates, ping in Slack: `//todo channel`
-- For minor typos/clarifications, any team member can approve
-
-**Approval requirements:**
-- **Minor updates** (typos, formatting, clarifications): 1 approval
-- **Component design changes**: 2 approvals from Architecture Team
-- **New architecture documents**: Architecture Team consensus
-
-**Merge timeline:**
-- Minor updates: Same day if approved
-- Design changes: Within 2 business days
-- New architecture: Discussed in Architecture Team meeting
+**Post-MVP Process** (to be established):
+- Formal approval requirements based on change type
+- Required reviewers for different document categories
+- Defined merge timelines and escalation paths
 
 ---
 
