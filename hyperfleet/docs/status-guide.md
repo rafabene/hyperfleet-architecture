@@ -679,7 +679,7 @@ clusterConditions:
         message: "All required adapters completed successfully"
       false:
         reason: "RequiredAdaptersNotReady"
-        message: "{{.FailedCount}} of {{.TotalCount}} required adapters not ready: {{.FailedAdapterNames}}"
+        message: "One or more required adapters not ready"
 
   - type: "AdaptersUnhealthy"
     evaluate:
@@ -687,7 +687,7 @@ clusterConditions:
     templates:
       true:
         reason: "HealthCheckFailures"
-        message: "{{.UnhealthyAdapterNames}} experiencing health issues"
+        message: "One or more adapters experiencing health issues"
       false:
         reason: "AllAdaptersHealthy"
         message: "All adapters are healthy"
@@ -698,7 +698,7 @@ clusterConditions:
     templates:
       true:
         reason: "RequiredAdapterFailure"
-        message: "Required adapters failed: {{.FailedAdapterNames}}. {{.FirstFailureMessage}}"
+        message: "One or more required adapters failed"
       false:
         reason: "NoAdapterFailures"
         message: "No required adapter failures detected"
@@ -709,7 +709,7 @@ clusterConditions:
     templates:
       true:
         reason: "AdaptersWorking"
-        message: "{{.WorkingCount}} of {{.TotalCount}} adapters actively provisioning resources"
+        message: "Adapters actively provisioning resources"
       false:
         reason: "NoActiveProvisioning"
         message: "No adapters currently provisioning"
@@ -734,7 +734,7 @@ clusterConditions:
         message: "Validation adapter completed all checks successfully"
       false:
         reason: "ValidationFailed"
-        message: "{{.AdapterFailureMessage}}"
+        message: "Validation adapter not ready"
 
   - type: "InfrastructureReady"
     evaluate:
@@ -745,7 +745,7 @@ clusterConditions:
         message: "Infrastructure adapter provisioned all required resources"
       false:
         reason: "InfrastructureNotReady"
-        message: "{{.AdapterFailureMessage}}"
+        message: "Infrastructure adapter not ready"
 
   - type: "DNSConfigured"
     evaluate:
@@ -756,7 +756,7 @@ clusterConditions:
         message: "DNS adapter created all required records"
       false:
         reason: "DNSNotConfigured"
-        message: "{{.AdapterFailureMessage}}"
+        message: "DNS adapter not ready"
 
 # Phase evaluation rules (phases evaluated in hardcoded priority order)
 # Note: Phase priority is hardcoded in business logic, not configured here
@@ -970,7 +970,7 @@ The `phase` field represents the overall cluster state based on adapter statuses
       "type": "ProvisioningInProgress",
       "status": "True",
       "reason": "AdaptersWorking",
-      "message": "2 of 4 adapters actively provisioning resources"
+      "message": "Adapters actively provisioning resources"
     }
   ]
 }
@@ -1259,17 +1259,11 @@ func evaluateConditionRule(adapterStatuses []AdapterStatus, config AggregationCo
         template = rule.Templates.False
     }
 
-    // Build context data for template rendering
-    context := buildTemplateContext(adapterStatuses, rule)
-
-    // Render message template with dynamic data
-    message := renderTemplate(template.Message, context)
-
     return Condition{
         Type:               rule.Type,
         Status:             boolToStatus(result),
-        Reason:            template.Reason,        // ← From config template
-        Message:           message,               // ← Rendered from template + context
+        Reason:             template.Reason,   // ← From config template
+        Message:            template.Message,  // ← Static message from config
         LastTransitionTime: time.Now(),
     }
 }
@@ -1303,45 +1297,29 @@ func evaluateExprCondition(adapterStatuses []AdapterStatus, config AggregationCo
     return result.(bool)
 }
 
-func buildTemplateContext(adapterStatuses []AdapterStatus, rule ConditionRule) map[string]interface{} {
-    failedAdapters := getFailedAdapters(adapterStatuses)
-
-    return map[string]interface{}{
-        "FailedCount":             len(failedAdapters),
-        "TotalCount":              len(getRequiredAdapters()),
-        "FailedAdapterNames":      strings.Join(failedAdapters, ", "),
-        "UnhealthyAdapterNames":   strings.Join(getUnhealthyAdapters(adapterStatuses), ", "),
-        "WorkingCount":            getWorkingAdapterCount(adapterStatuses),
-        "AdapterFailureMessage":   getFirstAdapterFailureMessage(adapterStatuses),
-        "FirstFailureMessage":     getFirstFailureMessage(adapterStatuses),
-    }
-}
 ```
 
-**Template Variables Available:**
+**Message Generation:**
 
-| Variable | Description | Example Value |
-|----------|-------------|---------------|
-| `{{.FailedCount}}` | Number of failed adapters | `"2"` |
-| `{{.TotalCount}}` | Total required adapters | `"4"` |
-| `{{.FailedAdapterNames}}` | Comma-separated failed adapter names | `"validation, dns"` |
-| `{{.UnhealthyAdapterNames}}` | Comma-separated unhealthy adapter names | `"monitoring"` |
-| `{{.WorkingCount}}` | Number of actively working adapters | `"2"` |
-| `{{.AdapterFailureMessage}}` | Specific failure message from adapter | `"Route53 zone not found for domain example.com"` |
-| `{{.FirstFailureMessage}}` | First failure message for debugging | `"Route53 zone not found for domain example.com"` |
+The YAML config defines static messages for each condition outcome:
 
-**Example Template Rendering:**
 ```yaml
-# Config with expr evaluation
+# Example condition with static messages
 clusterConditions:
   - type: "AllAdaptersReady"
     evaluate:
       expr: 'all(requiredAdapters, {.available == "True"})'
     templates:
+      true:
+        reason: "AllRequiredAdaptersAvailable"
+        message: "All required adapters completed successfully"  # ← Static message
       false:
         reason: "RequiredAdaptersNotReady"
-        message: "{{.FailedCount}} of {{.TotalCount}} required adapters not ready: {{.FailedAdapterNames}}"
+        message: "One or more required adapters not ready"      # ← Static message
+```
 
+**Example Evaluation:**
+```yaml
 # Step 1: Evaluate expr expression
 expr: 'all(requiredAdapters, {.available == "True"})'
 # With requiredAdapters = [
@@ -1352,29 +1330,24 @@ expr: 'all(requiredAdapters, {.available == "True"})'
 # ]
 # Result: false (not ALL are True)
 
-# Step 2: Build context data for template
-{
-  "FailedCount": 2,
-  "TotalCount": 4,
-  "FailedAdapterNames": "validation, dns"
-}
+# Step 2: Select template based on result
+# Since result is false, use templates.false
 
-# Step 3: Render template with context
+# Step 3: Create condition
 {
   "type": "AllAdaptersReady",
   "status": "False",                          # ← From expr result
   "reason": "RequiredAdaptersNotReady",       # ← From template
-  "message": "2 of 4 required adapters not ready: validation, dns"  # ← Rendered
+  "message": "One or more required adapters not ready"  # ← From template
 }
 ```
 
-**Benefits of Template-based Approach:**
+**Benefits:**
 
-1. **No source code changes** - Adding new conditions only requires YAML config changes
-2. **Consistent messaging** - Templates ensure uniform message formatting
-3. **Localization ready** - Easy to swap templates for different languages
-4. **Testable** - Template rendering can be unit tested independently
-5. **Flexible** - Can customize messages per environment without code changes
+1. **Simple** - No template rendering complexity, just static messages
+2. **Fast** - Direct string assignment, no parsing or substitution
+3. **Clear** - Messages are exactly as written in configuration
+4. **Easy to customize** - Change messages without code changes
 
 **Adding New Conditions - No Code Changes Required:**
 
@@ -1394,7 +1367,7 @@ clusterConditions:
         message: "HyperShift cluster deployed and operational"
       false:
         reason: "HyperShiftNotReady"
-        message: "{{.AdapterFailureMessage}}"
+        message: "HyperShift cluster not ready"
 ```
 
 **More Complex Example:**
@@ -1415,7 +1388,7 @@ clusterConditions:
 
 **Result:** The aggregation engine automatically:
 1. Evaluates the expr expression against current adapter statuses
-2. Generates reason/message using the templates
+2. Uses the static reason/message from templates
 3. Includes it in cluster conditions array
 
 **No Go code changes required!** The power of expr allows you to express any evaluation logic directly in configuration.
@@ -2169,7 +2142,7 @@ This section demonstrates how cluster phases and conditions evolve throughout th
       "type": "ProvisioningInProgress",
       "status": "True",
       "reason": "AdaptersWorking",
-      "message": "1 of 4 adapters actively provisioning resources",
+      "message": "Adapters actively provisioning resources",
       "lastTransitionTime": "2025-10-17T12:00:05Z"
     },
     {
@@ -2205,7 +2178,7 @@ This section demonstrates how cluster phases and conditions evolve throughout th
       "type": "ProvisioningInProgress",
       "status": "True",
       "reason": "AdaptersWorking",
-      "message": "1 of 4 adapters actively provisioning resources",
+      "message": "Adapters actively provisioning resources",
       "lastTransitionTime": "2025-10-17T12:03:00Z"
     },
     {
@@ -2364,7 +2337,7 @@ This section demonstrates how cluster phases and conditions evolve throughout th
       "type": "ProvisioningInProgress",
       "status": "True",
       "reason": "AdaptersWorking",
-      "message": "1 of 4 adapters actively provisioning resources",
+      "message": "Adapters actively provisioning resources",
       "lastTransitionTime": "2025-10-17T13:00:05Z"
     },
     {
@@ -2469,7 +2442,7 @@ These examples show how specific cluster conditions are generated based on adapt
   "type": "AllAdaptersReady",
   "status": "True",
   "reason": "AllRequiredAdaptersAvailable",
-  "message": "All required adapters (validation, dns, infrastructure, hypershift) completed successfully",
+  "message": "All required adapters completed successfully",
   "lastTransitionTime": "2025-10-17T12:15:00Z"
 }
 ```
@@ -2493,7 +2466,7 @@ These examples show how specific cluster conditions are generated based on adapt
   "type": "ProvisioningInProgress",
   "status": "True",
   "reason": "AdaptersWorking",
-  "message": "2 of 4 adapters actively provisioning resources",
+  "message": "Adapters actively provisioning resources",
   "lastTransitionTime": "2025-10-17T12:03:00Z"
 }
 ```
