@@ -1,0 +1,219 @@
+# ============================================================================
+# HyperFleet Message Broker ConfigMap Template
+# ============================================================================
+#
+# This ConfigMap is created and managed by the broker component.
+# Adapters read this ConfigMap to connect to the message broker without
+# knowing the broker type or connection details.
+#
+# Usage:
+# 1. Broker component detects environment and chooses broker type
+# 2. Broker component deploys broker infrastructure
+# 3. Broker component creates this ConfigMap with appropriate values
+# 4. Adapters mount this ConfigMap as environment variables
+# 5. Adapter framework reads BROKER_TYPE and connects automatically
+
+---
+# ============================================================================
+# Template: Google Cloud Pub/Sub
+# ============================================================================
+# Use this template when deploying on GCP or using Google Pub/Sub
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-adapter-example-config
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet-adapter-example
+    app.kubernetes.io/component: adapter
+    app.kubernetes.io/managed-by: hyperfleet-adapter-example
+data:
+  # Adapter type identifier (framework uses this to select the right client)
+  ADAPTER_TYPE: "example"
+
+---
+# ============================================================================
+# Template: AWS SQS
+# ============================================================================
+# Use this template when deploying on AWS or using AWS SQS
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-adapter-example-config
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet-adapter-example
+    app.kubernetes.io/component: adapter
+    app.kubernetes.io/managed-by: hyperfleet-adapter-example
+data:
+  # Broker type identifier
+  BROKER_TYPE: "awsSqs"
+  
+  # AWS region where the SQS queue exists
+  BROKER_REGION: "us-east-1"
+  
+  # Full SQS queue URL
+  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
+  
+  # Common settings
+  BROKER_MAX_CONCURRENCY: "100"
+  BROKER_WAIT_TIME: "20s"
+  BROKER_VISIBILITY_TIMEOUT: "60s"
+
+---
+# ============================================================================
+# Template: RabbitMQ
+# ============================================================================
+# Use this template when deploying on-premises or using RabbitMQ
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-adapter-example-config
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet-broker
+    app.kubernetes.io/component: message-broker
+    app.kubernetes.io/managed-by: hyperfleet-broker-controller
+data:
+  # Broker type identifier
+  BROKER_TYPE: "rabbitmq"
+  
+  # RabbitMQ connection details
+  BROKER_HOST: "rabbitmq.hyperfleet-system.svc.cluster.local"
+  BROKER_PORT: "5672"
+  BROKER_VHOST: "/"
+  
+  # Queue and exchange configuration
+  BROKER_QUEUE_NAME: "hyperfleet-cluster-events"
+  BROKER_EXCHANGE: "hyperfleet-events"
+  BROKER_EXCHANGE_TYPE: "topic"
+  BROKER_ROUTING_KEY: "cluster.#"
+  
+  # Common settings
+  BROKER_MAX_CONCURRENCY: "100"
+  BROKER_PREFETCH_COUNT: "10"
+
+
+---
+# ============================================================================
+# Customization Guide
+# ============================================================================
+#
+# When creating a ConfigMap for your environment:
+#
+# 1. Choose the appropriate template above based on your broker type
+# 2. Copy the template to a new file (e.g., broker-config-prod.yaml)
+# 3. Update the values:
+#    - BROKER_PROJECT_ID / BROKER_REGION / BROKER_HOST (environment-specific)
+#    - BROKER_SUBSCRIPTION_ID / BROKER_QUEUE_URL / BROKER_QUEUE_NAME (queue names)
+#    - BROKER_MAX_CONCURRENCY (tune based on workload)
+# 4. Apply the ConfigMap: kubectl apply -f broker-config-prod.yaml
+# 5. Deploy/restart adapters to pick up the new configuration
+#
+# Example for development environment:
+#   - Use RabbitMQ template (easy to run locally)
+#   - Set BROKER_HOST to "localhost" or local service
+#   - Lower BROKER_MAX_CONCURRENCY to 10
+#
+# Example for production GCP:
+#   - Use Pub/Sub template
+#   - Set BROKER_PROJECT_ID to your GCP project
+#   - Set BROKER_SUBSCRIPTION_ID to production subscription
+#   - Keep BROKER_MAX_CONCURRENCY at 100
+#
+# Example for production AWS:
+#   - Use AWS SQS template
+#   - Set BROKER_REGION to your AWS region
+#   - Set BROKER_QUEUE_URL to production SQS queue
+#   - Tune BROKER_VISIBILITY_TIMEOUT based on processing time
+
+---
+# ============================================================================
+# Field Reference
+# ============================================================================
+#
+# Required fields (all brokers):
+#   BROKER_TYPE: Broker type identifier (pubsub, awsSqs, rabbitmq, kafka)
+#
+# Google Pub/Sub specific:
+#   BROKER_PROJECT_ID:       GCP project ID
+#   BROKER_SUBSCRIPTION_ID:  Pub/Sub subscription name
+#
+# AWS SQS specific:
+#   BROKER_REGION:           AWS region (e.g., us-east-1)
+#   BROKER_QUEUE_URL:        Full SQS queue URL
+#   BROKER_WAIT_TIME:        Long polling wait time (optional)
+#   BROKER_VISIBILITY_TIMEOUT: Message visibility timeout (optional)
+#
+# RabbitMQ specific:
+#   BROKER_HOST:             RabbitMQ hostname
+#   BROKER_PORT:             RabbitMQ port (default: 5672)
+#   BROKER_VHOST:            Virtual host (default: /)
+#   BROKER_QUEUE_NAME:       Queue to consume from
+#   BROKER_EXCHANGE:         Exchange name
+#   BROKER_EXCHANGE_TYPE:    Exchange type (topic, direct, fanout, headers)
+#   BROKER_ROUTING_KEY:      Routing key pattern (for topic exchanges)
+#   BROKER_PREFETCH_COUNT:   QoS prefetch count (optional)
+#
+# Kafka specific:
+#   BROKER_BROKERS:          Comma-separated Kafka broker addresses
+#   BROKER_TOPIC:            Topic to consume from
+#   BROKER_CONSUMER_GROUP:   Consumer group ID
+#
+# Common settings (all brokers):
+#   BROKER_MAX_CONCURRENCY:  Max concurrent message processing (optional)
+#   BROKER_ACK_TIMEOUT:      Acknowledgment timeout (optional)
+#
+# Note: All fields are strings in ConfigMap. The adapter framework will
+#       parse them to appropriate types (int, duration, etc.)
+
+---
+# ============================================================================
+# How Adapter Component Uses This Template
+# ============================================================================
+#
+# The broker component provides a unified MessageBroker interface that
+# abstracts different broker implementations (Pub/Sub, SQS, RabbitMQ, Kafka).
+#
+# MessageBroker Interface:
+#
+#   type MessageBroker interface {
+#       // Publish sends a message to the specified topic/exchange
+#       Publish(ctx context.Context, topic string, message []byte) error
+#       
+#       // Subscribe registers a handler for messages on a topic
+#       Subscribe(ctx context.Context, topic string, handler MessageHandler) error
+#       
+#       // Close cleanup broker resources
+#       Close() error
+#   }
+#
+#   type MessageHandler func(ctx context.Context, message []byte) error
+#
+# Adapter component usage:
+#
+# 1. Load configuration from environment (populated from this ConfigMap):
+#    config := loadConfig()  // Reads BROKER_TYPE, BROKER_PROJECT_ID, etc.
+#
+# 2. Create broker client:
+#    broker, err := NewBroker(config.Broker)
+#    if err != nil {
+#        log.Fatal(err)
+#    }
+#    defer broker.Close()
+#
+# 3. Subscribe to messages:
+#    err = broker.Subscribe(ctx, "cluster-events", func(ctx context.Context, message []byte) error {
+#        // Process message
+#        event := parseEvent(message)
+#        handleEvent(event)
+#        return nil
+#    })
+#
+# 4. Publish messages:
+#    err = broker.Publish(ctx, "cluster-events", eventData)
+#
+# The adapter doesn't need to know which broker implementation is being used.
+# The NewBroker function reads BROKER_TYPE from config and returns the
+# appropriate implementation. All broker-specific logic is handled internally.
+

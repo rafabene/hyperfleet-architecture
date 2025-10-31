@@ -1,0 +1,316 @@
+# ============================================================================
+# HyperFleet Message Broker ConfigMap Template
+# ============================================================================
+#
+# This ConfigMap is for the broker component's own use.
+# It contains the broker infrastructure connection details.
+#
+# IMPORTANT: Each microservice has its own ConfigMap:
+# - hyperfleet-message-broker-config (this file) - for broker component
+# - hyperfleet-adapter-{name}-config - for each adapter
+# - hyperfleet-message-sentinel-config - for sentinel operator
+#
+# When broker infrastructure changes, the broker component:
+# 1. Updates its own ConfigMap (this one)
+# 2. Triggers updates to adapter and sentinel ConfigMaps
+# 3. Those components restart to pick up the new broker connection details
+#
+# Usage:
+# 1. Broker component detects environment and chooses broker type
+# 2. Broker component deploys broker infrastructure
+# 3. Broker component creates this ConfigMap with infrastructure details
+# 4. Broker component propagates broker connection info to other ConfigMaps
+
+---
+# ============================================================================
+# Template: Google Cloud Pub/Sub
+# ============================================================================
+# Use this template when deploying on GCP or using Google Pub/Sub
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-message-broker-config
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet-broker
+    app.kubernetes.io/component: message-broker
+    app.kubernetes.io/managed-by: hyperfleet-broker-controller
+data:
+  # Broker type identifier
+  BROKER_TYPE: "pubsub"
+  
+  # Google Cloud project ID containing the Pub/Sub resources
+  BROKER_PROJECT_ID: "your-gcp-project-id"
+  
+  # Pub/Sub topic ID for publishing events
+  BROKER_TOPIC_ID: "hyperfleet-cluster-events"
+
+---
+# ============================================================================
+# Template: AWS SNS + SQS
+# ============================================================================
+# Use this template when deploying on AWS
+# Uses SNS for fan-out to multiple SQS queues (one per adapter)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-message-broker-config
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet-broker
+    app.kubernetes.io/component: message-broker
+    app.kubernetes.io/managed-by: hyperfleet-broker-controller
+data:
+  # Broker type identifier
+  BROKER_TYPE: "awsSns"
+  
+  # AWS region where SNS/SQS resources exist
+  BROKER_REGION: "us-east-1"
+  
+  # SNS topic ARN for publishing events (fan-out to multiple queues)
+  BROKER_TOPIC_ARN: "arn:aws:sns:us-east-1:123456789012:hyperfleet-cluster-events"
+  
+  # SNS topic name
+  BROKER_TOPIC_NAME: "hyperfleet-cluster-events"
+
+---
+# ============================================================================
+# Template: RabbitMQ
+# ============================================================================
+# Use this template when deploying on-premises or using RabbitMQ
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-message-broker-config
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet-broker
+    app.kubernetes.io/component: message-broker
+    app.kubernetes.io/managed-by: hyperfleet-broker-controller
+data:
+  # Broker type identifier
+  BROKER_TYPE: "rabbitmq"
+  
+  # RabbitMQ connection details
+  BROKER_HOST: "rabbitmq.hyperfleet-system.svc.cluster.local"
+  BROKER_PORT: "5672"
+  BROKER_VHOST: "/"
+  
+  # Exchange configuration for message routing
+  BROKER_EXCHANGE: "hyperfleet-events"
+  BROKER_EXCHANGE_TYPE: "fanout"
+
+---
+# ============================================================================
+# Customization Guide
+# ============================================================================
+#
+# This ConfigMap is automatically created and managed by the broker component.
+#
+# IMPORTANT: You typically do NOT need to manually create or edit this ConfigMap.
+# The broker component will automatically:
+#   1. Detect your environment (GCP/AWS/on-premises)
+#   2. Deploy the appropriate broker infrastructure
+#   3. Create this ConfigMap with the correct values
+#   4. Update this ConfigMap when infrastructure changes
+#
+# When to customize:
+#
+# Scenario 1: Manual broker configuration (broker component not deployed)
+#   - Choose the appropriate template above based on your broker type
+#   - Copy the template to a new file (e.g., broker-config-manual.yaml)
+#   - Update environment-specific values (PROJECT_ID, REGION, HOST, etc.)
+#   - Apply manually: kubectl apply -f broker-config-manual.yaml
+#   - Manually create adapter and sentinel ConfigMaps referencing this one
+#
+# Scenario 2: Override broker infrastructure settings
+#   - Change BROKER_TYPE to test different broker implementations
+#   - Update connection details (HOST, PORT, REGION, etc.)
+#   - The broker component will propagate changes to adapter/sentinel ConfigMaps
+#
+# Scenario 3: Multi-region deployment
+#   - Each region needs its own ConfigMap with region-specific values
+#   - For GCP: Different BROKER_PROJECT_ID per region
+#   - For AWS: Different BROKER_REGION and BROKER_TOPIC_ARN per region
+#   - For RabbitMQ: Different BROKER_HOST pointing to regional clusters
+#
+# Example for development environment:
+#   - Use RabbitMQ template (easiest to run locally)
+#   - Set BROKER_HOST to "localhost" or "rabbitmq.hyperfleet-system.svc.cluster.local"
+#   - Set BROKER_EXCHANGE to "hyperfleet-events"
+#   - Broker component propagates to adapter/sentinel ConfigMaps
+#
+# Example for production GCP:
+#   - Broker component automatically creates with Pub/Sub template
+#   - Sets BROKER_PROJECT_ID to detected GCP project
+#   - Creates topic and sets BROKER_TOPIC_ID
+#   - Propagates to adapter ConfigMaps with subscription IDs
+#
+# Example for production AWS:
+#   - Broker component automatically creates with SNS + SQS template
+#   - Sets BROKER_REGION to detected AWS region
+#   - Creates SNS topic and sets BROKER_TOPIC_ARN
+#   - Creates SQS queues per adapter and subscribes them to SNS topic
+#   - Propagates connection details to adapter/sentinel ConfigMaps
+
+---
+# ============================================================================
+# Field Reference
+# ============================================================================
+#
+# This ConfigMap contains broker infrastructure details used by the broker
+# component to manage the message broker and propagate connection info to
+# adapter and sentinel ConfigMaps.
+#
+# Required fields (all brokers):
+#   BROKER_TYPE: Broker type identifier (pubsub, awsSns, rabbitmq)
+#
+# Google Pub/Sub specific:
+#   BROKER_PROJECT_ID:       GCP project ID
+#   BROKER_TOPIC_ID:         Pub/Sub topic name for event publishing
+#
+# AWS SNS + SQS specific:
+#   BROKER_REGION:           AWS region (e.g., us-east-1)
+#   BROKER_TOPIC_ARN:        SNS topic ARN for fan-out publishing
+#   BROKER_TOPIC_NAME:       SNS topic name
+#
+# RabbitMQ specific:
+#   BROKER_HOST:             RabbitMQ hostname
+#   BROKER_PORT:             RabbitMQ port (default: 5672)
+#   BROKER_VHOST:            Virtual host (default: /)
+#   BROKER_EXCHANGE:         Exchange name for message routing
+#   BROKER_EXCHANGE_TYPE:    Exchange type (topic, direct, fanout, headers)
+#
+# Note: All fields are strings in ConfigMap. The broker component will parse
+#       them to appropriate types and propagate to other component ConfigMaps.
+
+---
+# ============================================================================
+# How Broker Component Uses This Template
+# ============================================================================
+#
+# The broker component is responsible for:
+# 1. Detecting the deployment environment
+# 2. Deploying the appropriate broker infrastructure
+# 3. Creating and managing this ConfigMap
+# 4. Providing the NewBroker() interface for other components
+#
+# MessageBroker Interface (provided by broker component):
+#
+#   type MessageBroker interface {
+#       // Publish sends a message to the specified topic/exchange
+#       Publish(ctx context.Context, topic string, message []byte) error
+#       
+#       // Subscribe registers a handler for messages on a topic
+#       Subscribe(ctx context.Context, topic string, handler MessageHandler) error
+#       
+#       // Close cleanup broker resources
+#       Close() error
+#   }
+#
+#   type MessageHandler func(ctx context.Context, message []byte) error
+#
+# Broker component workflow:
+#
+# 1. Detect environment:
+#    cloudProvider := detectCloudProvider()  // Returns "gcp", "aws", or "on-premises"
+#
+# 2. Choose broker type based on environment:
+#    brokerType := selectBrokerType(cloudProvider)
+#    // GCP -> "pubsub"
+#    // AWS -> "awsSns"
+#    // On-premises -> "rabbitmq"
+#
+# 3. Deploy broker infrastructure:
+#    switch brokerType {
+#    case "pubsub":
+#        topicID := createPubSubTopic("hyperfleet-cluster-events")
+#        // Subscriptions created per-adapter in step 5
+#    case "awsSns":
+#        topicARN := createSNSTopic("hyperfleet-cluster-events")
+#        // SQS queues created per-adapter and subscribed to SNS in step 5
+#    case "rabbitmq":
+#        deployRabbitMQHelm()
+#        createExchange("hyperfleet-events", "topic")
+#        // Queues created per-adapter in step 5
+#    }
+#
+# 4. Create broker ConfigMap (this file) with infrastructure details:
+#    brokerConfigMap := loadTemplate(brokerType)
+#    brokerConfigMap.name = "hyperfleet-message-broker-config"
+#    brokerConfigMap.data["BROKER_TYPE"] = brokerType
+#    
+#    // Set broker-specific fields
+#    switch brokerType {
+#    case "pubsub":
+#        brokerConfigMap.data["BROKER_PROJECT_ID"] = getGCPProjectID()
+#        brokerConfigMap.data["BROKER_TOPIC_ID"] = topicID
+#    case "awsSns":
+#        brokerConfigMap.data["BROKER_REGION"] = getAWSRegion()
+#        brokerConfigMap.data["BROKER_TOPIC_ARN"] = topicARN
+#        brokerConfigMap.data["BROKER_TOPIC_NAME"] = "hyperfleet-cluster-events"
+#    case "rabbitmq":
+#        brokerConfigMap.data["BROKER_HOST"] = getRabbitMQHost()
+#        brokerConfigMap.data["BROKER_PORT"] = "5672"
+#        brokerConfigMap.data["BROKER_EXCHANGE"] = "hyperfleet-events"
+#    }
+#    
+#    kubectl.Apply(brokerConfigMap)
+#
+# 5. Propagate broker connection details to adapter and sentinel ConfigMaps:
+#    // Each microservice has its own ConfigMap
+#    for _, adapter := range adapters {
+#        adapterConfigMap := getOrCreateConfigMap("hyperfleet-adapter-" + adapter.name + "-config")
+#        adapterConfigMap.data["BROKER_TYPE"] = brokerType
+#        
+#        // Copy broker connection details and create adapter-specific resources
+#        switch brokerType {
+#        case "pubsub":
+#            copyBrokerFields(brokerConfigMap, adapterConfigMap)
+#            subscriptionID := createPubSubSubscription(topicID, adapter.name)
+#            adapterConfigMap.data["BROKER_SUBSCRIPTION_ID"] = subscriptionID
+#        case "awsSns":
+#            copyBrokerFields(brokerConfigMap, adapterConfigMap)
+#            queueURL := createSQSQueue("hyperfleet-" + adapter.name)
+#            subscribeSQSToSNS(queueURL, topicARN)
+#            adapterConfigMap.data["BROKER_QUEUE_URL"] = queueURL
+#        case "rabbitmq":
+#            copyBrokerFields(brokerConfigMap, adapterConfigMap)
+#            queueName := createQueue("hyperfleet-" + adapter.name)
+#            bindQueueToExchange(queueName, "hyperfleet-events", "cluster.#")
+#            adapterConfigMap.data["BROKER_QUEUE_NAME"] = queueName
+#        }
+#        
+#        kubectl.Apply(adapterConfigMap)
+#    }
+#    
+#    // Sentinel publishes to topic/exchange, doesn't need a queue
+#    sentinelConfigMap := getOrCreateConfigMap("hyperfleet-message-sentinel-config")
+#    sentinelConfigMap.data["BROKER_TYPE"] = brokerType
+#    copyBrokerFields(brokerConfigMap, sentinelConfigMap)
+#    kubectl.Apply(sentinelConfigMap)
+#
+# 6. Watch infrastructure and update all ConfigMaps on changes:
+#    watch(brokerInfrastructure)
+#    on_change:
+#        updateBrokerConfigMap()
+#        propagateToAdapterConfigMaps()
+#        propagateToSentinelConfigMap()
+#        // Dependent components will restart to pick up changes
+#
+# 7. Provide NewBroker interface for adapters and sentinel:
+#    // Components call: broker, err := NewBroker(config.Broker)
+#    // NewBroker reads BROKER_TYPE and returns appropriate implementation
+#    func NewBroker(config BrokerConfig) (MessageBroker, error) {
+#        switch config.Type {
+#        case "pubsub":
+#            return newPubSubBroker(config.ProjectID, config.SubscriptionID)
+#        case "awsSns":
+#            return newSNSBroker(config.Region, config.TopicARN, config.QueueURL)
+#        case "rabbitmq":
+#            return newRabbitMQBroker(config.Host, config.Port, config.QueueName)
+#        default:
+#            return nil, fmt.Errorf("unsupported broker type: %s", config.Type)
+#        }
+#    }
+
