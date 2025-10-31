@@ -630,13 +630,15 @@ The `data` field is a **JSONB object** that adapters can use to send structured 
 
 HyperFleet uses **configuration-driven status aggregation** to determine cluster phases and conditions from adapter statuses. This allows flexible customization of aggregation rules without code changes.
 
+The system uses **[expr-lang/expr](https://expr-lang.org/)**, a powerful expression evaluation library, to evaluate conditions. This provides maximum flexibility while maintaining safety guarantees (memory-safe, side-effect-free, always-terminating).
+
 ### Configuration Structure
 
 The aggregation configuration is defined in YAML format and specifies:
 
 1. **Required adapters** for each phase
 2. **Phase transition rules** based on adapter conditions
-3. **Cluster condition generation** rules
+3. **Cluster condition generation** rules using expr expressions
 4. **Timeout and retry policies**
 
 ### Example Aggregation Configuration
@@ -666,14 +668,11 @@ pubsub:
     retryInterval: "30s"
 
 # Cluster conditions generation rules
-# These define HOW to evaluate each condition AND the reason/message templates
+# These define HOW to evaluate each condition using expr expressions AND the reason/message templates
 clusterConditions:
   - type: "AllAdaptersReady"
     evaluate:
-      allRequiredAdapters:
-        conditions:
-          - type: "Available"
-            status: "True"
+      expr: 'all(requiredAdapters, {.available == "True"})'
     templates:
       true:
         reason: "AllRequiredAdaptersAvailable"
@@ -684,10 +683,7 @@ clusterConditions:
 
   - type: "AdaptersUnhealthy"
     evaluate:
-      anyAdapter:
-        conditions:
-          - type: "Health"
-            status: "False"
+      expr: 'any(allAdapters, {.health == "False"})'
     templates:
       true:
         reason: "HealthCheckFailures"
@@ -698,12 +694,7 @@ clusterConditions:
 
   - type: "AdaptersFailed"
     evaluate:
-      anyRequiredAdapter:
-        conditions:
-          - type: "Available"
-            status: "False"
-          - type: "Health"
-            status: "True"
+      expr: 'any(requiredAdapters, {.available == "False" && .health == "True"})'
     templates:
       true:
         reason: "RequiredAdapterFailure"
@@ -714,12 +705,7 @@ clusterConditions:
 
   - type: "ProvisioningInProgress"
     evaluate:
-      anyAdapter:
-        conditions:
-          - type: "Applied"
-            status: "True"
-          - type: "Available"
-            status: "False"
+      expr: 'any(allAdapters, {.applied == "True" && .available == "False"})'
     templates:
       true:
         reason: "AdaptersWorking"
@@ -730,10 +716,7 @@ clusterConditions:
 
   - type: "AllAdaptersReporting"
     evaluate:
-      allRequiredAdapters:
-        conditions:
-          - type: "observedGeneration"
-            status: "current"
+      expr: 'all(requiredAdapters, {.observedGeneration == currentGeneration})'
     templates:
       true:
         reason: "AllAdaptersReported"
@@ -744,10 +727,7 @@ clusterConditions:
 
   - type: "ValidationPassed"
     evaluate:
-      adapter: "validation"
-      conditions:
-        - type: "Available"
-          status: "True"
+      expr: 'adapters["validation"].available == "True"'
     templates:
       true:
         reason: "AllValidationChecksPassed"
@@ -758,10 +738,7 @@ clusterConditions:
 
   - type: "InfrastructureReady"
     evaluate:
-      adapter: "infrastructure"
-      conditions:
-        - type: "Available"
-          status: "True"
+      expr: 'adapters["infrastructure"].available == "True"'
     templates:
       true:
         reason: "AllResourcesProvisioned"
@@ -772,10 +749,7 @@ clusterConditions:
 
   - type: "DNSConfigured"
     evaluate:
-      adapter: "dns"
-      conditions:
-        - type: "Available"
-          status: "True"
+      expr: 'adapters["dns"].available == "True"'
     templates:
       true:
         reason: "AllRecordsCreated"
@@ -1183,7 +1157,7 @@ config := getAggregationConfig(clusterType)
 // Phase evaluation uses hardcoded priority for robustness
 func evaluateClusterPhase(adapterStatuses []AdapterStatus, config AggregationConfig) PhaseResult {
     // 1. DEGRADED - Highest priority (health issues must be visible)
-    if anyAdapterUnhealthy(adapterStatuses) {
+    if evaluatePhaseCondition("degraded", adapterStatuses, config) {
         return PhaseResult{
             Name: "Degraded",
             Description: getPhaseDescription(config, "degraded"),
@@ -1191,7 +1165,7 @@ func evaluateClusterPhase(adapterStatuses []AdapterStatus, config AggregationCon
     }
 
     // 2. FAILED - Business logic failures
-    if anyRequiredAdapterFailed(adapterStatuses, config.RequiredAdapters) {
+    if evaluatePhaseCondition("failed", adapterStatuses, config) {
         return PhaseResult{
             Name: "Failed",
             Description: getPhaseDescription(config, "failed"),
@@ -1199,7 +1173,7 @@ func evaluateClusterPhase(adapterStatuses []AdapterStatus, config AggregationCon
     }
 
     // 3. READY - All required adapters completed successfully
-    if allRequiredAdaptersReady(adapterStatuses, config.RequiredAdapters) {
+    if evaluatePhaseCondition("ready", adapterStatuses, config) {
         return PhaseResult{
             Name: "Ready",
             Description: getPhaseDescription(config, "ready"),
@@ -1207,7 +1181,7 @@ func evaluateClusterPhase(adapterStatuses []AdapterStatus, config AggregationCon
     }
 
     // 4. PROVISIONING - One or more adapters actively working
-    if anyAdapterProvisioning(adapterStatuses) {
+    if evaluatePhaseCondition("provisioning", adapterStatuses, config) {
         return PhaseResult{
             Name: "Provisioning",
             Description: getPhaseDescription(config, "provisioning"),
@@ -1229,6 +1203,21 @@ func getPhaseDescription(config AggregationConfig, phaseName string) string {
     }
     return "" // Fallback if not found
 }
+
+// evaluatePhaseCondition evaluates all required conditions for a phase using expr
+func evaluatePhaseCondition(phaseName string, adapterStatuses []AdapterStatus, config AggregationConfig) bool {
+    phase := config.Phases[phaseName]
+    for _, conditionRef := range phase.RequiredConditions {
+        condition := findCondition(config.ClusterConditions, conditionRef.Type)
+        result := evaluateExprCondition(adapterStatuses, config, condition)
+
+        // Check if result matches expected status
+        if (conditionRef.Status == "True" && !result) || (conditionRef.Status == "False" && result) {
+            return false
+        }
+    }
+    return true
+}
 ```
 
 **Why Hardcoded Priority is More Robust:**
@@ -1240,20 +1229,21 @@ func getPhaseDescription(config AggregationConfig, phaseName string) string {
 
 #### 3. **Condition Generation**
 ```go
-// Generate cluster conditions based on configurable rules
+// Generate cluster conditions based on expr evaluation
 for _, conditionRule := range config.ClusterConditions {
-    condition := evaluateConditionRule(adapterStatuses, conditionRule)
+    condition := evaluateConditionRule(adapterStatuses, config, conditionRule)
     clusterConditions = append(clusterConditions, condition)
 }
 ```
 
 **Condition Reason/Message Generation:**
 
-The YAML config defines **HOW** to evaluate conditions **AND** provides templates for `reason` and `message`:
+The YAML config defines **HOW** to evaluate conditions using expr expressions **AND** provides templates for `reason` and `message`:
 
 ```go
-func evaluateConditionRule(adapterStatuses []AdapterStatus, rule ConditionRule) Condition {
-    result := evaluateRule(adapterStatuses, rule.Evaluate)
+func evaluateConditionRule(adapterStatuses []AdapterStatus, config AggregationConfig, rule ConditionRule) Condition {
+    // Evaluate the expr expression
+    result := evaluateExprCondition(adapterStatuses, config, rule)
 
     // Get template based on evaluation result
     var template ConditionTemplate
@@ -1276,6 +1266,35 @@ func evaluateConditionRule(adapterStatuses []AdapterStatus, rule ConditionRule) 
         Message:           message,               // ← Rendered from template + context
         LastTransitionTime: time.Now(),
     }
+}
+
+// evaluateExprCondition evaluates an expr expression
+func evaluateExprCondition(adapterStatuses []AdapterStatus, config AggregationConfig, rule ConditionRule) bool {
+    // Prepare environment with available data
+    env := map[string]interface{}{
+        "requiredAdapters":  filterAdapters(adapterStatuses, config.RequiredAdapters),
+        "optionalAdapters":  filterAdapters(adapterStatuses, config.OptionalAdapters),
+        "allAdapters":       adapterStatuses,
+        "adapters":          statusesAsMap(adapterStatuses),
+        "currentGeneration": config.CurrentGeneration,
+    }
+
+    // Compile and execute expression
+    program, err := expr.Compile(rule.Evaluate.Expr, expr.Env(env), expr.AsBool())
+    if err != nil {
+        // Log error and return false
+        log.Error("Failed to compile expression for condition %s: %v", rule.Type, err)
+        return false
+    }
+
+    result, err := expr.Run(program, env)
+    if err != nil {
+        // Log error and return false
+        log.Error("Failed to execute expression for condition %s: %v", rule.Type, err)
+        return false
+    }
+
+    return result.(bool)
 }
 
 func buildTemplateContext(adapterStatuses []AdapterStatus, rule ConditionRule) map[string]interface{} {
@@ -1307,24 +1326,38 @@ func buildTemplateContext(adapterStatuses []AdapterStatus, rule ConditionRule) m
 
 **Example Template Rendering:**
 ```yaml
-# Config template
-templates:
-  false:
-    reason: "RequiredAdaptersNotReady"
-    message: "{{.FailedCount}} of {{.TotalCount}} required adapters not ready: {{.FailedAdapterNames}}"
+# Config with expr evaluation
+clusterConditions:
+  - type: "AllAdaptersReady"
+    evaluate:
+      expr: 'all(requiredAdapters, {.available == "True"})'
+    templates:
+      false:
+        reason: "RequiredAdaptersNotReady"
+        message: "{{.FailedCount}} of {{.TotalCount}} required adapters not ready: {{.FailedAdapterNames}}"
 
-# Context data (from adapter statuses)
+# Step 1: Evaluate expr expression
+expr: 'all(requiredAdapters, {.available == "True"})'
+# With requiredAdapters = [
+#   {adapter: "validation", available: "False"},
+#   {adapter: "dns", available: "False"},
+#   {adapter: "infrastructure", available: "True"},
+#   {adapter: "hypershift", available: "True"}
+# ]
+# Result: false (not ALL are True)
+
+# Step 2: Build context data for template
 {
   "FailedCount": 2,
   "TotalCount": 4,
   "FailedAdapterNames": "validation, dns"
 }
 
-# Rendered result
+# Step 3: Render template with context
 {
   "type": "AllAdaptersReady",
-  "status": "False",
-  "reason": "RequiredAdaptersNotReady",        # ← From template
+  "status": "False",                          # ← From expr result
+  "reason": "RequiredAdaptersNotReady",       # ← From template
   "message": "2 of 4 required adapters not ready: validation, dns"  # ← Rendered
 }
 ```
@@ -1348,10 +1381,7 @@ clusterConditions:
   # NEW: Add this to config, no source code changes needed!
   - type: "HyperShiftReady"
     evaluate:
-      adapter: "hypershift"
-      conditions:
-        - type: "Available"
-          status: "True"
+      expr: 'adapters["hypershift"].available == "True"'
     templates:
       true:
         reason: "ClusterDeployed"
@@ -1361,12 +1391,28 @@ clusterConditions:
         message: "{{.AdapterFailureMessage}}"
 ```
 
+**More Complex Example:**
+
+```yaml
+  # NEW: Check HyperShift is ready AND healthy with current generation
+  - type: "HyperShiftFullyReady"
+    evaluate:
+      expr: 'adapters["hypershift"].available == "True" && adapters["hypershift"].health == "True" && adapters["hypershift"].observedGeneration == currentGeneration'
+    templates:
+      true:
+        reason: "ClusterOperational"
+        message: "HyperShift cluster is fully operational and up-to-date"
+      false:
+        reason: "HyperShiftNotFullyReady"
+        message: "HyperShift cluster not yet fully operational"
+```
+
 **Result:** The aggregation engine automatically:
-1. Evaluates the new condition based on hypershift adapter status
+1. Evaluates the expr expression against current adapter statuses
 2. Generates reason/message using the templates
 3. Includes it in cluster conditions array
 
-**No Go code changes required!** 🎯
+**No Go code changes required!** The power of expr allows you to express any evaluation logic directly in configuration.
 
 #### 4. **Adapter Status Extraction**
 ```go
@@ -1449,70 +1495,253 @@ phases:
 }
 ```
 
-### Rule Evaluation Logic
+### Expression Evaluation with expr-lang
 
-#### Phase Rule Evaluation
+#### Using expr Expressions
 
-Each phase rule contains conditions that are evaluated against adapter statuses:
+HyperFleet uses **[expr-lang/expr](https://expr-lang.org/)** to evaluate conditions. Expr is a powerful, safe expression language with the following guarantees:
 
-```yaml
-# Example rule evaluation
-phases:
-  ready:
-    rules:
-      - allRequiredAdapters:           # Rule type
-          conditions:                  # Conditions to check
-            - type: "Available"
-              status: "True"
-          observedGeneration: "current" # Generation constraint
+- **Memory-safe**: No access to unrelated memory
+- **Side-effect-free**: Expressions only compute outputs from inputs (no I/O, network calls)
+- **Always terminating**: No infinite loops
+- **Type-safe**: Compile-time type checking
+
+#### Available Variables in Expressions
+
+When evaluating expressions, the following variables are available:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `requiredAdapters` | `[]AdapterStatus` | Array of required adapter statuses |
+| `optionalAdapters` | `[]AdapterStatus` | Array of optional adapter statuses |
+| `allAdapters` | `[]AdapterStatus` | Array of all adapter statuses |
+| `adapters` | `map[string]AdapterStatus` | Map of adapter name → status |
+| `currentGeneration` | `int` | Current cluster generation |
+
+#### AdapterStatus Fields
+
+Each adapter status object has the following fields accessible in expressions:
+
+```go
+type AdapterStatus struct {
+    Adapter            string  // Adapter name (e.g., "validation")
+    Available          string  // "True" or "False"
+    Applied            string  // "True" or "False"
+    Health             string  // "True" or "False"
+    ObservedGeneration int     // Generation this adapter reconciled
+    LastUpdated        time.Time
+}
 ```
 
-**Rule Types**:
-- `allRequiredAdapters` - All required adapters must match conditions
-- `anyRequiredAdapter` - At least one required adapter matches conditions
-- `allAdapters` - All adapters (required + optional) must match
-- `anyAdapter` - At least one adapter matches conditions
+#### Common Expression Patterns
 
-#### Condition Rule Evaluation
-
-Cluster conditions are generated by evaluating specific rules:
-
+**Check all required adapters are ready:**
 ```yaml
-clusterConditions:
-  - type: "ValidationPassed"
-    evaluate:
-      adapter: "validation"        # Specific adapter
-      conditions:
-        - type: "Available"
-          status: "True"
-
-  - type: "AllAdaptersReady"
-    evaluate:
-      allRequiredAdapters:         # All required adapters
-        conditions:
-          - type: "Available"
-            status: "True"
-          - type: "Health"
-            status: "True"
+expr: 'all(requiredAdapters, {.available == "True"})'
 ```
+
+**Check if any adapter is unhealthy:**
+```yaml
+expr: 'any(allAdapters, {.health == "False"})'
+```
+
+**Check specific adapter status:**
+```yaml
+expr: 'adapters["validation"].available == "True"'
+```
+
+**Check multiple conditions:**
+```yaml
+expr: 'all(requiredAdapters, {.available == "True" && .health == "True"})'
+```
+
+**Check with generation:**
+```yaml
+expr: 'all(requiredAdapters, {.observedGeneration == currentGeneration})'
+```
+
+**Complex logic:**
+```yaml
+# At least 3 adapters ready
+expr: 'len(filter(requiredAdapters, {.available == "True"})) >= 3'
+
+# Validation ready OR all optional adapters ready
+expr: 'adapters["validation"].available == "True" || all(optionalAdapters, {.available == "True"})'
+
+# Check for adapters that are applied but not yet available (provisioning)
+expr: 'any(allAdapters, {.applied == "True" && .available == "False"})'
+```
+
+#### expr Built-in Functions
+
+Commonly used expr functions:
+
+- **all(array, predicate)** - Returns true if all elements satisfy predicate
+- **any(array, predicate)** - Returns true if any element satisfies predicate
+- **filter(array, predicate)** - Returns filtered array
+- **len(array)** - Returns array length
+- **map(array, predicate)** - Returns transformed array
+
+For complete expr documentation, see https://expr-lang.org/docs/language-definition
 
 ### Generation Handling
 
-The aggregation engine respects generation constraints to prevent stale data issues:
+The aggregation engine respects generation constraints to prevent stale data issues. You can check generation in your expressions:
 
 ```yaml
-rules:
-  - allRequiredAdapters:
-      conditions:
-        - type: "Available"
-          status: "True"
-      observedGeneration: "current"  # Only current generation
+# Only count adapters that have reconciled current generation
+clusterConditions:
+  - type: "AllAdaptersReporting"
+    evaluate:
+      expr: 'all(requiredAdapters, {.observedGeneration == currentGeneration})'
+
+# Check if adapter is current AND ready
+  - type: "ValidationPassed"
+    evaluate:
+      expr: 'adapters["validation"].observedGeneration == currentGeneration && adapters["validation"].available == "True"'
 ```
 
-**Generation Modes**:
-- `current` - Only adapters with observedGeneration == cluster.generation
-- `any` - Accept any generation (useful for graceful transitions)
-- `latest` - Use the highest observedGeneration available
+**Common Generation Checks**:
+- `{.observedGeneration == currentGeneration}` - Adapter has reconciled current generation
+- `{.observedGeneration < currentGeneration}` - Adapter is behind (stale)
+- `{.observedGeneration > currentGeneration}` - Should not happen (error condition)
+
+### Configuration Validation
+
+To ensure configuration correctness, validate all expr expressions during startup or in CI/CD:
+
+```go
+// Validate all expressions in configuration
+func ValidateAggregationConfig(config AggregationConfig) error {
+    // Mock environment for validation
+    mockEnv := map[string]interface{}{
+        "requiredAdapters":  []AdapterStatus{},
+        "optionalAdapters":  []AdapterStatus{},
+        "allAdapters":       []AdapterStatus{},
+        "adapters":          map[string]AdapterStatus{},
+        "currentGeneration": 1,
+    }
+
+    for _, condition := range config.ClusterConditions {
+        // Compile expression with type checking
+        _, err := expr.Compile(
+            condition.Evaluate.Expr,
+            expr.Env(mockEnv),
+            expr.AsBool(), // Ensure expression returns boolean
+        )
+        if err != nil {
+            return fmt.Errorf("invalid expression for condition %s: %w", condition.Type, err)
+        }
+    }
+
+    return nil
+}
+```
+
+**CI/CD Integration:**
+
+```go
+// tests/config_validation_test.go
+func TestAggregationConfigExpressions(t *testing.T) {
+    config := loadAggregationConfig("../config/aggregation.yaml")
+
+    err := ValidateAggregationConfig(config)
+    require.NoError(t, err, "Configuration contains invalid expressions")
+}
+```
+
+### Expression Debugging
+
+When an expression evaluates unexpectedly, use logging to debug:
+
+```go
+func evaluateExprCondition(adapterStatuses []AdapterStatus, config AggregationConfig, rule ConditionRule) bool {
+    env := prepareEnvironment(adapterStatuses, config)
+
+    program, err := expr.Compile(rule.Evaluate.Expr, expr.Env(env), expr.AsBool())
+    if err != nil {
+        log.Error("Compile error for condition %s: %v", rule.Type, err)
+        log.Error("Expression: %s", rule.Evaluate.Expr)
+        return false
+    }
+
+    result, err := expr.Run(program, env)
+    if err != nil {
+        log.Error("Runtime error for condition %s: %v", rule.Type, err)
+        log.Error("Expression: %s", rule.Evaluate.Expr)
+        log.Debug("Environment: %+v", env)
+        return false
+    }
+
+    boolResult := result.(bool)
+
+    // Debug logging when condition is false
+    if !boolResult {
+        log.Debug("Condition %s evaluated to false", rule.Type)
+        log.Debug("Expression: %s", rule.Evaluate.Expr)
+        log.Debug("Required adapters: %+v", env["requiredAdapters"])
+    }
+
+    return boolResult
+}
+```
+
+**Common Expression Errors:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `unknown name "foo"` | Variable not in environment | Check available variables list |
+| `invalid operation: string + int` | Type mismatch | Ensure types match in comparisons |
+| `cannot use [] on type string` | Invalid array access | Verify variable is array/map |
+| `expected bool, got string` | Expression doesn't return boolean | Add comparison (e.g., `== "True"`) |
+
+### Advanced Expression Examples
+
+**Percentage-based checks:**
+```yaml
+# At least 75% of adapters ready
+clusterConditions:
+  - type: "MajorityAdaptersReady"
+    evaluate:
+      expr: 'len(filter(requiredAdapters, {.available == "True"})) >= len(requiredAdapters) * 0.75'
+```
+
+**Fallback logic:**
+```yaml
+# Primary adapter OR backup adapter ready
+clusterConditions:
+  - type: "ValidationPathReady"
+    evaluate:
+      expr: 'adapters["validation"].available == "True" || adapters["validation-backup"].available == "True"'
+```
+
+**Multi-step validation:**
+```yaml
+# Validation AND (DNS OR Infrastructure) ready
+clusterConditions:
+  - type: "CoreProvisioning"
+    evaluate:
+      expr: 'adapters["validation"].available == "True" && (adapters["dns"].available == "True" || adapters["infrastructure"].available == "True")'
+```
+
+**Stale adapter detection:**
+```yaml
+# Check if any adapter hasn't updated in 10 minutes
+clusterConditions:
+  - type: "NoStaleAdapters"
+    evaluate:
+      # Note: This would require adding duration helpers to environment
+      expr: 'all(allAdapters, {.observedGeneration == currentGeneration})'
+```
+
+**Counting specific states:**
+```yaml
+# Exactly 2 adapters in provisioning state
+clusterConditions:
+  - type: "TwoAdaptersProvisioning"
+    evaluate:
+      expr: 'len(filter(allAdapters, {.applied == "True" && .available == "False"})) == 2'
+```
 
 ### Error Handling and Fallbacks
 
