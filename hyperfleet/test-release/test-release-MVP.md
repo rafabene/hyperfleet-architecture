@@ -80,6 +80,72 @@ flowchart TD
 * **Coding framework**: Standard Go testing + `testcontainer` (framework choice flexible)
 * **Running command**: `make test-integration`
 
+#### Integration Test Strategies by Component Type
+
+**API + Database Integration**:
+* **Strategy**: Use testcontainers to spin up real database instances
+* **Implementation**:
+  - PostgreSQL: `testcontainers.GenericContainer` with `postgres:15` image
+  - Test database migrations, CRUD operations, and connection pooling
+* **Example**:
+  ```go
+  // Start PostgreSQL container for integration tests
+  pgContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+      ContainerRequest: testcontainers.ContainerRequest{
+          Image:        "postgres:15",
+          ExposedPorts: []string{"5432/tcp"},
+          Env: map[string]string{
+              "POSTGRES_PASSWORD": "testpass",
+              "POSTGRES_DB":       "hyperfleet_test",
+          },
+          WaitingFor: wait.ForLog("database system is ready to accept connections"),
+      },
+      Started: true,
+  })
+  ```
+
+**Adapter Framework Integration**:
+* **Strategy**: Use testcontainers for broker and API + controller-runtime for Kubernetes integration
+* **Implementation**:
+  - **Broker Testing**: Testcontainers with RabbitMQ/Pub/Sub emulators
+  - **API Testing**: Testcontainer with HyperFleet API service
+  - **Kubernetes Testing**: `controller-runtime/envtest` for Kubernetes API server simulation
+* **Components**:
+  - Message broker simulation using testcontainers
+  - Kubernetes controller testing with envtest
+  - End-to-end adapter workflow validation
+
+**Message Broker Integration Test Strategy**:
+* **Google Pub/Sub Mock**: Use `gcr.io/google.com/cloudsdktool/cloud-sdk:emulators` testcontainer
+  ```go
+  // Google Pub/Sub emulator container
+  pubsubContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+      ContainerRequest: testcontainers.ContainerRequest{
+          Image:        "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators",
+          ExposedPorts: []string{"8085/tcp"},
+          Cmd:          []string{"gcloud", "beta", "emulators", "pubsub", "start", "--host-port=0.0.0.0:8085"},
+          WaitingFor:   wait.ForLog("Server started"),
+      },
+      Started: true,
+  })
+  ```
+
+* **RabbitMQ Simulation**: Use `rabbitmq.RunContainer` for RabbitMQ testing
+  ```go
+  // RabbitMQ container for message broker testing
+  rabbitmqContainer, err := rabbitmq.RunContainer(ctx,
+      testcontainers.WithImage("rabbitmq:3.11-management"),
+      rabbitmq.WithAdminUsername("admin"),
+      rabbitmq.WithAdminPassword("password"),
+  )
+  ```
+
+**Testing Scope per Integration Type**:
+- **Database Integration**: Connection pooling, transactions, migrations, query performance
+- **Message Broker Integration**: Message publishing, consuming, dead letter queues, retry logic
+- **Kubernetes Integration**: Custom resource handling, controller reconciliation, status updates
+- **API Integration**: Service-to-service communication, authentication, error handling
+
 ### E2E Test
 * **Code location**: Isolated repo [hyperfleet-e2e](https://github.com/openshift-hyperfleet/hyperfleet-e2e)
 * **Testing purpose**: Black-box testing that validates complete user workflows and Critical User Journeys (CUJ) in CLM. Tests the entire CLM system from end-to-end without knowledge of internal implementation details. 
@@ -105,10 +171,10 @@ flowchart TD
 ### Pre-submit Job
 * **Job location**: Prow
 * **Testing scope**: Unit tests and integration tests with dependent components
-* **Coverage target**: Aim for >80% combined code coverage from unit and integration tests
+* **Test result reporting approach**: Post-MVP enhancement using Prow CI report portal (HyperFleet project application required as post-MVP action item)
 * **Trigger strategy**: Automatically triggered when a PR is opened or updated
 * **Action**: Block PR merging if any test failures occur
-* **Success criteria**: All unit and integration tests must pass and combined coverage ≥80%
+* **Success criteria**: All unit and integration tests must pass
 * **Jobs**:
   
   1. **Linter Check** (`pull-ci-<repo>-main-lint`)
@@ -136,34 +202,36 @@ flowchart TD
        - All unit tests in `*_test.go` files
        - Tests with mocked external dependencies
        - Fast-running tests
-     * **Coverage collection**:
-       - Coverage report generated in HTML and Cobertura XML formats for combination with integration test coverage
-       - Critical paths must have 100% coverage
      * **Checks performed**:
        - All test cases pass successfully
        - No race conditions detected (run with `-race` flag)
-       - Coverage data collected for pre-submit analysis
        - Test execution time within acceptable limits
      * **Running command**: `make test`
      * **Artifacts generated**:
-       - N/A
+       - Test execution logs and results
      * **On failure**: Block PR merge until all tests pass
   
   3. **Integration Test** (`pull-ci-<repo>-main-integration`)
      * **Purpose**: Validate interactions between components and external dependencies
      * **Framework**: Standard Go testing + testcontainers (for dependency simulation, flexible framework choice)
      * **Testing scope**:
-       - Database interactions (PostgreSQL, Redis)
-       - Message queue operations (Kafka, RabbitMQ)
-       - External API integrations
-       - Service-to-service communication
+       - **API + Database**: PostgreSQL containers via testcontainers
+       - **Adapter Framework**: Testcontainers for broker/API + controller-runtime for Kubernetes
+       - **Message Broker**: Google Pub/Sub emulator (`gcr.io/google.com/cloudsdktool/cloud-sdk:emulators`) and RabbitMQ (`rabbitmq.RunContainer`)
+       - **Service-to-service communication**: API endpoint testing and authentication flows
      * **Test environment**:
-       - Testcontainers spin up real dependency containers
-       - Isolated test databases and services
+       - Testcontainers spin up real dependency containers (PostgreSQL, RabbitMQ, Pub/Sub emulator)
+       - Controller-runtime envtest for Kubernetes API simulation
+       - Isolated test databases and message brokers
        - Network policies to simulate production environment
-     * **Coverage collection**:
-       - Coverage report generated and combined with unit test coverage for pre-submit analysis
-     * **Running command**: 
+     * **Specific strategies**:
+       - **Database Integration**: Connection pooling, transactions, migrations, query performance testing
+       - **Message Broker Integration**: Publishing, consuming, dead letter queues, retry logic validation
+       - **Kubernetes Integration**: Custom resource handling, controller reconciliation, status updates
+       - **API Integration**: Service-to-service communication, authentication, error handling
+     * **Artifacts generated**:
+       - Test execution logs and integration test results
+     * **Running command**:
        - Local: `make test-integration` (requires Docker/Podman)
        - Prow: Automatically runs with nested-podman capability
      * **Success criteria**: All integration scenarios pass, dependencies properly initialized and cleaned up
@@ -374,6 +442,49 @@ flowchart TD
 * **Trigger strategy**: Nightly run + Manually triggered (MVP trade-off; future releases should trigger automatically on CD pipeline)
 * **Action**: Block release if any test failures occur
 * **Success criteria**: All E2E scenarios must pass before deployment to production
+
+## Test Data Management Strategy
+
+### MVP Approach
+
+**Test data management strategy defined**: Post-MVP scope. For MVP, test data is managed using a distributed approach with clear separation by test type.
+
+#### Data Management by Test Type
+
+**Unit Test Data**:
+* **Location**: Kept with unit tests in same package
+* **Approach**: Mock data embedded directly in test files
+* **Format**: Go structs, JSON strings, or test fixtures
+
+**Integration Test Data**:
+* **Location**: Kept within integration testing suite in each repository
+* **Path**: `test/integration/testdata/` or `test/integration/fixtures/`
+* **Approach**: JSON/YAML files for complex test scenarios
+* **Management**: Test data managed per repository, cleaned up after test execution
+
+**E2E Test Data**:
+* **Location**: Kept in [hyperfleet-e2e](https://github.com/openshift-hyperfleet/hyperfleet-e2e) repository
+* **Path**: `testdata/` or `fixtures/` directory in e2e repo
+* **Approach**: Complete test scenarios with realistic cluster specifications
+* **Management**: Centralized test data for cross-component testing scenarios
+
+#### MVP Data Management Principles
+
+* **Isolation**: Each test type manages its own data independently
+* **Simplicity**: No centralized test data management infrastructure
+* **Cleanup**: Tests responsible for their own data cleanup
+* **Versioning**: Test data versioned with the code that uses it
+* **No Shared State**: Tests do not share data between different test suites
+
+### Post-MVP Enhancements
+
+**Formalized Test Data Management Strategy** (Post-MVP scope):
+* Define comprehensive test data management policies and standards
+* Establish test data governance and best practices
+* Implement test data versioning and lifecycle management guidelines
+* Define automated test data generation and seeding strategies
+* Establish test data compliance and privacy controls
+* Create guidelines for data masking and anonymization for production-like test data
 
 ## Deployment Strategy
 
@@ -1176,7 +1287,13 @@ Use this checklist to track progress on MVP testing and deployment setup:
 - [ ] **Documentation**: All setup documented and runbooks created
 - [ ] **Validation**: End-to-end workflow tested with sample PR; umbrella chart package delivered to service offering team
 
+### Post-MVP Action Items
+- [ ] **Test Result Reporting**: Apply for HyperFleet project integration with Prow CI report portal for advanced test result visualization and analytics
+- [ ] **Test Data Management Strategy**: Define comprehensive test data management policies, governance, and best practices across all HyperFleet components
+
 ## Future State
 * Implement ArgoCD for automated GitOps deployments instead of manual deployment
 * Automatic synchronization of Kubernetes clusters with Git repository state
 * Automated rollback capabilities on deployment failures
+* **Test result reporting enhancement**: Implement Prow CI report portal for advanced test result visualization and analytics (requires HyperFleet project application to Prow CI report portal)
+* **Formalized test data management strategy**: Define comprehensive test data governance, policies, and management guidelines across all HyperFleet components
