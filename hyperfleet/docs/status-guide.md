@@ -16,6 +16,18 @@ HyperFleet uses a **condition-based status reporting contract** where adapters r
 
 ---
 
+## API Specification Reference
+
+**Official Schema Definitions**: All JSON schemas referenced in this guide are defined in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository.
+
+- **Cluster Schema**: [Cluster Object](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+- **ClusterStatus Schema**: [ClusterStatus Object](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+- **Condition Schema**: [Condition Object](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+
+> **Important**: The JSON examples in this guide are illustrative. For authoritative schema definitions, field types, validation rules, and constraints, always refer to the [API specification repository](https://github.com/openshift-hyperfleet/hyperfleet-api-spec).
+
+---
+
 ## REST API Summary
 
 ### Resource Hierarchy
@@ -30,77 +42,22 @@ HyperFleet uses a **condition-based status reporting contract** where adapters r
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | **GET** | `/v1/clusters/{clusterId}` | Get cluster with aggregated status (phase + adapter availability) |
-| **GET** | `/v1/clusters/{clusterId}/statuses` | Get the ClusterStatus with all adapter statuses |
-| **POST** | `/v1/clusters/{clusterId}/statuses` | Create the ClusterStatus (first adapter reporting) |
-| **PATCH** | `/v1/clusters/{clusterId}/statuses/{statusId}` | Update a specific adapter's status in the ClusterStatus |
+| **GET** | `/v1/clusters/{clusterId}/statuses` | Get the ClusterStatus with all adapter statuses (optional - for querying) |
+| **POST** | `/v1/clusters/{clusterId}/statuses` | Adapter reports status (API handles upsert internally) |
 
 > **Note**: This document will be updated with references to the Adapter Configuration Framework from [PR #18](https://github.com/openshift-hyperfleet/architecture/pull/18) once it is merged. The PR introduces a declarative YAML-based system for adapter configuration, event handling, and status reporting.
 
-### Adapter Status Update Flow (Upsert Pattern)
+### Adapter Status Reporting Flow
 
-When an adapter needs to report its status, it follows this **upsert pattern**:
+When an adapter needs to report its status, it **always POSTs**. The API handles the upsert logic internally.
 
-#### Step 1: Try to GET existing ClusterStatus
-
-**GET** `/v1/clusters/{clusterId}/statuses`
-
-**Responses**:
-- **200 OK** - ClusterStatus exists, returns the status object with its `id`
-- **404 Not Found** - No ClusterStatus exists yet for this cluster
-
-#### Step 2a: If 404 → POST to create
+#### Adapter Action: POST Status Report
 
 **POST** `/v1/clusters/{clusterId}/statuses`
 
-**Request Body**:
 ```json
 {
-  "adapterStatuses": [
-    {
-      "adapter": "validation",
-      "observedGeneration": 1,
-      "conditions": [
-        {
-          "type": "Available",
-          "status": "False",
-          "reason": "JobRunning",
-          "message": "Job is executing",
-          "lastTransitionTime": "2025-10-17T12:00:05Z"
-        },
-        {
-          "type": "Applied",
-          "status": "True",
-          "reason": "JobLaunched",
-          "message": "Job created successfully",
-          "lastTransitionTime": "2025-10-17T12:00:05Z"
-        },
-        {
-          "type": "Health",
-          "status": "True",
-          "reason": "NoErrors",
-          "message": "Adapter is healthy",
-          "lastTransitionTime": "2025-10-17T12:00:05Z"
-        }
-      ],
-      "metadata": {
-        "jobName": "validation-cls-123-gen1"
-      },
-      "lastUpdated": "2025-10-17T12:00:05Z"
-    }
-  ]
-}
-```
-
-**Response**: `201 Created` with the created ClusterStatus object (including its `id`)
-
-#### Step 2b: If 200 → PATCH to update
-
-**PATCH** `/v1/clusters/{clusterId}/statuses/{statusId}`
-
-**Request Body**:
-```json
-{
-  "adapter": "validation",
+  "adapter": "validation",           // Identifies which adapter is reporting
   "observedGeneration": 1,
   "conditions": [
     {
@@ -134,83 +91,67 @@ When an adapter needs to report its status, it follows this **upsert pattern**:
   "metadata": {
     "jobName": "validation-cls-123-gen1"
   },
-  "lastUpdated": "2025-10-17T12:02:00Z"
+  "lastUpdated": "2025-10-17T12:02:00Z"    // When adapter checked (now())
 }
 ```
 
-**What Happens**:
-1. API finds the adapter entry in `adapterStatuses` array (or creates if first time)
-2. API updates/replaces that adapter's status with the new payload
-3. API updates ClusterStatus `lastUpdated` timestamp
-4. API recalculates Cluster aggregated status (phase + adapters array)
+**Response**: `200 OK` with updated ClusterStatus object (whether first report or subsequent update)
 
-**Response**: `200 OK` with updated ClusterStatus object
+**What Happens (API-side)**:
+1. API receives POST with `adapter` field identifying which adapter is reporting
+2. API finds the adapter entry in `adapterStatuses` array (or creates if first time)
+3. If first report: API INSERTs adapter with `created_at = now()`
+4. If subsequent report: API UPDATEs adapter, preserving `created_at` and updating `updated_at`
+5. API recalculates `cluster.status.lastUpdated = min(adapters[].lastUpdated)`
+   - This uses the OLDEST adapter timestamp to represent status confidence
+   - Ensures Sentinel triggers reconciliation when ANY adapter is stale
+6. API recalculates Cluster aggregated status (phase + adapters array)
+
+**Response**: `200 OK` with updated ClusterStatus object (whether first report or update)
 
 ### Adapter Implementation Pattern
 
-```
-function reportStatus(clusterId, adapterStatus) {
-  // Try GET
-  response = GET /v1/clusters/{clusterId}/statuses
+**Simple Pattern** (recommended - API handles upsert internally):
 
-  if (response.status == 404) {
-    // ClusterStatus doesn't exist, create it
-    POST /v1/clusters/{clusterId}/statuses
-    body = {
-      adapterStatuses: [adapterStatus]
-    }
-  } else {
-    // ClusterStatus exists, update our adapter's entry
-    statusId = response.data.id
-    PATCH /v1/clusters/{clusterId}/statuses/{statusId}
-    body = adapterStatus
+```javascript
+function reportStatus(clusterId, adapterStatus) {
+  // Adapter always POSTs - API decides if INSERT or UPDATE
+  POST /v1/clusters/{clusterId}/statuses
+  body = {
+    adapter: "dns",              // Identifies which adapter
+    observedGeneration: 1,
+    conditions: [...],
+    data: {...},
+    lastUpdated: now()           // When adapter checked
   }
+
+  // API returns 200 OK whether first report or update
 }
 ```
 
+**Why this pattern?**
+- **Adapter simplicity**: No GET/POST/PATCH logic needed
+- **Idempotent**: Safe to retry on failures
+- **API encapsulation**: Upsert logic is API's internal implementation detail
+- **Clear responsibility**: Adapter reports, API persists
+
 **Note**: The `adapterStatus` object includes `observedGeneration` which tells the API what generation of the cluster spec this adapter has reconciled.
-
-### Alternative: Sub-resource Approach
-
-Some APIs might prefer treating adapter status as a sub-resource:
-
-**PUT** `/v1/clusters/{clusterId}/statuses/adapters/{adapterName}`
-
-This is more explicit but results in a longer URL path. Both approaches are valid REST patterns.
 
 ---
 
 ## The Adapter Status Contract
 
-### Reporting Status: POST or PATCH
+### Reporting Status: Always POST
 
-Adapters use the **upsert pattern** described above. The payload structure for adapter status is the same whether POSTing (to create) or PATCHing (to update).
+Adapters **always POST** to report status. The API handles upsert internally (INSERT if first report, UPDATE if adapter already reported).
 
-### Adapter Status Payload Structure
+**Endpoint**: `POST /v1/clusters/{clusterId}/statuses`
 
-When POSTing to create a new ClusterStatus, include the full structure:
-```json
-{
-  "adapterStatuses": [
-    {
-      "adapter": "validation",
-      "observedGeneration": 1,
-      "conditions": [...],
-      "data": {...},
-      "metadata": {...},
-      "lastUpdated": "2025-10-17T12:00:05Z"
-    }
-  ]
-}
-```
-
-Note: No `generation` field on ClusterStatus itself. Each adapter reports its own `observedGeneration`.
-
-When PATCHing an existing ClusterStatus, send just the adapter status:
+**Payload Structure**: Adapters send just their status with `adapter` field identifying themselves:
 
 ```json
 {
-  "adapter": "validation",
+  "adapter": "validation",           // Identifies which adapter is reporting
   "observedGeneration": 1,
   "conditions": [
     {
@@ -246,9 +187,78 @@ When PATCHing an existing ClusterStatus, send just the adapter status:
     "jobName": "validation-cls-123-gen1",
     "executionTime": "115s"
   },
-  "lastUpdated": "2025-10-17T12:02:00Z"
+  "lastUpdated": "2025-10-17T12:02:00Z"   // When adapter checked (now())
 }
 ```
+
+**API Response**: `200 OK` (whether first report or subsequent update)
+
+**Note**: No `generation` field on ClusterStatus itself. Each adapter reports its own `observedGeneration`.
+
+### CRITICAL: Always Update `lastUpdated`
+
+**Required Behavior**: Adapters MUST update their status on EVERY evaluation, regardless of whether they take action or skip work.
+
+**Why This Matters**:
+
+The Sentinel uses `lastUpdated` timestamps to calculate backoff intervals for publishing reconciliation events. If adapters do not update `lastUpdated` when they skip work (e.g., preconditions not met), the Sentinel will create an infinite event loop:
+
+```
+Time 10:00 - DNS adapter receives reconciliation event
+Time 10:00 - DNS checks preconditions: Validation adapter not complete
+Time 10:00 - DNS does NOT update status (skips work)
+            ❌ cluster.status.lastUpdated remains at 09:50
+Time 10:10 - Sentinel sees lastUpdated=09:50, backoff expired (10s)
+Time 10:10 - Sentinel publishes ANOTHER event
+Time 10:10 - DNS receives event AGAIN, checks preconditions AGAIN...
+            ↻ INFINITE LOOP until validation completes
+```
+
+**Correct Behavior - Update Status Even When Skipping Work**:
+
+When an adapter evaluates a cluster but determines it should not take action (preconditions not met), it MUST still report status:
+
+```json
+{
+  "adapter": "dns",
+  "observedGeneration": 1,
+  "conditions": [
+    {
+      "type": "Available",
+      "status": "False",
+      "reason": "PreconditionsNotMet",
+      "message": "Waiting for validation adapter to complete",
+      "lastTransitionTime": "2025-10-17T10:00:00Z"
+    },
+    {
+      "type": "Applied",
+      "status": "False",
+      "reason": "PreconditionsNotMet",
+      "message": "Waiting for validation adapter",
+      "lastTransitionTime": "2025-10-17T10:00:00Z"
+    },
+    {
+      "type": "Health",
+      "status": "True",
+      "reason": "NoErrors",
+      "message": "Adapter is healthy",
+      "lastTransitionTime": "2025-10-17T10:00:00Z"
+    }
+  ],
+  "lastUpdated": "2025-10-17T10:00:00Z"  // ← CRITICAL: Update timestamp even when skipping work
+}
+```
+
+**Integration Testing Requirement**:
+
+Integration tests for adapters MUST verify:
+- ✅ Adapter updates `lastUpdated` when preconditions are met and work is performed
+- ✅ Adapter updates `lastUpdated` when preconditions are NOT met and work is skipped
+- ✅ Sentinel correctly calculates backoff from adapter `lastUpdated` timestamps
+
+**Reference**: See the Sentinel architecture documentation for details on the backoff strategy and reconciliation loop.
+
+---
 
 ### Implementation via Adapter Configuration (PR #18)
 
@@ -375,6 +385,8 @@ The ClusterStatus object is a **RESTful resource** that contains ALL adapter sta
 
 ### ClusterStatus Fields
 
+> **Schema Reference**: See [ClusterStatus schema definition](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml) in the API spec for complete field definitions, types, and validation rules.
+
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `id` | **YES** | string | Unique ID for this ClusterStatus object |
@@ -385,6 +397,8 @@ The ClusterStatus object is a **RESTful resource** that contains ALL adapter sta
 | `lastUpdated` | **YES** | timestamp | When this ClusterStatus was last updated |
 
 ### AdapterStatus Fields (within adapterStatuses array)
+
+> **Schema Reference**: See [AdapterStatus schema definition](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml) in the API spec for complete field definitions, types, and validation rules.
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
@@ -400,9 +414,8 @@ The ClusterStatus object is a **RESTful resource** that contains ALL adapter sta
 - ClusterStatus does NOT have a generation field - it reflects current observed state
 - Each adapter in `adapterStatuses` has `observedGeneration` indicating which cluster generation it has reconciled
 - Cluster spec has `generation` (user's intent), adapters report `observedGeneration` (observed state)
-- Adapters use upsert pattern: GET to check if exists → POST to create or PATCH to update
-- First adapter to report typically POSTs to create the ClusterStatus
-- Subsequent updates use PATCH to update specific adapter entries in `adapterStatuses` array
+- Adapters always POST with `adapter` field in payload - API handles upsert internally
+- API creates ClusterStatus on first report, updates adapter entry on subsequent reports
 - This is much more RESTful: `/clusters/{id}/statuses` represents the complete status of the cluster
 - Prevents scattered status objects - everything in one cohesive resource
 - The Cluster object still contains only aggregated status (see below)
@@ -677,6 +690,8 @@ The HyperFleet API provides two endpoints for cluster information:
 **GET** `/v1/clusters/{id}`
 
 Returns the complete cluster resource including metadata, spec, and aggregated status:
+
+> **Schema Reference**: See [Cluster schema definition](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml) in the API spec for complete field definitions.
 
 ```json
 {
@@ -1651,9 +1666,9 @@ The following examples show **individual adapter status payloads** that adapters
 
 ### 2. Adapter Succeeded
 
-**Scenario**: Validation Job completed successfully. ClusterStatus now exists, so validation adapter PATCHes to update its status.
+**Scenario**: Validation Job completed successfully. Validation adapter POSTs to update its status (API handles upsert).
 
-**PATCH** `/v1/clusters/cls-123/statuses/{statusId}`
+**POST** `/v1/clusters/cls-123/statuses`
 
 ```json
 {
@@ -1715,7 +1730,7 @@ The following examples show **individual adapter status payloads** that adapters
 
 **Scenario**: Validation Job ran but found missing Route53 zone
 
-**PATCH** `/v1/clusters/cls-123/statuses/{statusId}`
+**POST** `/v1/clusters/cls-123/statuses`
 
 ```json
 {
@@ -1770,9 +1785,9 @@ The following examples show **individual adapter status payloads** that adapters
 
 ### 4. Adapter Failed (Unexpected Error)
 
-**Scenario**: Adapter couldn't create Job due to quota exceeded. If ClusterStatus doesn't exist yet, this could be a POST. If it exists, PATCH.
+**Scenario**: Adapter couldn't create Job due to quota exceeded.
 
-**PATCH** `/v1/clusters/cls-123/statuses/{statusId}`
+**POST** `/v1/clusters/cls-123/statuses`
 
 ```json
 {
@@ -2760,7 +2775,7 @@ The configuration-driven approach provides:
 The adapter configuration system implements the status contract defined in this document:
 
 - **Three Required Conditions** - `applied`, `available`, `health` are explicit sections in `statusEvaluation`
-- **Upsert Pattern** - Framework automatically implements GET → POST/PATCH logic
+- **Simple POST Pattern** - Framework automatically POSTs status reports (API handles upsert)
 - **observedGeneration** - Automatically included in status payloads from event parameters
 - **Condition Structure** - Templates generate proper `type`, `status`, `reason`, `message` fields
 - **Data Field** - Custom data can be included via configuration templates
@@ -2776,12 +2791,11 @@ For a complete example of an adapter configuration that implements this status c
 ### Architecture Overview
 
 **ClusterStatus Object** (detailed, verbose):
-- ONE ClusterStatus per cluster/generation containing all adapter statuses
-- Adapters use **upsert pattern**: GET → POST (if 404) or PATCH (if exists)
-- POST creates: `POST /v1/clusters/{clusterId}/statuses`
-- PATCH updates: `PATCH /v1/clusters/{clusterId}/statuses/{statusId}`
+- ONE ClusterStatus per cluster containing all adapter statuses
+- Adapters always POST: `POST /v1/clusters/{clusterId}/statuses` with `adapter` field in payload
+- API handles upsert internally: INSERT on first report, UPDATE on subsequent reports
 - Contains `adapterStatuses` array with full conditions, data, and metadata for each adapter
-- Retrieved via `GET /v1/clusters/{clusterId}/statuses?generation={gen}`
+- Retrieved via `GET /v1/clusters/{clusterId}/statuses` (optional - for querying)
 - **RESTful design**: Single resource represents complete cluster status
 
 **Cluster Object** (complete resource):
@@ -2793,6 +2807,39 @@ For a complete example of an adapter configuration that implements this status c
   - `adapters`: Array of `{name, available, observedGeneration}`
 - Phase calculated by aggregating all adapter `available` conditions using hardcoded priority and expr evaluation
 - Retrieved via `GET /v1/clusters/{clusterId}`
+
+### Timestamp Fields Explained
+
+Understanding when and how timestamps are set is critical for Sentinel's backoff calculation:
+
+| Field | Set By | Purpose | Calculation |
+|-------|--------|---------|-------------|
+| `adapters[].lastUpdated` | **Adapter** | When this adapter last checked the resource | Set to `now()` in adapter status report payload |
+| `cluster.status.lastUpdated` | **API** | Confidence level of cluster status | `min(adapters[].lastUpdated)` - uses OLDEST adapter timestamp |
+| `conditions[].lastTransitionTime` | **Adapter** | When a condition changed its value | Set by adapter when condition status changes |
+| `cluster.status.lastTransitionTime` | **API** | When cluster phase changed | Updated when aggregated phase changes (post-MVP) |
+
+**Why use `min(adapters[].lastUpdated)` for cluster status?**
+
+Example scenario:
+```
+status:
+  adapters:
+    validation:
+      available: true
+      lastUpdated: 10:00
+    dns:
+      available: true
+      lastUpdated: 10:10
+```
+
+**Question**: "What is the cluster phase and how confident are you?"
+
+**Answer**: "With data from 10:00 (not 10:10), the cluster is Ready"
+
+**Why?**: The validation adapter might be stuck and hasn't reported since 10:00. We need to trigger reconciliation based on the oldest adapter's timestamp to detect stale adapters.
+
+If one adapter is stuck but others keep updating, using `max()` or `now()` would hide the problem. Using `min()` ensures Sentinel triggers events when ANY adapter hasn't reported recently.
 
 ### The Contract
 

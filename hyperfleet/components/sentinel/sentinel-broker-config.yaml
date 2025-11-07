@@ -1,0 +1,50 @@
+# Sentinel Broker Configuration Examples
+# Choose one of the following broker configurations based on your environment
+# This ConfigMap is separate from adapter broker config (hyperfleet-adapter-broker)
+#
+# Note: Sentinel publishes events, Adapters consume events - they need different broker configurations
+# - Sentinel (publisher): Uses BROKER_TOPIC, BROKER_EXCHANGE, or BROKER_QUEUE_URL
+# - Adapters (consumer): Use BROKER_SUBSCRIPTION_ID, BROKER_QUEUE_NAME
+# - Common fields (BROKER_TYPE, BROKER_PROJECT_ID, BROKER_HOST) are duplicated for simplicity
+
+---
+# Option 1: Google Cloud Pub/Sub
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-sentinel-broker
+  namespace: hyperfleet-system
+data:
+  BROKER_TYPE: "pubsub"
+  BROKER_PROJECT_ID: "hyperfleet-prod"
+  # Note: Sentinel publishes to topic (implicit default topic per project)
+  # Adapters use BROKER_SUBSCRIPTION_ID to consume
+
+---
+# Option 2: AWS SQS
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-sentinel-broker
+  namespace: hyperfleet-system
+data:
+  BROKER_TYPE: "awsSqs"
+  BROKER_REGION: "us-east-1"
+  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
+  # Note: SQS uses same queue URL for publish and consume
+
+---
+# Option 3: RabbitMQ
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-sentinel-broker
+  namespace: hyperfleet-system
+data:
+  BROKER_TYPE: "rabbitmq"
+  BROKER_HOST: "rabbitmq.hyperfleet-system.svc.cluster.local"
+  BROKER_PORT: "5672"
+  BROKER_VHOST: "/"
+  BROKER_EXCHANGE: "hyperfleet-events"
+  BROKER_EXCHANGE_TYPE: "fanout"
+  # Note: Sentinel publishes to exchange, Adapters consume from queues bound to this exchange

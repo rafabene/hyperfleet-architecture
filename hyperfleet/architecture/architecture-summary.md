@@ -35,7 +35,7 @@ For detailed visual diagrams, see:
 
 ```mermaid
 graph TB
-    SO[Sentinel Operator<br/>- Decision Logic<br/>- Event Creation<br/>- Broker Publish]
+    SO[Sentinel<br/>- Decision Logic<br/>- Event Creation<br/>- Broker Publish]
 
     API[HyperFleet API<br/>- Simple CRUD<br/>- No Logic]
     DB[(Database<br/>PostgreSQL)]
@@ -85,10 +85,10 @@ graph TB
 - **Separation of Concerns**: API focuses solely on data storage and retrieval
 
 **Responsibilities**:
-- Accept cluster creation/update/delete requests
-- Persist cluster data to PostgreSQL database
-- Accept status updates from adapters (via POST /clusters/{id}/statuses)
-- Serve cluster data to Sentinel Operator (via GET /clusters)
+- Accept resource creation/update/delete requests (clusters, nodepools, etc.)
+- Persist resource data to PostgreSQL database
+- Accept status updates from adapters (via POST /{resourceType}/{id}/statuses)
+- Serve resource data to Sentinel (via GET /{resourceType})
 - No event creation, no outbox pattern, no business logic
 
 **Key Endpoints**:
@@ -100,12 +100,32 @@ GET    /clusters/{id}
 PATCH  /clusters/{id} (post-MVP)
 DELETE /clusters/{id} (post-MVP)
 
-# Status Sub-resource (Adapters post here)
-GET    /clusters/{id}/statuses
-POST   /clusters/{id}/statuses
-GET    /clusters/{id}/statuses/{id}
-PATCH  /clusters/{id}/statuses/{id}
+# NodePool CRUD (MVP)
+GET    /nodepools
+POST   /nodepools
+GET    /nodepools/{id}
+PATCH  /nodepools/{id}
+DELETE /nodepools/{id}
+
+# Status Reporting (Adapters post here)
+# Works for both clusters and nodepools
+# Adapters always POST - API handles upsert internally
+POST   /clusters/{id}/statuses      # Adapter reports status (includes "adapter" field in payload)
+GET    /clusters/{id}/statuses       # Query cluster status (optional)
+
+POST   /nodepools/{id}/statuses      # Same pattern for nodepools
+GET    /nodepools/{id}/statuses
 ```
+
+**API Specification**:
+
+The complete API schema definitions are maintained in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository:
+
+- **Cluster and NodePool Schemas**: [Resource Object Definitions](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+- **ClusterStatus Schema**: [Status Object Definition](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+- **Complete OpenAPI Spec**: [openapi.yaml](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+
+> **Note**: The schemas shown in this document are illustrative examples. Always refer to the API spec repository for the authoritative, up-to-date schema definitions.
 
 **Benefits**:
 - Easy to test (no side effects)
@@ -126,40 +146,61 @@ PATCH  /clusters/{id}/statuses/{id}
 - **Transactional Consistency**: ACID guarantees for data integrity
 
 **Schema**:
+
+> **Note**: Database schema is derived from the [API Specification](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml). The schema below is illustrative - refer to the API spec for authoritative field definitions.
+
 ```
 clusters
   - id (uuid, primary key)
   - name (string)
   - spec (jsonb) - cluster configuration
-  - status (jsonb) - aggregated status with phase and lastTransitionTime
+  - status (jsonb) - aggregated status with phase and lastUpdated
   - labels (jsonb) - for sharding and filtering
   - created_at (timestamp)
   - updated_at (timestamp)
 
-statuses
+cluster_statuses
   - id (uuid, primary key)
   - cluster_id (uuid, foreign key)
-  - adapter_name (string) - e.g., "validation", "dns", "placement"
-  - phase (string) - e.g., "Pending", "Running", "Complete", "Failed"
-  - message (text) - human-readable status message
-  - last_transition_time (timestamp) - when this status changed
+  - adapter_statuses (jsonb) - array of adapter status objects, each containing:
+    - adapter (string) - e.g., "validation", "dns", "controlplane"
+    - observedGeneration (integer) - cluster generation this adapter reconciled
+    - conditions (jsonb array) - minimum 3 required:
+      - Available: work completed successfully?
+      - Applied: resources created successfully?
+      - Health: any unexpected errors?
+    - data (jsonb, optional) - adapter-specific structured data
+    - metadata (jsonb, optional) - additional metadata
+    - lastUpdated (timestamp) - when this adapter status was last updated
+  - last_updated (timestamp) - when ClusterStatus was last updated
   - created_at (timestamp)
 ```
 
 **Key Design Decisions**:
-- `clusters.status.lastTransitionTime` updated whenever ANY adapter posts status
-- Status history preserved in `statuses` table for debugging
+- ONE ClusterStatus object per cluster containing ALL adapter statuses in `adapter_statuses` array
+- `clusters.status` contains aggregated status (phase, conditions, adapters summary) computed from ClusterStatus
+- **Status Reporting Pattern**:
+  - Adapters always POST to `/v1/clusters/{id}/statuses` with `adapter` field in payload
+  - API handles upsert internally: INSERT if first time, UPDATE if adapter already reported
+  - API preserves `created_at` (first report time) and updates `updated_at` on each report
+  - API calculates `last_transition_time` when adapter's `Available` condition changes
+- **Timestamp Calculation**:
+  - `adapters[].lastUpdated`: Set by each adapter in their status report (when they last checked)
+  - `cluster.status.lastUpdated`: Calculated by API as `min(adapters[].lastUpdated)` - represents confidence of cluster status
+  - Using the OLDEST adapter timestamp ensures Sentinel triggers reconciliation when ANY adapter is stale
+- Each adapter has `observedGeneration` to track which cluster generation it reconciled
 - Labels stored as JSONB for flexible querying by Sentinel shards
+- See [Status Guide](../docs/status-guide.md) for complete status contract details
 
 ---
 
-### 3. Sentinel Service
+### 3. Sentinel
 
-**What**: A service that continuously polls HyperFleet API, decides when resources need reconciliation, creates events, and publishes them to the message broker.
+**What**: Service that continuously polls HyperFleet API, decides when resources need reconciliation, creates events, and publishes them to the message broker.
 
 **Why**:
 - **Centralized Orchestration Logic**: Single component decides "when" to reconcile
-- **Simple Backoff Strategy**: Time-based decisions using status.lastTransitionTime
+- **Simple Backoff Strategy**: Time-based decisions using status.lastUpdated (updated on every adapter check)
 - **Horizontal Scalability**: Sharding via label selectors (by region, environment, etc.)
 - **Broker Abstraction**: Pluggable event publishers (GCP Pub/Sub, RabbitMQ, Stub)
 - **Self-Healing**: Continuously retries without manual intervention
@@ -168,41 +209,51 @@ statuses
 1. **Fetch Resources**: Poll HyperFleet API for resources matching shard selector
 2. **Decision Logic**: Determine if resource needs reconciliation based on:
    - `status.phase` (Ready vs Not Ready)
-   - `status.lastTransitionTime` (time since last adapter update)
+   - `status.lastUpdated` (time since last adapter check)
    - Configured backoff intervals (10s for not-ready, 30m for ready)
 3. **Event Creation**: Create reconciliation event with resource context
 4. **Event Publishing**: Publish event to configured message broker
 5. **Metrics & Observability**: Expose Prometheus metrics for monitoring
 
-**Configuration** (via SentinelConfig CRD):
+**Configuration** (via YAML ConfigMap):
 ```yaml
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: SentinelConfig
+# sentinel-config.yaml (ConfigMap)
+resource_type: clusters
+poll_interval: 5s
+backoff_not_ready: 10s
+backoff_ready: 30m
+resource_selector: "region=us-east"
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api:8080
+  timeout: 30s
+
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  generation: .generation
+  region: .metadata.labels.region
+
+---
+# sentinel-broker-config.yaml (Sentinel-specific ConfigMap)
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: cluster-sentinel-us-east
-spec:
-  resourceType: clusters
-  shardSelector:
-    matchLabels:
-      region: us-east
-  backoffNotReady: 10s
-  backoffReady: 30m
-  hyperfleetAPI:
-    url: http://hyperfleet-api:8080
-  broker:
-    type: gcp-pubsub
-    topic: hyperfleet.clusters.changed.v1
+  name: hyperfleet-sentinel-broker
+data:
+  BROKER_TYPE: "pubsub"
+  BROKER_PROJECT_ID: "hyperfleet-prod"
 ```
 
 **Decision Algorithm**:
 ```
-FOR EACH resource in FetchResources(resourceType, shardSelector):
+FOR EACH resource in FetchResources(resourceType, resourceSelector):
   IF resource.status.phase != "Ready":
     backoff = backoffNotReady (10s)
   ELSE:
     backoff = backoffReady (30m)
 
-  IF now >= resource.status.lastTransitionTime + backoff:
+  IF now >= resource.status.lastUpdated + backoff:
     event = CreateEvent(resource)
     PublishEvent(broker, event)
 ```
@@ -300,13 +351,43 @@ Using cluster creation as an example
      - Create Kubernetes Job with cluster context
      - Job executes adapter logic (e.g., call cloud provider APIs)
      - Monitor job completion
-5. Report status: POST /clusters/{id}/statuses
+5. Report status (adapter always POSTs - API handles upsert internally):
+   POST /clusters/{id}/statuses
+
+   Payload example:
    {
-     "adapter_name": "dns",
-     "phase": "Complete",
-     "message": "DNS records created",
-     "last_transition_time": "2025-10-21T14:35:00Z"
+     "adapter": "dns",                           // Identifies which adapter is reporting
+     "observedGeneration": 1,
+     "conditions": [
+       {
+         "type": "Available",
+         "status": "True",
+         "reason": "AllRecordsCreated",
+         "message": "All DNS records created and verified",
+         "lastTransitionTime": "2025-10-21T14:35:00Z"
+       },
+       {
+         "type": "Applied",
+         "status": "True",
+         "reason": "JobLaunched",
+         "message": "DNS Job created successfully",
+         "lastTransitionTime": "2025-10-21T14:33:00Z"
+       },
+       {
+         "type": "Health",
+         "status": "True",
+         "reason": "NoErrors",
+         "message": "DNS adapter executed without errors",
+         "lastTransitionTime": "2025-10-21T14:35:00Z"
+       }
+     ],
+     "data": {
+       "recordsCreated": ["api.cluster.example.com", "*.apps.cluster.example.com"]
+     },
+     "lastUpdated": "2025-10-21T14:35:00Z"      // When adapter checked (now())
    }
+
+   API response: 200 OK (whether first report or update)
 6. Acknowledge message to broker
 ```
 
@@ -431,13 +512,13 @@ sequenceDiagram
     participant User as User/System
     participant API as HyperFleet API
     participant DB as Database
-    participant Sentinel as Sentinel Operator
+    participant Sentinel as Sentinel
     participant Broker as Message Broker
     participant Adapter as Validation Adapter
     participant Job as Kubernetes Job
 
     User->>API: POST /clusters
-    API->>DB: INSERT cluster<br/>status.phase = "Pending"<br/>status.lastTransitionTime = now()
+    API->>DB: INSERT cluster<br/>status.phase = "Not Ready" (aggregated)<br/>status.adapters = []<br/>status.lastUpdated = now()
     DB-->>API: cluster created
     API-->>User: 201 Created
 
@@ -448,7 +529,7 @@ sequenceDiagram
     DB-->>API: [cluster list]
     API-->>Sentinel: [{id, status, ...}]
 
-    Note over Sentinel: Decision: phase != "Ready" &&<br/>lastTransitionTime + 10s < now
+    Note over Sentinel: Decision: phase != "Ready" &&<br/>lastUpdated + 10s < now
 
     Sentinel->>Broker: Publish event<br/>{resourceType: "clusters",<br/>resourceId: "cls-123"}
 
@@ -466,15 +547,15 @@ sequenceDiagram
     Job->>Job: Execute validation logic
     Job-->>Adapter: Job Complete
 
-    Adapter->>API: POST /clusters/cls-123/statuses<br/>{adapter: "validation",<br/>phase: "Complete"}
-    API->>DB: INSERT INTO statuses<br/>UPDATE clusters.status.lastTransitionTime = now()
-    DB-->>API: status saved
+    Adapter->>API: POST /clusters/cls-123/statuses<br/>{adapter: "validation",<br/>observedGeneration: 1,<br/>conditions: [Available, Applied, Health],<br/>lastUpdated: now()<br/>}
+    API->>DB: INSERT INTO cluster_statuses<br/>UPDATE clusters.status.lastUpdated = min(adapters[].lastUpdated)<br/>UPDATE clusters.status (aggregate from conditions)
+    DB-->>API: ClusterStatus saved
     API-->>Adapter: 201 Created
 
     Note over Sentinel: Next poll cycle (10s later)
 
     Sentinel->>API: GET /clusters
-    API-->>Sentinel: [{id, status.lastTransitionTime = now(), ...}]
+    API-->>Sentinel: [{id, status.lastUpdated = now(), ...}]
 
     Note over Sentinel: Decision: Create event again<br/>(cycle continues for other adapters)
 
@@ -489,23 +570,32 @@ sequenceDiagram
     participant Adapter as Adapter Service
     participant API as HyperFleet API
     participant DB as Database
-    participant Sentinel as Sentinel Operator
+    participant Sentinel as Sentinel
 
     Job->>Job: Execute logic<br/>(DNS, Validation, etc.)
     Job-->>Adapter: Job Complete (Success/Failure)
 
-    Adapter->>API: POST /clusters/{id}/statuses<br/>{adapter_name: "dns",<br/>phase: "Complete",<br/>message: "DNS records created",<br/>last_transition_time: "2025-10-21T14:35:00Z"}
+    Note over Adapter: Adapter always POSTs<br/>API handles upsert internally
 
-    API->>DB: INSERT INTO statuses (...)
-    API->>DB: UPDATE clusters<br/>SET status.lastTransitionTime = now()<br/>(Potentially update status.phase)
-    DB-->>API: status saved
-    API-->>Adapter: 201 Created
+    Adapter->>API: POST /clusters/{id}/statuses<br/>{adapter: "dns",<br/>observedGeneration: 1,<br/>conditions: [...],<br/>lastUpdated: now()}
+
+    Note over API,DB: API decides: INSERT or UPDATE
+
+    alt First report from this adapter
+        API->>DB: INSERT adapter into cluster_statuses.adapter_statuses<br/>Set created_at = now()
+    else Adapter already reported
+        API->>DB: UPDATE adapter in cluster_statuses.adapter_statuses<br/>Preserve created_at, update updated_at
+    end
+
+    API->>DB: UPDATE clusters.status<br/>- Aggregate phase from all adapter conditions<br/>- Update lastUpdated = min(adapters[].lastUpdated)<br/>- Build adapters summary array
+    DB-->>API: ClusterStatus updated
+    API-->>Adapter: 200 OK
 
     Note over Sentinel: Next poll cycle (5s later)
 
     Sentinel->>API: GET /clusters
     API->>DB: SELECT clusters
-    DB-->>API: [cluster list with updated lastTransitionTime]
+    DB-->>API: [cluster list with updated lastUpdated]
     API-->>Sentinel: [{id, status, ...}]
 
     Note over Sentinel: Decision: Create event<br/>if backoff expired
@@ -544,6 +634,66 @@ sequenceDiagram
 - **Easy to Scale**: API and Sentinel scale independently
 - **Clear Responsibilities**: Each component has single responsibility
 
+### 7. Condition-Based Status Model
+
+**Why Conditions Instead of Simple Phase?**
+
+The architecture uses **Kubernetes-style Conditions** instead of a single `phase` field to handle the complexity of cluster provisioning:
+
+**Problem with Simple Phase:**
+```json
+// Too simplistic - loses important information
+{
+  "adapter": "dns",
+  "phase": "Failed"  // Why did it fail? Is it retriable? What succeeded?
+}
+```
+
+**Solution with Conditions:**
+```json
+// Multi-dimensional status - captures full state
+{
+  "adapter": "dns",
+  "observedGeneration": 1,
+  "conditions": [
+    {
+      "type": "Available",
+      "status": "False",
+      "reason": "DNSZoneNotFound",
+      "message": "Route53 zone not found for domain example.com"
+    },
+    {
+      "type": "Applied",
+      "status": "True",
+      "reason": "JobLaunched",
+      "message": "DNS Job created successfully"
+    },
+    {
+      "type": "Health",
+      "status": "True",
+      "reason": "NoErrors",
+      "message": "Adapter is healthy (business logic failed, not adapter error)"
+    }
+  ]
+}
+```
+
+**Benefits:**
+- **Multi-dimensional**: Captures "Did resources get created?" (Applied), "Did work succeed?" (Available), "Any unexpected errors?" (Health)
+- **Distinguishes failure types**: Business logic failure (validation failed) vs adapter error (can't connect to API)
+- **Enables aggregation**: Cluster `status.phase` computed from all adapter conditions
+- **Extensible**: Adapters can add custom conditions beyond the 3 required
+- **Kubernetes-native**: Familiar pattern for Kubernetes operators
+- **Generation tracking**: `observedGeneration` prevents stale status issues
+
+**Aggregation:**
+The cluster's aggregated `status.phase` is computed from adapter conditions:
+- All adapters `Available: True` → Cluster phase: `Ready`
+- Any adapter `Available: False` → Cluster phase: `Not Ready` (MVP) or `Provisioning`/`Failed`/`Degraded` (Post-MVP)
+- Any adapter `Health: False` → Cluster phase: `Degraded`
+
+See [Status Guide](../docs/status-guide.md) for complete details on the status contract.
+
 ---
 
 ## Trade-offs
@@ -569,44 +719,87 @@ sequenceDiagram
 
 ### Sentinel Configuration Example
 
+> **Note**: For MVP (HYPERFLEET-33), deploy a single Sentinel instance watching all resources (`resource_selector: ""`). Multi-Sentinel deployments below are post-MVP enhancements.
+
 ```yaml
-# Multiple Sentinel deployments for horizontal scaling
+# sentinel-us-east-config.yaml (ConfigMap)
+resource_type: clusters
+poll_interval: 5s
+backoff_not_ready: 10s
+backoff_ready: 30m
+resource_selector: "region=us-east"
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api:8080
+  timeout: 30s
+
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  generation: .generation
+  region: .metadata.labels.region
+
 ---
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: SentinelConfig
-metadata:
-  name: cluster-sentinel-us-east
-spec:
-  resourceType: clusters
-  shardSelector:
-    matchLabels:
-      region: us-east
-  backoffNotReady: 10s
-  backoffReady: 30m
-  pollInterval: 5s
-  hyperfleetAPI:
-    url: http://hyperfleet-api:8080
-  broker:
-    type: gcp-pubsub
-    topic: hyperfleet.clusters.changed.v1
-    projectID: hyperfleet-prod
+# sentinel-eu-west-config.yaml (ConfigMap)
+resource_type: clusters
+poll_interval: 5s
+backoff_not_ready: 15s
+backoff_ready: 1h
+resource_selector: "region=eu-west"
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api:8080
+  timeout: 30s
+
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  generation: .generation
+  region: .metadata.labels.region
+
 ---
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: SentinelConfig
+# sentinel-broker-config.yaml (Same for all Sentinel deployments)
+# Option 1: GCP Pub/Sub
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: cluster-sentinel-eu-west
-spec:
-  resourceType: clusters
-  shardSelector:
-    matchLabels:
-      region: eu-west
-  backoffNotReady: 15s
-  backoffReady: 1h
-  broker:
-    type: rabbitmq
-    exchange: hyperfleet.clusters
-    routingKey: clusters.changed
+  name: hyperfleet-sentinel-broker
+data:
+  BROKER_TYPE: "pubsub"
+  BROKER_PROJECT_ID: "hyperfleet-prod"
+
+---
+# Option 2: AWS SQS
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-sentinel-broker
+data:
+  BROKER_TYPE: "awsSqs"
+  BROKER_REGION: "us-east-1"
+  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
+
+---
+# Option 3: RabbitMQ
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-sentinel-broker
+data:
+  BROKER_TYPE: "rabbitmq"
+  BROKER_HOST: "rabbitmq.hyperfleet-system.svc.cluster.local"
+  BROKER_PORT: "5672"
+  BROKER_VHOST: "/"
+  BROKER_EXCHANGE: "hyperfleet-events"
+  BROKER_EXCHANGE_TYPE: "fanout"
 ```
+
+**Note on Broker Configuration**: Sentinel and Adapters use separate broker ConfigMaps:
+- **Sentinel** (`hyperfleet-sentinel-broker`): Publishes events - uses BROKER_TOPIC, BROKER_EXCHANGE, or BROKER_QUEUE_URL
+- **Adapters** (`hyperfleet-adapter-broker`): Consume events - use BROKER_SUBSCRIPTION_ID, BROKER_QUEUE_NAME
+- Common fields (BROKER_TYPE, BROKER_PROJECT_ID, BROKER_HOST) are duplicated for simplicity
+
+---
 
 ### API Deployment
 
