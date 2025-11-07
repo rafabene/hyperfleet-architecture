@@ -228,20 +228,18 @@ Example of paying down technical debt:
 ### Review and Merge Process
 
 **MVP Process (Current)**:
-- All HyperFleet team developers have approve and merge access
-- You may approve and merge your own PR if:
-  - No objections from peers within reasonable time (~4 hours during work hours)
-  - You've posted the PR in Slack (#forum-hyperfleet) for visibility
-  - The change is well-documented with clear rationale
-- For major architectural changes, consider waiting for at least one peer review
-- **Goal**: Move fast while keeping the team informed
 
-**How to submit changes:**
-1. Create a PR with your documentation updates
-2. Add a clear description of what changed and why
-3. Post the PR link in Slack: #hcm-hyperfleet-team
-4. Wait 24 hours(time zone differences between regions) for objections during work hours (or use judgment for urgency). 
-5. Once approve got from the peers and no other objections, it's OK to merge
+All HyperFleet team developers have approve and merge access. **Goal**: Move fast while keeping the team informed.
+
+**How to submit and merge changes:**
+
+1. **Create a PR** with your documentation updates
+2. **Add a clear description** of what changed and why
+3. **Post the PR link** in Slack: #hcm-hyperfleet-team for team visibility
+4. **Wait 24 hours** for peer review and objections (accounts for time zone differences between regions)
+   - For urgent changes, use judgment but ensure the change is well-documented with clear rationale
+   - For major architectural changes, strongly consider waiting for at least one or two Technical Leader reviews
+5. **Merge when ready**: Once you have approval from peers and no objections after the 24-hour window, you may merge
 
 **Post-MVP Process** (to be established):
 - Formal approval requirements based on change type

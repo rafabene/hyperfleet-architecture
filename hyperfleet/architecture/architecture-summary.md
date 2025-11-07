@@ -4,7 +4,7 @@
 
 ## Overview
 
-HyperFleet v2 represents a significant architectural simplification from v1, removing the Outbox Pattern and consolidating business logic into the Sentinel Operator. This design reduces complexity while maintaining the event-driven, scalable nature of the system.
+HyperFleet v2 represents a significant architectural simplification from v1, removing the Outbox Pattern and consolidating business logic into the Sentinel Service. This design reduces complexity while maintaining the event-driven, scalable nature of the system.
 
 **Key Principle**: Separation of concerns - API for data storage, Sentinel for orchestration logic, Adapters for execution.
 
@@ -97,15 +97,14 @@ graph TB
 GET    /clusters
 POST   /clusters
 GET    /clusters/{id}
-PATCH  /clusters/{id}
-DELETE /clusters/{id}
+PATCH  /clusters/{id} (post-MVP)
+DELETE /clusters/{id} (post-MVP)
 
 # Status Sub-resource (Adapters post here)
 GET    /clusters/{id}/statuses
 POST   /clusters/{id}/statuses
 GET    /clusters/{id}/statuses/{id}
 PATCH  /clusters/{id}/statuses/{id}
-DELETE /clusters/{id}/statuses/{id}
 ```
 
 **Benefits**:
@@ -154,9 +153,9 @@ statuses
 
 ---
 
-### 3. Sentinel Operator
+### 3. Sentinel Service
 
-**What**: Kubernetes Operator that continuously polls HyperFleet API, decides when resources need reconciliation, creates events, and publishes them to the message broker.
+**What**: A service that continuously polls HyperFleet API, decides when resources need reconciliation, creates events, and publishes them to the message broker.
 
 **Why**:
 - **Centralized Orchestration Logic**: Single component decides "when" to reconcile
@@ -280,13 +279,17 @@ Subscriptions:
 - **Job Pattern**: Long-running operations run as Kubernetes Jobs, not adapter pods
 
 **Adapter Types** (MVP):
-1. **Validation Adapter** - Validates cluster spec against policies
-2. **DNS Adapter** - Creates DNS records and certificates
-3. **Placement Adapter** - Selects optimal infrastructure placement
-4. **Pull Secret Adapter** - Manages image pull secrets
-5. **HyperShift Adapter** - Creates HyperShift control plane
+1. **Landing Zone Adapter** - Do preparation work for coming actions like namespace/secret/configmap creation.
+2. **Validation Adapter** - Validates cluster creation prerequisite like quota/networking/policies.
+3. **DNS Adapter** - Creates DNS records and certificates
+4. **Placement Adapter** - Selects optimal infrastructure placement
+5. **Pull Secret Adapter** - Manages image pull secrets
+6. **Control Plane Adapter** - Creates HyperShift control plane
+7. **Node Pool Validation Adapter** - Validate nodepool creation prereuisite like quota/DNS
+8. **Node Pool Adapter** - Creates HyperShift node pools
 
 **Adapter Workflow**:
+Using cluster creation as an example
 ```
 1. Consume event from broker subscription
 2. Fetch cluster details from API: GET /clusters/{id}
@@ -307,7 +310,7 @@ Subscriptions:
 6. Acknowledge message to broker
 ```
 
-**Configuration** (via AdapterConfig CRD):
+**Configuration** (via AdapterConfig):
 ```yaml
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -355,17 +358,28 @@ spec:
 
 ### 6. Kubernetes Resources
 
-**What**: Kubernetes Jobs and Secrets created by adapters to execute provisioning tasks.
+**What**: Kubernetes resources(like pipelines/jobs) created by adapters to execute provisioning tasks and manage cluster lifecycle.
 
 **Why**:
 - **Job Pattern**: Long-running tasks run as Jobs, not in adapter pods
 - **Isolation**: Job failures don't crash adapter service
-- **Observability**: Kubernetes native monitoring (pod logs, job status)
+- **Observability**: Kubernetes native monitoring (pod logs, job status, resource state)
 - **Resource Management**: Jobs get CPU/memory limits, timeout enforcement
+- **Declarative Management**: Resources tracked and cleaned up via owner references
 
-**Resource Types**:
-- **Jobs**: Execute adapter logic (e.g., call AWS API to create VPC)
-- **Secrets**: Store credentials for cloud providers (e.g., AWS credentials)
+**Resource Types Created by Adapters**:
+- **Jobs**: Execute adapter logic (e.g., call AWS API to create VPC, configure DNS)
+- **Secrets**: Store credentials for cloud providers (e.g., AWS credentials, pull secrets)
+- **ConfigMaps**: Store configuration data for jobs or target clusters
+- **Services**: Network endpoints for cluster resources (depending on adapter)
+- **Deployments/StatefulSets**: For adapters that manage long-running services (e.g., HyperShift control plane)
+- **PersistentVolumeClaims**: Storage for stateful workloads
+
+**Monitoring Strategy**:
+- All resources should be labeled with `adapter=<adapter-name>` and `cluster-id=<cluster-id>` for tracking
+- Use Prometheus kube-state-metrics to monitor resource states
+- Adapters should expose metrics for resource creation success/failure rates
+- Use Kubernetes resources status conditions to track resource lifecycle issues
 
 **Note**: Adapter configuration is managed via AdapterConfig CRD (not ConfigMaps), providing type safety, validation, and Kubernetes-native integration.
 
@@ -708,6 +722,15 @@ spec:
 - `hyperfleet_adapter_events_consumed_total{adapter}` - Events received
 - `hyperfleet_adapter_jobs_created_total{adapter}` - Jobs created
 - `hyperfleet_adapter_job_duration_seconds{adapter, result}` - Job execution time
+- `hyperfleet_adapter_resources_created_total{adapter, resource_type}` - Kubernetes resources created (Jobs, Secrets, ConfigMaps, Services, etc.)
+- `hyperfleet_adapter_resources_failed_total{adapter, resource_type, reason}` - Resource creation failures
+
+**Kubernetes Resources** (created by adapters):
+- `kube_job_status_failed{namespace, job_name}` - Failed job count
+- `kube_job_status_succeeded{namespace, job_name}` - Successful job count
+- `kube_secret_created{namespace, secret_name}` - Secrets created by adapters
+- `kube_configmap_created{namespace, configmap_name}` - ConfigMaps created by adapters
+- Use labels like `adapter=<adapter-name>` and `cluster-id=<cluster-id>` to track resources per adapter and cluster
 
 ### Alerting Rules
 
@@ -729,6 +752,21 @@ groups:
     expr: rate(hyperfleet_adapter_job_duration_seconds{result="failed"}[10m]) > 0.2
     annotations:
       summary: "Adapter jobs failing at high rate"
+
+  - alert: AdapterResourceCreationFailures
+    expr: rate(hyperfleet_adapter_resources_failed_total[5m]) > 0.1
+    annotations:
+      summary: "Adapter failing to create Kubernetes resources (Jobs, Secrets, ConfigMaps, etc.)"
+
+  - alert: JobsStuckInPending
+    expr: kube_job_status_active{namespace="hyperfleet-system"} > 0 and time() - kube_job_created > 300
+    annotations:
+      summary: "Jobs created by adapters stuck in pending state for >5 minutes"
+
+  - alert: HighJobFailureRate
+    expr: rate(kube_job_status_failed{namespace="hyperfleet-system"}[10m]) > 0.3
+    annotations:
+      summary: "High rate of job failures in hyperfleet-system namespace"
 ```
 
 ---
@@ -745,8 +783,8 @@ groups:
 
 ## Next Steps
 
-1. Update JIRA epic for Sentinel to reflect direct broker publish (remove outbox references)
-2. Create API epic with simplified responsibilities (no outbox)
+1. Update JIRA epic for Sentinel to reflect direct broker publish
+2. Create API epic with simplified responsibilities
 3. Update adapter framework design to include status posting to API
 4. Create broker abstraction library for Sentinel (support GCP Pub/Sub, RabbitMQ, Stub)
 5. Define CloudEvents schema for reconciliation events (AsyncAPI spec)
