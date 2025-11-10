@@ -18,7 +18,13 @@ backoff_ready: 30m        # Wait time for stable/ready resources
 # Note: This is NOT true sharding - there is no component ensuring that all
 # sentinels collectively select all resources without gaps or overlaps.
 # Multiple Sentinels can watch overlapping or different resource sets.
-resource_selector: "region=us-east"
+#
+# Format: List of label/value pairs
+# Each entry specifies a label key and value that resources must match
+# All labels specified must match (AND logic)
+resource_selector:
+  - label: region
+    value: us-east
 
 # === HYPERFLEET API ===
 hyperfleet_api:

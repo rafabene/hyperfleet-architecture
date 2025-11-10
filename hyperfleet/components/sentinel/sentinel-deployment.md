@@ -123,7 +123,9 @@ data:
     poll_interval: 5s
     backoff_not_ready: 10s
     backoff_ready: 30m
-    resource_selector: "region=us-east"
+    resource_selector:
+      - label: region
+        value: us-east
 
     hyperfleet_api:
       endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
