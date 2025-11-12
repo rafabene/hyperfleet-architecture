@@ -216,7 +216,7 @@ flowchart LR
         Check -->|Yes| Create[Create CloudEvent]
         Check -->|No| Skip[Skip]
 
-        Create --> Event["CloudEvent:<br/>{<br/>  type: cluster.reconcile,<br/>  source: sentinel,<br/>  data: {<br/>    resourceType: clusters,<br/>    resourceId: cls-123<br/>  }<br/>}"]
+        Create --> Event["CloudEvent:<br/>{<br/>  type: cluster.reconcile,<br/>  source: sentinel,<br/>  data: {<br/>    resourceType: clusters,<br/>    resourceId: cls-123,<br/>    clusterId: cls-123,<br/>    href: /api/v1/clusters/cls-123,<br/>    generation: 5,<br/>    region: us-east-1<br/>  }<br/>}"]
     end
 
     Event -->|Publish| Broker[Message Broker<br/>Topic: hyperfleet-events]
@@ -250,9 +250,11 @@ flowchart LR
 ## Key Takeaways
 
 ### Anemic Events Pattern
-- Events contain **only** `resourceType` and `resourceId`
-- Adapters **always** fetch full cluster from API
+- Events contain **only** minimal fields: `resourceType`, `resourceId`, `clusterId`, `href`, `generation`, `region`
+- Adapters **always** fetch full resource data from API using `href` or constructing endpoint from `resourceType`/`resourceId`
 - Single source of truth: HyperFleet API database
+- `generation` enables stale event detection
+- `clusterId` enables parent-child relationships (e.g., nodepools → cluster)
 
 ### Status Upsert Pattern
 - Adapters POST status updates to HyperFleet API
