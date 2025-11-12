@@ -222,7 +222,9 @@ resource_type: clusters
 poll_interval: 5s
 backoff_not_ready: 10s
 backoff_ready: 30m
-resource_selector: "region=us-east"
+resource_selector:
+  - label: region
+    value: us-east
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
@@ -719,7 +721,7 @@ See [Status Guide](../docs/status-guide.md) for complete details on the status c
 
 ### Sentinel Configuration Example
 
-> **Note**: For MVP (HYPERFLEET-33), deploy a single Sentinel instance watching all resources (`resource_selector: ""`). Multi-Sentinel deployments below are post-MVP enhancements.
+> **Note**: For MVP (HYPERFLEET-33), deploy a single Sentinel instance watching all resources (`resource_selector: []` - empty list). Multi-Sentinel deployments below are post-MVP enhancements.
 
 ```yaml
 # sentinel-us-east-config.yaml (ConfigMap)
@@ -727,7 +729,9 @@ resource_type: clusters
 poll_interval: 5s
 backoff_not_ready: 10s
 backoff_ready: 30m
-resource_selector: "region=us-east"
+resource_selector:
+  - label: region
+    value: us-east
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
@@ -745,7 +749,9 @@ resource_type: clusters
 poll_interval: 5s
 backoff_not_ready: 15s
 backoff_ready: 1h
-resource_selector: "region=eu-west"
+resource_selector:
+  - label: region
+    value: eu-west
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080

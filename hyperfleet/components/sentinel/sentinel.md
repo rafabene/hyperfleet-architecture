@@ -156,15 +156,36 @@ graph LR
 
 **Note on Resource Selector Flexibility**:
 
-Resource filtering can be based on **any label criteria** of the cluster object being reconciled. The `resource_selector` uses standard Kubernetes label selectors, allowing for flexible filtering strategies:
+Resource filtering can be based on **any label criteria** of the cluster object being reconciled. The `resource_selector` uses a list of label/value pairs with AND logic (all labels must match), allowing for flexible filtering strategies:
 
-- **Regional filtering**: `region=us-east`, `region=eu-west` (as shown above)
-- **Environment-based**: `environment=production`, `environment=development`
-- **Tenant/Customer**: `customer-id=acme-corp`, `tenant=customer-123`
-- **Cluster type**: `cluster-type=hypershift`, `cluster-type=standalone`
-- **Priority**: `priority=critical`, `priority=standard`
-- **Cloud provider**: `cloud-provider=aws`, `cloud-provider=gcp`
-- **Complex selectors**: Using `matchExpressions` for advanced filtering (e.g., `region in (us-east-1, us-east-2)`)
+- **Regional filtering**:
+  ```yaml
+  resource_selector:
+    - label: region
+      value: us-east
+  ```
+- **Environment-based**:
+  ```yaml
+  resource_selector:
+    - label: environment
+      value: production
+  ```
+- **Multi-label filtering** (all must match):
+  ```yaml
+  resource_selector:
+    - label: region
+      value: us-east
+    - label: environment
+      value: production
+    - label: cluster-type
+      value: hypershift
+  ```
+- **Tenant/Customer**:
+  ```yaml
+  resource_selector:
+    - label: tenant
+      value: customer-123
+  ```
 
 This flexibility allows you to:
 - Scale horizontally by dividing clusters across multiple Sentinel instances
@@ -217,7 +238,10 @@ backoff_ready: 30m       # Backoff when resource status == "Ready"
 
 # Resource selector - only process resources matching these labels
 # Note: NOT true sharding, just label-based filtering
-resource_selector: "region=us-east"
+# Format: List of label/value pairs (AND logic - all must match)
+resource_selector:
+  - label: region
+    value: us-east
 
 # HyperFleet API configuration
 hyperfleet_api:
@@ -363,7 +387,7 @@ If a cluster stays in "Provisioning" state for 2 hours, `lastTransitionTime` wou
 
 ### Resource Filtering Architecture
 
-> **MVP Scope**: For the initial MVP implementation (HYPERFLEET-33), we recommend deploying a **single Sentinel instance** watching all resources (`resource_selector: ""`). Multi-Sentinel deployments with label-based filtering are documented below as a **post-MVP enhancement** for horizontal scalability.
+> **MVP Scope**: For the initial MVP implementation (HYPERFLEET-33), we recommend deploying a **single Sentinel instance** watching all resources (`resource_selector: []` - empty list). Multi-Sentinel deployments with label-based filtering are documented below as a **post-MVP enhancement** for horizontal scalability.
 
 **Why Resource Filtering?**
 - Horizontal scalability - distribute load across multiple Sentinel instances
@@ -394,7 +418,9 @@ resource_type: clusters
 poll_interval: 5s
 backoff_not_ready: 10s
 backoff_ready: 30m
-resource_selector: "region=us-east"
+resource_selector:
+  - label: region
+    value: us-east
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
@@ -415,7 +441,9 @@ resource_type: clusters
 poll_interval: 5s
 backoff_not_ready: 15s  # Different backoff!
 backoff_ready: 1h       # Different backoff!
-resource_selector: "region=us-west"
+resource_selector:
+  - label: region
+    value: us-west
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
@@ -433,7 +461,7 @@ resource_type: nodepools
 poll_interval: 5s
 backoff_not_ready: 5s
 backoff_ready: 10m
-# resource_selector: "" # Watch all node pools
+# resource_selector: []  # Watch all node pools (empty list matches all)
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
