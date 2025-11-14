@@ -1,0 +1,11 @@
+# Ignore personal/local cluster environment files
+cluster-config.env
+cluster-config.env.*
+*.swp
+*.swo
+
+# Keep the example environment files in cluster-envs/ directory
+!cluster-envs/*.env
+
+# Ignore generated access scripts (but keep the template)
+get-cluster-access.sh
