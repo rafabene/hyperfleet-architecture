@@ -311,10 +311,10 @@ Team members can get access to any cluster by using the same environment file th
 
 ### Share Access with Team Members
 
-**Recommended: Use the get-cluster-access.sh script with the environment file**
+**Recommended: Use the get-cluster-access.sh script**
 
 ```bash
-./get-cluster-access.sh cluster-envs/<ENV_FILE>
+./get-cluster-access.sh
 ```
 
 This displays the exact `gcloud` command team members should run to get cluster credentials.

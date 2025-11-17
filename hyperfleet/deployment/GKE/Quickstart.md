@@ -24,9 +24,10 @@ We provide two pre-configured environment files for common development scenarios
 ```
 
 ### Get Cluster Credentials
-```bash
-./get-cluster-access.sh <ENV_FILE>
-```
+Running `./create-gke-cluster.sh cluster-envs/<ENV-FILE>` will generate a `get-cluster-access.sh` script.
+Execute `./get-cluster-access.sh` to get the commands for accessing the cluster, and share them with your team if needed.
+
+Note: This requires the `gke-gcloud-auth-plugin` to be installed on your local environment.
 
 ### Verify Cluster
 ```bash
