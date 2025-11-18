@@ -228,7 +228,7 @@ resource_selector:
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
-  timeout: 30s
+  timeout: 5s
 
 message_data:
   resource_id: .id
@@ -735,7 +735,7 @@ resource_selector:
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
-  timeout: 30s
+  timeout: 5s
 
 message_data:
   resource_id: .id
@@ -755,7 +755,7 @@ resource_selector:
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
-  timeout: 30s
+  timeout: 5s
 
 message_data:
   resource_id: .id
