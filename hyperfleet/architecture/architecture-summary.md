@@ -210,7 +210,7 @@ cluster_statuses
 2. **Decision Logic**: Determine if resource needs reconciliation based on:
    - `status.phase` (Ready vs Not Ready)
    - `status.lastUpdated` (time since last adapter check)
-   - Configured backoff intervals (10s for not-ready, 30m for ready)
+   - Configured max age intervals (10s for not-ready, 30m for ready)
 3. **Event Creation**: Create reconciliation event with resource context
 4. **Event Publishing**: Publish event to configured message broker
 5. **Metrics & Observability**: Expose Prometheus metrics for monitoring
@@ -220,8 +220,8 @@ cluster_statuses
 # sentinel-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 10s
-backoff_ready: 30m
+max_age_not_ready: 10s
+max_age_ready: 30m
 resource_selector:
   - label: region
     value: us-east
@@ -251,9 +251,9 @@ data:
 ```
 FOR EACH resource in FetchResources(resourceType, resourceSelector):
   IF resource.status.phase != "Ready":
-    backoff = backoffNotReady (10s)
+    backoff = maxAgeNotReady (10s)
   ELSE:
-    backoff = backoffReady (30m)
+    backoff = maxAgeReady (30m)
 
   IF now >= resource.status.lastUpdated + backoff:
     event = CreateEvent(resource)
@@ -600,7 +600,7 @@ sequenceDiagram
     DB-->>API: [cluster list with updated lastUpdated]
     API-->>Sentinel: [{id, status, ...}]
 
-    Note over Sentinel: Decision: Create event<br/>if backoff expired
+    Note over Sentinel: Decision: Create event<br/>if max-age expired
 ```
 
 ---
@@ -627,7 +627,7 @@ sequenceDiagram
 - **Adapter Testing**: Mock events from broker, verify job creation
 
 ### 5. Improved Observability
-- **Centralized Decision Logic**: All backoff/retry logic in one place (Sentinel)
+- **Centralized Decision Logic**: All max-age/retry logic in one place (Sentinel)
 - **Clear Metrics**: Sentinel exposes events_created, resources_pending, etc.
 - **Status History**: Database stores full adapter status timeline
 
@@ -727,8 +727,8 @@ See [Status Guide](../docs/status-guide.md) for complete details on the status c
 # sentinel-us-east-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 10s
-backoff_ready: 30m
+max_age_not_ready: 10s
+max_age_ready: 30m
 resource_selector:
   - label: region
     value: us-east
@@ -747,8 +747,8 @@ message_data:
 # sentinel-eu-west-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 15s
-backoff_ready: 1h
+max_age_not_ready: 15s
+max_age_ready: 1h
 resource_selector:
   - label: region
     value: eu-west
