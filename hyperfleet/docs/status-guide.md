@@ -201,14 +201,14 @@ Adapters **always POST** to report status. The API handles upsert internally (IN
 
 **Why This Matters**:
 
-The Sentinel uses `lastUpdated` timestamps to calculate backoff intervals for publishing reconciliation events. If adapters do not update `lastUpdated` when they skip work (e.g., preconditions not met), the Sentinel will create an infinite event loop:
+The Sentinel uses `lastUpdated` timestamps to calculate max age intervals for publishing reconciliation events. If adapters do not update `lastUpdated` when they skip work (e.g., preconditions not met), the Sentinel will create an infinite event loop:
 
 ```
 Time 10:00 - DNS adapter receives reconciliation event
 Time 10:00 - DNS checks preconditions: Validation adapter not complete
 Time 10:00 - DNS does NOT update status (skips work)
             ❌ cluster.status.lastUpdated remains at 09:50
-Time 10:10 - Sentinel sees lastUpdated=09:50, backoff expired (10s)
+Time 10:10 - Sentinel sees lastUpdated=09:50, max age expired (10s)
 Time 10:10 - Sentinel publishes ANOTHER event
 Time 10:10 - DNS receives event AGAIN, checks preconditions AGAIN...
             ↻ INFINITE LOOP until validation completes
@@ -254,9 +254,9 @@ When an adapter evaluates a cluster but determines it should not take action (pr
 Integration tests for adapters MUST verify:
 - ✅ Adapter updates `lastUpdated` when preconditions are met and work is performed
 - ✅ Adapter updates `lastUpdated` when preconditions are NOT met and work is skipped
-- ✅ Sentinel correctly calculates backoff from adapter `lastUpdated` timestamps
+- ✅ Sentinel correctly calculates max age from adapter `lastUpdated` timestamps
 
-**Reference**: See the Sentinel architecture documentation for details on the backoff strategy and reconciliation loop.
+**Reference**: See the Sentinel architecture documentation for details on the max age strategy and reconciliation loop.
 
 ---
 
@@ -2810,7 +2810,7 @@ For a complete example of an adapter configuration that implements this status c
 
 ### Timestamp Fields Explained
 
-Understanding when and how timestamps are set is critical for Sentinel's backoff calculation:
+Understanding when and how timestamps are set is critical for Sentinel's max age calculation:
 
 | Field | Set By | Purpose | Calculation |
 |-------|--------|---------|-------------|

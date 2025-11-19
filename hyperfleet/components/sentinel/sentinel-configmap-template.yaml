@@ -198,8 +198,8 @@ data:
 #        clusters := fetchClustersWithShardFilter(config.ShardSelector)
 #        
 #        for _, cluster := range clusters {
-#            // Check if reconciliation is needed based on backoff
-#            if shouldReconcile(cluster, config.BackoffNotReady, config.BackoffReady) {
+#            // Check if reconciliation is needed based on max age
+#            if shouldReconcile(cluster, config.MaxAgeNotReady, config.MaxAgeReady) {
 #                // Create CloudEvent
 #                event := createCloudEvent(cluster)
 #                

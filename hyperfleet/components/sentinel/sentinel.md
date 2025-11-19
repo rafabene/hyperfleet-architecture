@@ -4,7 +4,7 @@
 
 **What**
 
-Implement a "HyperFleet Sentinel" service that continuously polls the HyperFleet API for resources (clusters, node pools, etc.) and publishes reconciliation events directly to the message broker to trigger adapter processing. The Sentinel acts as the "watchful guardian" of the HyperFleet system with simple, configurable backoff intervals. Multiple Sentinel deployments can be configured via YAML configuration files to handle different shards of resources for horizontal scalability.
+Implement a "HyperFleet Sentinel" service that continuously polls the HyperFleet API for resources (clusters, node pools, etc.) and publishes reconciliation events directly to the message broker to trigger adapter processing. The Sentinel acts as the "watchful guardian" of the HyperFleet system with simple, configurable max age intervals. Multiple Sentinel deployments can be configured via YAML configuration files to handle different shards of resources for horizontal scalability.
 
 **Pattern Reusability**: The Sentinel is designed as a generic reconciliation service that can watch ANY HyperFleet resource type, not just clusters. Future deployments can include:
 - **Cluster Sentinel** (this epic) - watches clusters
@@ -23,7 +23,7 @@ Without the Sentinel, the cluster provisioning workflow has a critical gap:
 The Sentinel solves these problems by:
 - **Closing the reconciliation loop**: Continuously polls resources and publishes events to trigger adapter evaluation
 - **Uses adapter status updates**: Reads `status.lastUpdated` (updated by adapters on every check) to determine when to create next event
-- **Simple backoff**: 10 seconds for non-ready resources, 30 minutes for ready resources (configurable)
+- **Simple max age intervals**: 10 seconds for non-ready resources, 30 minutes for ready resources (configurable)
 - **Self-healing**: Automatically retries without manual intervention
 - **Horizontal scalability**: Resource filtering allows multiple Sentinels to handle different resource subsets
 - **Event-driven architecture**: Maintains decoupling by publishing CloudEvents to message broker
@@ -37,14 +37,14 @@ The Sentinel solves these problems by:
 - Service reads configuration from YAML files with environment variable overrides
 - Broker configuration separated and shared with adapters
 - Polls HyperFleet API for resources matching resource selector criteria
-- Uses `status.lastUpdated` from adapter status updates for backoff calculation
+- Uses `status.lastUpdated` from adapter status updates for max age calculation
 - Creates CloudEvents for resources based on simple decision logic
 - CloudEvent data structure is configurable via message_data field
 - Publishes events directly to message broker (GCP Pub/Sub or RabbitMQ)
-- Configurable backoff intervals (not-ready vs ready)
+- Configurable max age intervals (not-ready vs ready)
 - Resource filtering support via label selectors in configuration
 - Metrics exposed for monitoring (reconciliation rate, event publishing, errors)
-- Integration tests verify decision logic and backoff behavior with adapter status updates
+- Integration tests verify decision logic and max age behavior with adapter status updates
 - Graceful shutdown and error handling implemented
 - Multiple services can run simultaneously with different resource selectors
 
@@ -71,7 +71,7 @@ Adapter fails transiently
 
 ```mermaid
 flowchart TD
-    Init([Service Startup]) --> ReadConfig[Load YAML Configuration<br/>- backoffNotReady: 10s<br/>- backoffReady: 30m<br/>- resourceSelector: region=us-east<br/>- message_data composition<br/>+ Load broker config separately]
+    Init([Service Startup]) --> ReadConfig[Load YAML Configuration<br/>- max_age_not_ready: 10s<br/>- max_age_ready: 30m<br/>- resourceSelector: region=us-east<br/>- message_data composition<br/>+ Load broker config separately]
 
     ReadConfig --> Validate{Configuration<br/>Valid?}
     Validate -->|No| Exit[Exit with Error]
@@ -87,7 +87,7 @@ flowchart TD
     CheckReady -->|Yes - Ready| CheckBackoffReady{lastUpdated + 30m<br/>< now?}
 
     CheckBackoffNotReady -->|Yes - Expired| PublishEvent[Create CloudEvent<br/>Publish to Broker]
-    CheckBackoffNotReady -->|No - Not Expired| Skip[Skip<br/>Backoff not expired]
+    CheckBackoffNotReady -->|No - Not Expired| Skip[Skip<br/>Max age not expired]
 
     CheckBackoffReady -->|Yes - Expired| PublishEvent
     CheckBackoffReady -->|No - Not Expired| Skip
@@ -190,7 +190,7 @@ Resource filtering can be based on **any label criteria** of the cluster object 
 This flexibility allows you to:
 - Scale horizontally by dividing clusters across multiple Sentinel instances
 - Isolate blast radius (failures in one Sentinel don't affect others)
-- Optimize configurations per Sentinel instance (different backoff intervals for prod vs dev)
+- Optimize configurations per Sentinel instance (different max age intervals for prod vs dev)
 - Deploy Sentinels close to their managed clusters (regional Sentinels in regional k8s clusters)
 
 **Important caveat**: Since this is label-based filtering (not true sharding), operators must manually ensure:
@@ -202,10 +202,10 @@ This flexibility allows you to:
 The service uses extremely simple decision logic:
 
 **Publish Event IF**:
-1. Cluster status is NOT "Ready" AND backoffNotReady interval expired (10 seconds default)
-2. OR Cluster status IS "Ready" AND backoffReady interval expired (30 minutes default)
+1. Cluster status is NOT "Ready" AND max_age_not_ready interval expired (10 seconds default)
+2. OR Cluster status IS "Ready" AND max_age_ready interval expired (30 minutes default)
 
-**Skip (Backoff) IF**:
+**Skip IF**:
 - Not enough time has passed since last event (based on cluster ready state)
 
 **No complex checks**:
@@ -214,11 +214,11 @@ The service uses extremely simple decision logic:
 - No retry-able failure detection
 - Just simple time-based event publishing
 
-### Backoff Strategy (MVP Simple)
+### Max Age Strategy (MVP Simple)
 
-The service uses two configurable backoff intervals:
+The service uses two configurable max age intervals:
 
-| Cluster State | Backoff Time | Reason |
+| Cluster State | Max Age Time | Reason |
 |---------------|--------------|--------|
 | NOT Ready     | 10 seconds   | Cluster being provisioned - check frequently |
 | Ready         | 30 minutes   | Cluster stable - periodic health check |
@@ -233,8 +233,8 @@ resource_type: clusters  # Resource to watch: clusters, nodepools, manifests, wo
 
 # Polling configuration
 poll_interval: 5s
-backoff_not_ready: 10s   # Backoff when resource status != "Ready"
-backoff_ready: 30m       # Backoff when resource status == "Ready"
+max_age_not_ready: 10s   # Max age when resource status != "Ready"
+max_age_ready: 30m       # Max age when resource status == "Ready"
 
 # Resource selector - only process resources matching these labels
 # Note: NOT true sharding, just label-based filtering
@@ -304,7 +304,7 @@ data:
 
 ### Adapter Status Update Contract
 
-**CRITICAL REQUIREMENT**: For the Sentinel backoff strategy to work correctly, adapters MUST update their status on EVERY evaluation, regardless of whether they take action.
+**CRITICAL REQUIREMENT**: For the Sentinel max age strategy to work correctly, adapters MUST update their status on EVERY evaluation, regardless of whether they take action.
 
 **Why This Matters**:
 
@@ -315,7 +315,7 @@ Time 10:00 - DNS adapter receives event
 Time 10:00 - DNS checks preconditions: Validation not complete
 Time 10:00 - DNS does NOT update status (skips work)
             ❌ cluster.status.lastUpdated remains at 09:50
-Time 10:10 - Sentinel sees lastUpdated=09:50, backoff expired (10s)
+Time 10:10 - Sentinel sees lastUpdated=09:50, max age expired (10s)
 Time 10:10 - Sentinel publishes ANOTHER event
 Time 10:10 - DNS receives event AGAIN...
             ↻ INFINITE LOOP until validation completes
@@ -359,7 +359,7 @@ Adapters MUST update status in ALL scenarios:
 Integration tests MUST verify that:
 - Adapters update `lastUpdated` when preconditions are met
 - Adapters update `lastUpdated` when preconditions are NOT met
-- Sentinel correctly calculates backoff from adapter `lastUpdated` timestamps
+- Sentinel correctly calculates max age from adapter `lastUpdated` timestamps
 
 ---
 
@@ -382,8 +382,8 @@ The Sentinel uses the resource's status `lastUpdated` timestamp to determine whe
 - **`lastTransitionTime`**: Updates ONLY when the status.phase changes (e.g., Provisioning → Ready)
 - **`lastUpdated`**: Updates EVERY time an adapter checks the resource, regardless of whether status changed
 
-**Why this matters for backoff:**
-If a cluster stays in "Provisioning" state for 2 hours, `lastTransitionTime` would remain at the time it entered "Provisioning" (e.g., 10:00), even though adapters check it at 11:00, 11:30, 12:00. Using `lastTransitionTime` for backoff calculation would incorrectly trigger events too frequently. Using `lastUpdated` ensures backoff is calculated from the last adapter check, not the last status change.
+**Why this matters for max age calculation:**
+If a cluster stays in "Provisioning" state for 2 hours, `lastTransitionTime` would remain at the time it entered "Provisioning" (e.g., 10:00), even though adapters check it at 11:00, 11:30, 12:00. Using `lastTransitionTime` for max age calculation would incorrectly trigger events too frequently. Using `lastUpdated` ensures max age is calculated from the last adapter check, not the last status change.
 
 ### Resource Filtering Architecture
 
@@ -393,7 +393,7 @@ If a cluster stays in "Provisioning" state for 2 hours, `lastTransitionTime` wou
 - Horizontal scalability - distribute load across multiple Sentinel instances
 - Regional isolation - deploy Sentinel per region
 - Blast radius reduction - failures affect only filtered resources
-- Flexibility - different configurations per Sentinel instance (e.g., different backoff for dev vs prod)
+- Flexibility - different configurations per Sentinel instance (e.g., different max age intervals for dev vs prod)
 
 **Important: This is NOT True Sharding**
 - True sharding guarantees complete coverage: all resources are handled by exactly one shard
@@ -416,8 +416,8 @@ If a cluster stays in "Provisioning" state for 2 hours, `lastTransitionTime` wou
 # Deployment 1: US East clusters
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 10s
-backoff_ready: 30m
+max_age_not_ready: 10s
+max_age_ready: 30m
 resource_selector:
   - label: region
     value: us-east
@@ -439,8 +439,8 @@ message_data:
 # Deployment 2: US West clusters (different config!)
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 15s  # Different backoff!
-backoff_ready: 1h       # Different backoff!
+max_age_not_ready: 15s  # Different max age!
+max_age_ready: 1h       # Different max age!
 resource_selector:
   - label: region
     value: us-west
@@ -459,8 +459,8 @@ message_data:
 # Future: NodePool Sentinel (different resource type!)
 resource_type: nodepools
 poll_interval: 5s
-backoff_not_ready: 5s
-backoff_ready: 10m
+max_age_not_ready: 5s
+max_age_ready: 10m
 # resource_selector: []  # Watch all node pools (empty list matches all)
 
 hyperfleet_api:
@@ -531,7 +531,7 @@ data:
 
 **Implementation Requirements**:
 - Load Sentinel configuration from YAML file path specified via command-line flag
-- Parse duration strings (backoff_not_ready, backoff_ready, poll_interval, timeout)
+- Parse duration strings (max_age_not_ready, max_age_ready, poll_interval, timeout)
 - Parse resource_type field to determine which HyperFleet resources to fetch
 - Parse message_data configuration for composable CloudEvent data structure
 - Load broker configuration separately (from environment variables or shared ConfigMap)
@@ -564,19 +564,19 @@ data:
 
 **Decision Logic**:
 1. Check resource.status.phase
-2. Select appropriate backoff interval:
-   - If phase == "Ready" → use `backoffReady` (30 minutes)
-   - If phase != "Ready" → use `backoffNotReady` (10 seconds)
-3. Check if backoff expired:
+2. Select appropriate max age interval:
+   - If phase == "Ready" → use `max_age_ready` (30 minutes)
+   - If phase != "Ready" → use `max_age_not_ready` (10 seconds)
+3. Check if max age expired:
    - Get `resource.status.lastUpdated` (updated by adapters every time they check the resource)
-   - Calculate `nextEventTime = lastUpdated + backoff`
+   - Calculate `nextEventTime = lastUpdated + max_age`
    - If `now >= nextEventTime` → publish event
-   - Otherwise → skip (backoff not expired)
+   - Otherwise → skip (max age not expired)
 4. Return decision with reason for logging
 
 **Key Insight**: Adapters post status updates to the HyperFleet API, which updates `status.lastUpdated` every time they check a resource. The Sentinel uses this timestamp to determine when enough time has passed since the last adapter check to warrant publishing another reconciliation event. This creates a feedback loop:
 - Adapter processes resource → Posts status update → Updates `lastUpdated`
-- Sentinel polls resources → Checks `lastUpdated` + backoff → Publishes event if expired
+- Sentinel polls resources → Checks `lastUpdated` + max_age → Publishes event if expired
 - Event triggers adapters → Adapters check preconditions → Post status → Updates `lastUpdated`
 - Loop continues...
 
@@ -698,7 +698,7 @@ message_data:
 1. **Load Configuration**:
    - Load Sentinel configuration from YAML file specified via command-line flag
    - Load broker configuration from environment or shared ConfigMap
-   - Parse backoff intervals, resource selector, message_data, and resource type
+   - Parse max age intervals, resource selector, message_data, and resource type
    - Apply environment variable overrides for sensitive fields
    - Initialize MessagePublisher with broker config
    - Log configuration details and validate all required fields
