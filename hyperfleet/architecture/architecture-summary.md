@@ -200,7 +200,7 @@ cluster_statuses
 
 **Why**:
 - **Centralized Orchestration Logic**: Single component decides "when" to reconcile
-- **Simple Backoff Strategy**: Time-based decisions using status.lastUpdated (updated on every adapter check)
+- **Simple Max Age Strategy**: Time-based decisions using status.lastUpdated (updated on every adapter check)
 - **Horizontal Scalability**: Sharding via label selectors (by region, environment, etc.)
 - **Broker Abstraction**: Pluggable event publishers (GCP Pub/Sub, RabbitMQ, Stub)
 - **Self-Healing**: Continuously retries without manual intervention
@@ -251,11 +251,11 @@ data:
 ```
 FOR EACH resource in FetchResources(resourceType, resourceSelector):
   IF resource.status.phase != "Ready":
-    backoff = maxAgeNotReady (10s)
+    max_age = max_age_not_ready (10s)
   ELSE:
-    backoff = maxAgeReady (30m)
+    max_age = max_age_ready (30m)
 
-  IF now >= resource.status.lastUpdated + backoff:
+  IF now >= resource.status.lastUpdated + max_age:
     event = CreateEvent(resource)
     PublishEvent(broker, event)
 ```
@@ -308,7 +308,7 @@ Subscriptions:
   "data": {
     "resourceType": "clusters",
     "resourceId": "cls-abc-123",
-    "reason": "backoff-expired"
+    "reason": "max-age-expired"
   }
 }
 ```
