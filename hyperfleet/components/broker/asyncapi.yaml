@@ -78,6 +78,8 @@ components:
       allOf:
         - $ref: '#/components/schemas/ObjectReference'
       properties:
+        kind:
+          const: Cluster
         generation:
           type: integer
           minimum: 1
@@ -89,6 +91,8 @@ components:
       allOf:
         - $ref: '#/components/schemas/ObjectReference'
       properties:
+        kind:
+          const: NodePool
         generation:
           type: integer
           minimum: 1
