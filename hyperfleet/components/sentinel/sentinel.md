@@ -627,19 +627,6 @@ data:
 
 4. **Return decision with reason for logging**
 
-**Key Insights**:
-
-1. **Generation-Based Triggering**: The primary trigger is generation mismatch. When a user changes the cluster spec (e.g., scales nodes), `resource.generation` increments. If this is greater than `resource.status.observedGeneration`, the Sentinel immediately publishes a reconciliation event, regardless of max age intervals.
-
-2. **Max Age as Health Checks**: Max age intervals are secondary triggers for periodic health checks when the spec is stable (generation matches observedGeneration).
-
-3. **Feedback Loop**: Adapters post status updates to the HyperFleet API, which updates both `status.lastUpdated` and `status.observedGeneration` every time they check a resource. This creates a feedback loop:
-   - User changes spec → `generation` increments (1 → 2)
-   - Sentinel detects mismatch (generation=2, observedGeneration=1) → Publishes event immediately
-   - Adapter processes resource → Posts status update → Updates `observedGeneration` to 2
-   - Sentinel sees match (generation=2, observedGeneration=2) → Falls back to max age checks
-   - Loop continues with periodic max age checks...
-
 **Implementation Requirements**:
 - Priority-based decision logic: generation check first, then max age
 - Use `resource.generation` and `resource.status.observedGeneration` for spec change detection
@@ -808,7 +795,7 @@ The following test scenarios ensure the Decision Engine correctly implements gen
 **Test 1: Ready cluster with generation mismatch → publish immediately**
 ```
 Given:
-  - Cluster status: Ready
+  - Cluster status.phase: Ready
   - cluster.generation = 2
   - cluster.status.observedGeneration = 1
   - cluster.status.lastUpdated = now() - 5s
@@ -822,7 +809,7 @@ Then:
 **Test 2: Ready cluster with generation match → wait for max age**
 ```
 Given:
-  - Cluster status: Ready
+  - Cluster status.phase: Ready
   - cluster.generation = 2
   - cluster.status.observedGeneration = 2
   - cluster.status.lastUpdated = now() - 5m
@@ -836,7 +823,7 @@ Then:
 **Test 3: Not-Ready cluster with generation mismatch → publish immediately**
 ```
 Given:
-  - Cluster status: Provisioning
+  - Cluster status.phase: NotReady
   - cluster.generation = 3
   - cluster.status.observedGeneration = 2
   - cluster.status.lastUpdated = now() - 2s
@@ -850,7 +837,7 @@ Then:
 **Test 4: Not-Ready cluster with generation match and max age expired → publish**
 ```
 Given:
-  - Cluster status: Provisioning
+  - Cluster status.phase: NotReady
   - cluster.generation = 1
   - cluster.status.observedGeneration = 1
   - cluster.status.lastUpdated = now() - 15s
@@ -863,7 +850,7 @@ Then:
 **Test 5: Not-Ready cluster with generation match and max age not expired → skip**
 ```
 Given:
-  - Cluster status: Provisioning
+  - Cluster status.phase: NotReady
   - cluster.generation = 1
   - cluster.status.observedGeneration = 1
   - cluster.status.lastUpdated = now() - 5s
@@ -877,7 +864,7 @@ Then:
 **Test 6: Ready cluster with generation match and max age expired → publish**
 ```
 Given:
-  - Cluster status: Ready
+  - Cluster status.phase: Ready
   - cluster.generation = 1
   - cluster.status.observedGeneration = 1
   - cluster.status.lastUpdated = now() - 31m
@@ -892,7 +879,7 @@ Then:
 **Test 7: observedGeneration ahead of generation (should not happen, but handle gracefully)**
 ```
 Given:
-  - Cluster status: Ready
+  - Cluster status.phase: Ready
   - cluster.generation = 1
   - cluster.status.observedGeneration = 2
 Then:
@@ -903,7 +890,7 @@ Then:
 **Test 8: Missing observedGeneration (initial state)**
 ```
 Given:
-  - Cluster status: Pending
+  - Cluster status.phase: NotReady
   - cluster.generation = 1
   - cluster.status.observedGeneration = 0 (or nil)
   - cluster.status.lastUpdated = now() - 2s
@@ -913,55 +900,27 @@ Then:
   - Reason: "generation changed - new spec to reconcile"
 ```
 
-**Test 9: Generation increments during reconciliation**
-```
-Given (Time T0):
-  - cluster.generation = 1
-  - cluster.status.observedGeneration = 0
-  - Sentinel publishes event
+### Test Requirements
 
-  (Time T1 - adapter starts processing):
-  - Adapter receives event
-  - User changes spec: cluster.generation = 2
+**Unit Tests** (Decision Engine):
 
-  (Time T2 - adapter completes):
-  - Adapter updates: observedGeneration = 1
-  - cluster.generation = 2
-  - cluster.status.observedGeneration = 1
+The Decision Engine logic should be tested with unit tests covering:
+- All decision paths: generation check → max age check → skip
+- All reasons logged correctly (which condition triggered the event)
+- Edge cases handled gracefully (observedGeneration ahead, missing, etc.)
+- 100% code coverage on the Decision Engine package
 
-  (Time T3 - next Sentinel poll):
-Then:
-  - Decision: PUBLISH
-  - Reason: "generation changed - new spec to reconcile"
-  - Ensures new spec change is reconciled
-```
+**Integration Tests** (End-to-End):
 
-### Integration Test Requirements
+Integration tests should verify the complete Sentinel workflow:
 
-Integration tests MUST verify:
+1. **Event Publishing**: Sentinel successfully publishes CloudEvents to the message broker when decision logic indicates an event should be published
 
-1. **Generation-based triggering takes priority over max age**:
-   - Create cluster with generation=1
-   - Wait for observedGeneration=1
-   - Update cluster spec (generation increments to 2)
-   - Verify Sentinel publishes event immediately (within poll_interval)
-   - Verify reason: "generation changed"
+2. **Generation-based triggering priority**: When a cluster spec changes (generation increments), Sentinel publishes an event immediately regardless of max age intervals
 
-2. **Max age intervals work when generation matches**:
-   - Create Ready cluster with generation=observedGeneration
-   - Verify no events published before max_age_ready expires
-   - Wait for max_age_ready + poll_interval
-   - Verify event published with reason: "max age expired"
+3. **Max age intervals**: When generation matches observedGeneration, Sentinel respects max age intervals before publishing the next event
 
-3. **Adapters update observedGeneration on every check**:
-   - Publish reconciliation event
-   - Verify adapter processes and updates observedGeneration
-   - Verify observedGeneration matches cluster.generation after reconciliation
-
-4. **100% test coverage on Decision Engine**:
-   - All decision paths covered (generation check → max age check → skip)
-   - All reasons logged correctly
-   - Edge cases handled gracefully
+4. **Adapter feedback loop**: Adapters receive events, process resources, and update observedGeneration correctly, which Sentinel reads in subsequent polls
 
 ---
 
