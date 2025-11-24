@@ -1,0 +1,127 @@
+# ============================================================================
+# HyperFleet Environment Configuration Template
+# ============================================================================
+#
+# Centralized environment-specific configuration shared by all adapters.
+#
+# Benefits:
+# - Single source of truth for environment config
+# - No duplication across adapters
+# - Easy to update (change ConfigMap, restart pods)
+#
+# Usage:
+# 1. Copy for each environment: hyperfleet-env-{dev|staging|prod}.yaml
+# 2. Update values for that environment
+# 3. Deploy: kubectl apply -f hyperfleet-env-dev.yaml
+# 4. Adapters reference via: envFrom.configMapRef.name: hyperfleet-environment
+#
+# Configuration Layers:
+# 1. Adapter Logic ConfigMap (per adapter) - event filters, resources
+# 2. Broker ConfigMap (per environment) - broker connection
+# 3. Environment ConfigMap (per environment) - API URL, log level ← THIS FILE
+# 4. Deployment env vars (per adapter) - subscription name
+# 5. Secrets (per environment) - API tokens
+# ============================================================================
+
+---
+# Development Environment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-environment
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet
+    app.kubernetes.io/component: environment-config
+    hyperfleet.io/environment: development
+data:
+  ENVIRONMENT: "development"
+  
+  # HyperFleet API
+  HYPERFLEET_API_BASE_URL: "http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080"
+  HYPERFLEET_API_VERSION: "v1"
+  
+  # Observability
+  LOG_LEVEL: "debug"
+  METRICS_PORT: "8080"
+  HEALTH_PORT: "8081"
+  TRACE_ENABLED: "true"
+  
+  # Feature Flags
+  ENABLE_EXPERIMENTAL_FEATURES: "true"
+  ENABLE_DEBUG_ENDPOINTS: "true"
+
+---
+# Staging Environment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-environment
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet
+    app.kubernetes.io/component: environment-config
+    hyperfleet.io/environment: staging
+data:
+  ENVIRONMENT: "staging"
+  
+  HYPERFLEET_API_BASE_URL: "http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080"
+  HYPERFLEET_API_VERSION: "v1"
+  
+  LOG_LEVEL: "info"
+  METRICS_PORT: "8080"
+  HEALTH_PORT: "8081"
+  TRACE_ENABLED: "true"
+  
+  ENABLE_EXPERIMENTAL_FEATURES: "true"
+  ENABLE_DEBUG_ENDPOINTS: "false"
+
+---
+# Production Environment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperfleet-environment
+  namespace: hyperfleet-system
+  labels:
+    app.kubernetes.io/name: hyperfleet
+    app.kubernetes.io/component: environment-config
+    hyperfleet.io/environment: production
+data:
+  ENVIRONMENT: "production"
+  
+  HYPERFLEET_API_BASE_URL: "http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080"
+  HYPERFLEET_API_VERSION: "v1"
+  
+  LOG_LEVEL: "warn"
+  METRICS_PORT: "8080"
+  HEALTH_PORT: "8081"
+  TRACE_ENABLED: "false"
+  
+  ENABLE_EXPERIMENTAL_FEATURES: "false"
+  ENABLE_DEBUG_ENDPOINTS: "false"
+
+---
+# ============================================================================
+# Usage in Adapter Deployment
+# ============================================================================
+#
+# spec:
+#   template:
+#     spec:
+#       containers:
+#         - name: adapter
+#           envFrom:
+#             - configMapRef:
+#                 name: hyperfleet-environment      # ← Environment config
+#             - configMapRef:
+#                 name: hyperfleet-broker-config    # ← Broker config
+#           env:
+#             - name: SUBSCRIPTION_NAME             # ← Adapter-specific
+#               value: "validation-adapter-sub"
+#             - name: HYPERFLEET_API_TOKEN          # ← Secret
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: hyperfleet-api-token
+#                   key: token
+# ============================================================================
