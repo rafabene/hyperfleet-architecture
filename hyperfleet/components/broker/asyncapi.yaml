@@ -18,7 +18,7 @@ components:
       examples:
         - payload:
             specversion: "1.0"
-            type: "com.hyperfleet.cluster.reconcile.v1"
+            type: "com.redhat.hyperfleet.cluster.reconcile.v1"
             source: "sentinel"
             id: "00000000-0000-0000-0000-000000000000"
             time: "2025-10-23T12:00:00Z"
@@ -39,7 +39,7 @@ components:
       examples:
         - payload:
             specversion: "1.0"
-            type: "com.hyperfleet.nodepool.reconcile.v1"
+            type: "com.redhat.hyperfleet.nodepool.reconcile.v1"
             source: "sentinel"
             id: "00000000-0000-0000-0000-000000000000"
             time: "2025-10-23T12:00:00Z"
@@ -109,7 +109,7 @@ components:
         - $ref: '#/components/schemas/CloudEvent'
       properties:
         type:
-          const: com.hyperfleet.cluster.reconcile.v1
+          const: com.redhat.hyperfleet.cluster.reconcile.v1
         data:
           $ref: '#/components/schemas/ReconcileCluster'
      
@@ -119,6 +119,6 @@ components:
         - $ref: '#/components/schemas/CloudEvent'
       properties:
         type:
-          const: com.hyperfleet.nodepool.reconcile.v1
+          const: com.redhat.hyperfleet.nodepool.reconcile.v1
         data:
           $ref: '#/components/schemas/ReconcileNodePool'
