@@ -306,9 +306,10 @@ Subscriptions:
   "time": "2025-10-21T14:30:00Z",
   "datacontenttype": "application/json",
   "data": {
-    "resourceType": "clusters",
-    "resourceId": "cls-abc-123",
-    "reason": "max-age-expired"
+    "kind": "Cluster",
+    "id": "cls-abc-123",
+    "href": "/clusters/cls-abc-123",
+    "generation": 1
   }
 }
 ```
@@ -738,8 +739,9 @@ hyperfleet_api:
   timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
+  href: .href
   generation: .generation
   region: .metadata.labels.region
 
