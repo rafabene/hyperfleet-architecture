@@ -154,7 +154,7 @@ clusters
   - id (uuid, primary key)
   - name (string)
   - spec (jsonb) - cluster configuration
-  - status (jsonb) - aggregated status with phase and lastUpdated
+  - status (jsonb) - aggregated status with phase and last_updated_time
   - labels (jsonb) - for sharding and filtering
   - created_at (timestamp)
   - updated_at (timestamp)
@@ -164,14 +164,14 @@ cluster_statuses
   - cluster_id (uuid, foreign key)
   - adapter_statuses (jsonb) - array of adapter status objects, each containing:
     - adapter (string) - e.g., "validation", "dns", "controlplane"
-    - observedGeneration (integer) - cluster generation this adapter reconciled
+    - observed_generation (integer) - cluster generation this adapter reconciled
     - conditions (jsonb array) - minimum 3 required:
       - Available: work completed successfully?
       - Applied: resources created successfully?
       - Health: any unexpected errors?
     - data (jsonb, optional) - adapter-specific structured data
     - metadata (jsonb, optional) - additional metadata
-    - lastUpdated (timestamp) - when this adapter status was last updated
+    - last_updated_time (timestamp) - when this adapter status was last updated
   - last_updated (timestamp) - when ClusterStatus was last updated
   - created_at (timestamp)
 ```
@@ -185,10 +185,10 @@ cluster_statuses
   - API preserves `created_at` (first report time) and updates `updated_at` on each report
   - API calculates `last_transition_time` when adapter's `Available` condition changes
 - **Timestamp Calculation**:
-  - `adapters[].lastUpdated`: Set by each adapter in their status report (when they last checked)
-  - `cluster.status.lastUpdated`: Calculated by API as `min(adapters[].lastUpdated)` - represents confidence of cluster status
+  - `adapters[].last_updated_time`: Set by each adapter in their status report (when they last checked)
+  - `cluster.status.last_updated_time`: Calculated by API as `min(adapters[].last_updated_time)` - represents confidence of cluster status
   - Using the OLDEST adapter timestamp ensures Sentinel triggers reconciliation when ANY adapter is stale
-- Each adapter has `observedGeneration` to track which cluster generation it reconciled
+- Each adapter has `observed_generation` to track which cluster generation it reconciled
 - Labels stored as JSONB for flexible querying by Sentinel shards
 - See [Status Guide](../docs/status-guide.md) for complete status contract details
 
@@ -200,7 +200,7 @@ cluster_statuses
 
 **Why**:
 - **Centralized Orchestration Logic**: Single component decides "when" to reconcile
-- **Simple Max Age Strategy**: Time-based decisions using status.lastUpdated (updated on every adapter check)
+- **Simple Max Age Strategy**: Time-based decisions using status.last_updated_time (updated on every adapter check)
 - **Horizontal Scalability**: Sharding via label selectors (by region, environment, etc.)
 - **Broker Abstraction**: Pluggable event publishers (GCP Pub/Sub, RabbitMQ, Stub)
 - **Self-Healing**: Continuously retries without manual intervention
@@ -209,7 +209,7 @@ cluster_statuses
 1. **Fetch Resources**: Poll HyperFleet API for resources matching shard selector
 2. **Decision Logic**: Determine if resource needs reconciliation based on:
    - `status.phase` (Ready vs Not Ready)
-   - `status.lastUpdated` (time since last adapter check)
+   - `status.last_updated_time` (time since last adapter check)
    - Configured max age intervals (10s for not-ready, 30m for ready)
 3. **Event Creation**: Create reconciliation event with resource context
 4. **Event Publishing**: Publish event to configured message broker
@@ -255,7 +255,7 @@ FOR EACH resource in FetchResources(resourceType, resourceSelector):
   ELSE:
     max_age = max_age_ready (30m)
 
-  IF now >= resource.status.lastUpdated + max_age:
+  IF now >= resource.status.last_updated_time + max_age:
     event = CreateEvent(resource)
     PublishEvent(broker, event)
 ```
@@ -359,34 +359,34 @@ Using cluster creation as an example
    Payload example:
    {
      "adapter": "dns",                           // Identifies which adapter is reporting
-     "observedGeneration": 1,
+     "observed_generation": 1,
      "conditions": [
        {
          "type": "Available",
          "status": "True",
          "reason": "AllRecordsCreated",
          "message": "All DNS records created and verified",
-         "lastTransitionTime": "2025-10-21T14:35:00Z"
+         "last_transition_time": "2025-10-21T14:35:00Z"
        },
        {
          "type": "Applied",
          "status": "True",
          "reason": "JobLaunched",
          "message": "DNS Job created successfully",
-         "lastTransitionTime": "2025-10-21T14:33:00Z"
+         "last_transition_time": "2025-10-21T14:33:00Z"
        },
        {
          "type": "Health",
          "status": "True",
          "reason": "NoErrors",
          "message": "DNS adapter executed without errors",
-         "lastTransitionTime": "2025-10-21T14:35:00Z"
+         "last_transition_time": "2025-10-21T14:35:00Z"
        }
      ],
      "data": {
        "recordsCreated": ["api.cluster.example.com", "*.apps.cluster.example.com"]
      },
-     "lastUpdated": "2025-10-21T14:35:00Z"      // When adapter checked (now())
+     "last_updated_time": "2025-10-21T14:35:00Z"      // When adapter checked (now())
    }
 
    API response: 200 OK (whether first report or update)
@@ -520,7 +520,7 @@ sequenceDiagram
     participant Job as Kubernetes Job
 
     User->>API: POST /clusters
-    API->>DB: INSERT cluster<br/>status.phase = "Not Ready" (aggregated)<br/>status.adapters = []<br/>status.lastUpdated = now()
+    API->>DB: INSERT cluster<br/>status.phase = "Not Ready" (aggregated)<br/>status.adapters = []<br/>status.last_updated_time = now()
     DB-->>API: cluster created
     API-->>User: 201 Created
 
@@ -531,7 +531,7 @@ sequenceDiagram
     DB-->>API: [cluster list]
     API-->>Sentinel: [{id, status, ...}]
 
-    Note over Sentinel: Decision: phase != "Ready" &&<br/>lastUpdated + 10s < now
+    Note over Sentinel: Decision: phase != "Ready" &&<br/>last_updated_time + 10s < now
 
     Sentinel->>Broker: Publish event<br/>{resourceType: "clusters",<br/>resourceId: "cls-123"}
 
@@ -549,15 +549,15 @@ sequenceDiagram
     Job->>Job: Execute validation logic
     Job-->>Adapter: Job Complete
 
-    Adapter->>API: POST /clusters/cls-123/statuses<br/>{adapter: "validation",<br/>observedGeneration: 1,<br/>conditions: [Available, Applied, Health],<br/>lastUpdated: now()<br/>}
-    API->>DB: INSERT INTO cluster_statuses<br/>UPDATE clusters.status.lastUpdated = min(adapters[].lastUpdated)<br/>UPDATE clusters.status (aggregate from conditions)
+    Adapter->>API: POST /clusters/cls-123/statuses<br/>{adapter: "validation",<br/>observed_generation: 1,<br/>conditions: [Available, Applied, Health],<br/>last_updated_time: now()<br/>}
+    API->>DB: INSERT INTO cluster_statuses<br/>UPDATE clusters.status.last_updated_time = min(adapters[].last_updated_time)<br/>UPDATE clusters.status (aggregate from conditions)
     DB-->>API: ClusterStatus saved
     API-->>Adapter: 201 Created
 
     Note over Sentinel: Next poll cycle (10s later)
 
     Sentinel->>API: GET /clusters
-    API-->>Sentinel: [{id, status.lastUpdated = now(), ...}]
+    API-->>Sentinel: [{id, status.last_updated_time = now(), ...}]
 
     Note over Sentinel: Decision: Create event again<br/>(cycle continues for other adapters)
 
@@ -579,7 +579,7 @@ sequenceDiagram
 
     Note over Adapter: Adapter always POSTs<br/>API handles upsert internally
 
-    Adapter->>API: POST /clusters/{id}/statuses<br/>{adapter: "dns",<br/>observedGeneration: 1,<br/>conditions: [...],<br/>lastUpdated: now()}
+    Adapter->>API: POST /clusters/{id}/statuses<br/>{adapter: "dns",<br/>observed_generation: 1,<br/>conditions: [...],<br/>last_updated_time: now()}
 
     Note over API,DB: API decides: INSERT or UPDATE
 
@@ -589,7 +589,7 @@ sequenceDiagram
         API->>DB: UPDATE adapter in cluster_statuses.adapter_statuses<br/>Preserve created_at, update updated_at
     end
 
-    API->>DB: UPDATE clusters.status<br/>- Aggregate phase from all adapter conditions<br/>- Update lastUpdated = min(adapters[].lastUpdated)<br/>- Build adapters summary array
+    API->>DB: UPDATE clusters.status<br/>- Aggregate phase from all adapter conditions<br/>- Update last_updated_time = min(adapters[].last_updated_time)<br/>- Build adapters summary array
     DB-->>API: ClusterStatus updated
     API-->>Adapter: 200 OK
 
@@ -597,7 +597,7 @@ sequenceDiagram
 
     Sentinel->>API: GET /clusters
     API->>DB: SELECT clusters
-    DB-->>API: [cluster list with updated lastUpdated]
+    DB-->>API: [cluster list with updated last_updated_time]
     API-->>Sentinel: [{id, status, ...}]
 
     Note over Sentinel: Decision: Create event<br/>if max-age expired
@@ -656,7 +656,7 @@ The architecture uses **Kubernetes-style Conditions** instead of a single `phase
 // Multi-dimensional status - captures full state
 {
   "adapter": "dns",
-  "observedGeneration": 1,
+  "observed_generation": 1,
   "conditions": [
     {
       "type": "Available",
@@ -686,7 +686,7 @@ The architecture uses **Kubernetes-style Conditions** instead of a single `phase
 - **Enables aggregation**: Cluster `status.phase` computed from all adapter conditions
 - **Extensible**: Adapters can add custom conditions beyond the 3 required
 - **Kubernetes-native**: Familiar pattern for Kubernetes operators
-- **Generation tracking**: `observedGeneration` prevents stale status issues
+- **Generation tracking**: `observed_generation` prevents stale status issues
 
 **Aggregation:**
 The cluster's aggregated `status.phase` is computed from adapter conditions:
