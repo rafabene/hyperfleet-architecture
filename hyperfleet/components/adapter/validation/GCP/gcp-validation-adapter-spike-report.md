@@ -3,7 +3,7 @@
 **Prepared By**: dawang@redhat.com  
 **Date**: November 21, 2025  
 **Status**: Reviewing  
-**Reviewers**:
+**Reviewers**: amarin@redhat.com, croche@redhat.com
 
 ---
 
@@ -252,23 +252,26 @@ for _, zone := range requestedZones {
 
 ### 4.1 Kubernetes Job Manifest Template
 
-First, the validation should run successfully as a Kubernetes Job on the GKE cluster, using a two-container pattern:
-- **Validator Container**: Runs GCP validation checks, writes results to shared volume
-- **Reporter Sidecar**: Reads results from shared volume, updates Job status/annotation
+The validation runs as a Kubernetes Job on the GKE cluster using a two-container pattern. To minimize management overhead and avoid dynamic Workload Identity Federation (WIF) configuration changes per cluster, we use a **Shared Platform Identity** model (TBD).
 
-Here's the example YAML of the GCP validation job.
+- **Validator Container**: Runs GCP validation checks using baked-in rules and environment variables, writes results to shared volume.
+- **Reporter Sidecar**: Reads results from shared volume, updates Job status.
+
+**Pre-requisite**: A shared Kubernetes Service Account `gcp-validator-sa` must exist in the namespace, configured with WIF (see Section 4.3).
+
+Here's the example YAML of the GCP validation job:
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: gcp-validate-{{.cluster_id}}
+  name: gcp-validate-{{.cluster_id}}-{{.generation}}
   namespace: {{.namespace}}
   labels:
     app: gcp-validator
     cluster-id: "{{.cluster_id}}"
   annotations:
-    cluster-name: "{{.cluster_name}}"
+    generation: "{{.generation}}"
     created-by: "adapter-framework"
 spec:
   template:
@@ -277,18 +280,13 @@ spec:
         app: gcp-validator
         cluster-id: "{{.cluster_id}}"
     spec:
+      # Use the shared pre-configured Service Account
+      # It has both WIF configuration (for Validator) and RBAC permissions (for Reporter)
       serviceAccountName: gcp-validator-sa
       
-      # Support Workload Identity
-      # Workload Identity annotation (if enabled)=
-      annotations:
-        iam.gke.io/gcp-service-account: "{{.gcp_sa_email}}"
-      
       containers:
-      #
       # Container 1: GCP Validator
       # Performs validation checks and writes results to shared volume
-      #
       - name: validator
         image: "{{.registry}}/gcp-validator:{{.version}}"
         
@@ -299,23 +297,27 @@ spec:
         - name: CLUSTER_NAME
           value: "{{.cluster_name}}"
         
-        # Configuration paths
-        - name: CLUSTER_CONFIG_PATH
-          value: "/etc/cluster-config/cluster.json"
-        - name: VALIDATION_RULES_PATH
-          value: "/etc/validation-rules/validation-rules.yaml"
+        # Cluster-Specific Configuration (Extracted and passed as Env Vars)
+        # Refer to https://github.com/openshift-hyperfleet/hyperfleet-api-spec/tree/main
+        - name: GCP_PROJECT_ID
+          value: "{{.gcp_project_id}}"
+        - name: GCP_REGION
+          value: "{{.gcp_region}}"
+        # TBD after further discussion about WIF
+        # - name: GCP_DEPLOYER_SA_EMAIL
+        #   value: "{{.gcp_deployer_sa_email}}"
+          
+        # Validation Logic Configuration
+        # Comma-separated list of checks to perform.
+        # Common rules (APIs, quotas, etc.) are integrated into the image.
+        - name: VALIDATION_CHECKS
+          value: "api_enablement,vpc_subnet_existence,service_account_existence,region_availability"
         
         # Results output path (shared with reporter sidecar)
         - name: RESULTS_OUTPUT_PATH
           value: "/results/validation-report.json"
         
         volumeMounts:
-        - name: cluster-config
-          mountPath: /etc/cluster-config
-          readOnly: true
-        - name: validation-rules
-          mountPath: /etc/validation-rules
-          readOnly: true
         - name: results
           mountPath: /results
           readOnly: false  # Validator writes results here
@@ -328,10 +330,8 @@ spec:
             memory: "512Mi"
             cpu: "500m"
       
-      #
       # Container 2: Status Reporter Sidecar (Reusable across all validators)
       # Waits for validation results, updates Job status, creates events
-      #
       - name: status-reporter
         image: "{{.registry}}/validation-status-reporter:{{.reporter_version}}"
         
@@ -347,8 +347,6 @@ spec:
           value: "/results/validation-report.json"
         
         # Reporter behavior
-        - name: WAIT_TIMEOUT
-          value: "300"  # Wait up to 5 minutes for results
         - name: POLL_INTERVAL
           value: "2"    # Check for results every 2 seconds
         
@@ -366,169 +364,90 @@ spec:
             cpu: "100m"
       
       volumes:
-      - name: cluster-config
-        configMap:
-          name: cluster-config-{{.cluster_id}}
-      - name: validation-rules
-        configMap:
-          name: gcp-validation-rules
       - name: results
         emptyDir: {}  # Shared volume for result communication
       
       restartPolicy: Never
   
   # Job control
-  backoffLimit: 2  # Retry up to 2 times on failure
+  backoffLimit: 0  # Disable retries. The Job is marked Failed as soon as the Pod fails once.
   activeDeadlineSeconds: 300  # 5 minute timeout
-  ttlSecondsAfterFinished: 3600  # Clean up after 1 hour
+
 ```
 
-### 4.2 ConfigMap 1: Cluster-Specific Configuration
+### 4.2 Configuration Strategy
 
-**Purpose**: Contains cluster-specific parameters for a single cluster validation.
+We use Environment Variables to simplify management.
 
-**Lifecycle**: Created by adapter framework per cluster, deleted after validation completes.
+**Cluster-Specific Configuration**:
+The adapter framework extracts relevant fields from the cluster definition and passes them directly to the container:
+- `GCP_PROJECT_ID`: Target project for validation.
+- `GCP_REGION`: Target region for resource checks.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cluster-config-{{.cluster_id}}
-  namespace: {{.namespace}}
-  labels:
-    cluster-id: "{{.cluster_id}}"
-data:
-  # Refer to https://github.com/openshift-hyperfleet/hyperfleet-api-spec/tree/main
-  cluster.json: |
-    {
-      "cluster_id": "{{.cluster_id}}",
-      "cluster_name": "{{.cluster_name}}",
-      
-      "gcp": {
-        "project_id": "{{.gcp_project_id}}",
-        "region": "{{.gcp_region}}",
-        ...
-        }
-      }
-    }
-```
+**Shared Validation Rules**:
+- **Integrated Configuration**: Static validation rules (e.g., list of required APIs, quota limits, IAM roles, error messages) are built directly into the validator image. This ensures consistency and simplifies updates (via image tags).
+- **Runtime Control**: The `VALIDATION_CHECKS` environment variable controls which validators are active. This allows flexible execution without changing the image or mounting files.
 
-### 4.3 ConfigMap 2: Shared Validation Rules
+### 4.3 Service Account and Permissions Configuration
 
-**Purpose**: Defines validation criteria, thresholds, and rules shared across all GCP validations.
+The `gcp-validator-sa` Service Account acts as the central identity, requiring two distinct sets of permissions:
 
-**Lifecycle**: Deployed once per environment, updated via configuration management.
+1.  **Kubernetes Permissions (RBAC)**: Allows the `status-reporter` sidecar to update the Job status.
+2.  **GCP Permissions (Workload Identity)**: Allows the `validator` container to impersonate the customer's Deployer Service Account.
+
+#### 4.3.1 Kubernetes RBAC (Status Reporter)
+
+This RBAC configuration grants the `gcp-validator-sa` permission to update the status of Jobs in its namespace.
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gcp-validation-rules
-  namespace: {{.namespace}}
-  labels:
-    config-type: validation-rules
-    provider: gcp
-data:
-  validation-rules.yaml: |
-    # Provider configuration
-    provider: gcp
-    
-    # Global validation settings
-    validation:
-      enabled: true
-      timeout_seconds: 300
-      
-      # Validation checks to perform
-      checks:
-        - api_enablement
-        - vpc_subnet_existence
-        - service_account_existence
-        - region_availability
-    
-    # Required GCP APIs
-    required_apis:
-      - name: "compute.googleapis.com"
-        display_name: "Compute Engine API"
-      - name: "iam.googleapis.com"
-        display_name: "Identity and Access Management API"
-      - name: "cloudresourcemanager.googleapis.com"
-        display_name: "Cloud Resource Manager API"
-      - name: "serviceusage.googleapis.com"
-        display_name: "Service Usage API"
-      - name: "monitoring.googleapis.com"
-        display_name: "Cloud Monitoring API"
-    
-    # Quota validation rules
-    quota_validation:
-      # Buffer to reserve beyond calculated requirement
-      buffer_percentage: 20
-      
-      # Quota metrics to validate
-      metrics:
-        - metric: "CPUS"
-          quota_name: "compute.googleapis.com/cpus"
-          minimum_available: 8
-          critical: true
-        - metric: "DISKS_TOTAL_GB"
-          quota_name: "compute.googleapis.com/disks_total_gb"
-          minimum_available: 500
-          critical: false
-        - metric: "IN_USE_ADDRESSES"
-          quota_name: "compute.googleapis.com/in_use_addresses"
-          minimum_available: 10
-          critical: false
-    
-    # IAM validation rules
-    iam_validation:
-      required_roles:
-        - name: "roles/compute.admin"
-        - name: "roles/iam.serviceAccountUser"
-        - name: "roles/logging.logWriter"
-        - name: "roles/monitoring.metricWriter"
-    
-    # Error messages and remediation guidance
-    error_messages:
-      api_not_enabled: |
-        API {api_name} is not enabled in project {project_id}.
-        
-        Remediation:
-        gcloud services enable {api_name} --project={project_id}
-      
-      quota_exceeded: |
-        Insufficient {quota_metric} quota in region {region}.
-        Required: {required} (including {buffer_percentage}% buffer)
-        Available: {available} (Limit: {limit}, Current Usage: {usage})
-        
-        Remediation:
-        Request quota increase: https://console.cloud.google.com/iam-admin/quotas
-
-      ...
-```
-
-### 4.4 Workload Identity Configuration
-
-Using GKE Workload Identity:
-
-```yaml
-# Kubernetes Service Account
+# 1. Service Account (Static)
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: gcp-validator-sa
   namespace: {{.namespace}}
   annotations:
-    iam.gke.io/gcp-service-account: "{{.gcp_sa_email}}"
+    # Static link to the Platform's GCP Validator Identity
+    # TBD after further discussion about WIF configuration
+    iam.gke.io/gcp-service-account: "TBD"
 
 ---
-# GCP IAM Policy Binding
-# Execute via gcloud (not K8s manifest)
-# gcloud iam service-accounts add-iam-policy-binding {{.gcp_sa_email}} \
-#   --role roles/iam.workloadIdentityUser \
-#   --member "serviceAccount:{{.gcp_project_id}}.svc.id.goog[{{.namespace}}/gcp-validator-sa]"
+# 2. RBAC Role: Allow updating Job status
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-status-updater
+  namespace: {{.namespace}}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs/status"]
+    verbs: ["patch", "update", "get"]
+
+---
+# 3. RBAC RoleBinding: Bind SA to Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-status-updater-binding
+  namespace: {{.namespace}}
+subjects:
+  - kind: ServiceAccount
+    name: gcp-validator-sa
+    namespace: {{.namespace}}
+roleRef:
+  kind: Role
+  name: job-status-updater
+  apiGroup: rbac.authorization.k8s.io
 ```
 
+#### 4.3.2 GCP IAM Configuration (Validator)
 
-### 4.5 GCP Validation Adapter Configuration
+> **Note**: The detailed WIF configuration strategy is **TBD after further discussion**.
+
+This section will define how the platform service account is authorized to access customer projects (e.g., via impersonation or direct access).
+
+
+### 4.4 GCP Validation Adapter Configuration
 
 After the Kubernetes Job for GCP validation completes, configure the GCP Validation Adapter according to the [latest adapter configuration specification](https://github.com/openshift-hyperfleet/architecture/tree/main/hyperfleet/components/adapter/framework). This ensures the configuration is properly recognized and processed by the adapter framework.
 
@@ -541,7 +460,7 @@ After the Kubernetes Job for GCP validation completes, configure the GCP Validat
 The **Status Reporter Sidecar** is a **cloud-agnostic**, reusable container that handles Job status updates for any validation container. This separation provides:
 
 1. **Reusability**: Same sidecar for GCP, AWS, Azure, or any custom validator
-2. **Separation of Concerns**: Validators focus on validation logic, reporter handles K8s integration
+2. **Separation of Concerns**: Validators focus on validation logic, reporter handles K8s integration (requires RBAC)
 3. **Standardization**: Consistent status reporting format across all validators
 4. **Simplicity**: Validators don't need K8s client libraries
 
@@ -625,7 +544,7 @@ Here's an k8s yaml example to define a status-updater container using kubectl to
           echo "Status update completed!"
 ```
 
-**Note:**: It requires related RBAC permissions configuration to update the job status. More details refer to [this](https://gitlab.cee.redhat.com/amarin/update-job-status/-/blob/main/job.yaml).
+**Note:** It requires related RBAC permissions configuration (as defined in Section 4.3) to update the job status. More details refer to [this](https://gitlab.cee.redhat.com/amarin/update-job-status/-/blob/main/job.yaml).
 
 ---
 
@@ -700,7 +619,7 @@ After MVP is approved and working, implement additional features iteratively.
 **Enhanced Features**:
 - Enhanced error messages with remediation guidance (gcloud commands)
 - Parallel validator execution for performance
-- Prometheus metrics export
+- Prometheus metrics export, including validation_job_failures_total, validation_requests_total, validation_duration, etc.
 - E2E test suite
 - Performance optimization
 - Security scanning
@@ -789,6 +708,3 @@ Based on this spike, implementation tickets should have the following acceptance
 - [Job Status and Conditions](https://kubernetes.io/docs/concepts/workloads/controllers/job/#job-status)
 
 ---
-
-
-
