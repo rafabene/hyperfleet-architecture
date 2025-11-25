@@ -600,7 +600,7 @@ subscriber.Subscribe(ctx, func(ctx context.Context, msg []byte) error {
     },
     "data": { ... },
     "observed_generation": "5",
-    "lastUpdated": "2025-01-01T00:00:00Z"
+    "observed_time": "2025-01-01T00:00:00Z"
   }
   ```
 - When preconditions fail, conditions will typically evaluate to False, allowing proper status reporting

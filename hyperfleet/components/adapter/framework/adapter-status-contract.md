@@ -46,77 +46,74 @@ Always POST the adapter status in this structure:
 
 ```json
 {
-  "adapterStatuses": [
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:00:05Z",
+  "conditions": [
     {
-      "adapter": "validation",
-      "observedGeneration": 1,
-      "conditions": [
-        {
-          "type": "Available",
-          "status": "False",
-          "reason": "JobRunning",
-          "message": "Job is executing",
-          "lastTransitionTime": "2025-10-17T12:00:05Z"
-        },
-        {
-          "type": "Applied",
-          "status": "True",
-          "reason": "JobLaunched",
-          "message": "Job created successfully",
-          "lastTransitionTime": "2025-10-17T12:00:05Z"
-        },
-        {
-          "type": "Health",
-          "status": "True",
-          "reason": "NoErrors",
-          "message": "Adapter is healthy",
-          "lastTransitionTime": "2025-10-17T12:00:05Z"
-        }
-      ],
-      "data": {
-        "validationResults": {
-          "route53ZoneFound": true,
-          "s3BucketAccessible": true
-        }
-      },
-      "metadata": {
-        "jobName": "validation-cls-123-gen1"
-      },
-      "lastUpdated": "2025-10-17T12:00:05Z"
+      "type": "Available",
+      "status": "False",
+      "reason": "JobRunning",
+      "message": "Job is executing"
+    },
+    {
+      "type": "Applied",
+      "status": "True",
+      "reason": "JobLaunched",
+      "message": "Job created successfully"
+    },
+    {
+      "type": "Health",
+      "status": "True",
+      "reason": "NoErrors",
+      "message": "Adapter is healthy"
     }
-  ]
+  ],
+  "data": {
+    "validationResults": {
+      "route53ZoneFound": true,
+      "s3BucketAccessible": true
+    }
+  },
+  "metadata": {
+    "job_name": "validation-cls-123-gen1"
+  }
 }
 ```
 
 **Notes**:
-- The API will merge this adapter status into the existing ClusterStatus if it exists
-- If no ClusterStatus exists, the API will create one with this adapter status
-- Other adapter statuses in the ClusterStatus are preserved (not affected by this POST)
+- The API will upsert this adapter status (create or update based on adapter name)
+- Other adapter statuses for this cluster are preserved (not affected by this POST)
+- API will set `created_time` and `last_report_time` automatically
+- API will add `last_transition_time` to each condition automatically
 
 ---
 
 ## Required Fields
 
-### Adapter Status Object
+### Adapter Status Request Fields
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `adapter` | **YES** | string | Adapter name (e.g., "validation", "dns", "placement") |
-| `observedGeneration` | **YES** | integer | Cluster generation this adapter has reconciled |
+| `observed_generation` | **YES** | integer | Cluster generation this adapter has reconciled |
+| `observed_time` | **YES** | timestamp | When adapter observed this resource state (RFC3339, API uses this to set `last_report_time`) |
 | `conditions` | **YES** | array | **Minimum 3 conditions** (Available, Applied, Health) |
 | `data` | NO | object | Adapter-specific structured data (optional) |
 | `metadata` | NO | object | Additional metadata (optional) |
-| `lastUpdated` | **YES** | timestamp | When this adapter status was last updated (RFC3339) |
 
-### Condition Object
+**Note**: API-managed fields like `created_time`, `last_report_time`, and condition `last_transition_time` are NOT included in the request - they are set by the API automatically.
+
+### Condition Request Fields
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `type` | **YES** | string | Condition type: "Available", "Applied", or "Health" |
-| `status` | **YES** | string | "True" or "False" |
-| `reason` | **YES** | string | Short reason code (e.g., "JobSucceeded", "PreconditionsNotMet") |
-| `message` | **YES** | string | Human-readable message |
-| `lastTransitionTime` | **YES** | timestamp | When condition last transitioned (RFC3339) |
+| `status` | **YES** | string | "True", "False", or "Unknown" |
+| `reason` | NO | string | Short reason code (e.g., "JobSucceeded", "PreconditionsNotMet") |
+| `message` | NO | string | Human-readable message |
+
+**Note**: The `last_transition_time` field is NOT sent in the request - it is added by the API automatically when the condition status changes.
 
 ---
 
@@ -142,14 +139,13 @@ Every adapter status update **MUST** include these three conditions:
 - `PreconditionsNotMet` - Preconditions failed, resources not created
 - `ResourceCreationFailed` - Failed to create resources
 
-**Example**:
+**Example** (in request):
 ```json
 {
   "type": "Applied",
   "status": "True",
   "reason": "ResourcesCreated",
-  "message": "All Kubernetes resources created successfully",
-  "lastTransitionTime": "2025-10-17T12:00:05Z"
+  "message": "All Kubernetes resources created successfully"
 }
 ```
 
@@ -173,14 +169,13 @@ Every adapter status update **MUST** include these three conditions:
 - `JobFailed` - Job/workload failed
 - `PreconditionsNotMet` - Cannot start (preconditions not met)
 
-**Example**:
+**Example** (in request):
 ```json
 {
   "type": "Available",
   "status": "True",
   "reason": "JobSucceeded",
-  "message": "Validation Job completed successfully",
-  "lastTransitionTime": "2025-10-17T12:02:00Z"
+  "message": "Validation Job completed successfully"
 }
 ```
 
@@ -203,14 +198,13 @@ Every adapter status update **MUST** include these three conditions:
 - `KubernetesAPIFailure` - Failed to connect to Kubernetes API
 - `ResourceFailure` - Resource failures detected
 
-**Example**:
+**Example** (in request):
 ```json
 {
   "type": "Health",
   "status": "True",
   "reason": "AllChecksPass",
-  "message": "All health checks passed",
-  "lastTransitionTime": "2025-10-17T12:00:05Z"
+  "message": "All health checks passed"
 }
 ```
 
@@ -224,9 +218,12 @@ Based on the adapter workflow state, adapters report status using these patterns
 
 **When**: Preconditions fail, adapter cannot act
 
-**Status**:
+**Request Payload**:
 ```json
 {
+  "adapter": "dns",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:00:00Z",
   "conditions": [
     {
       "type": "Applied",
@@ -254,9 +251,12 @@ Based on the adapter workflow state, adapters report status using these patterns
 
 **When**: Resources didn't exist, adapter created them
 
-**Status**:
+**Request Payload**:
 ```json
 {
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:00:10Z",
   "conditions": [
     {
       "type": "Applied",
@@ -284,9 +284,12 @@ Based on the adapter workflow state, adapters report status using these patterns
 
 **When**: Resources exist, postconditions not met yet
 
-**Status**:
+**Request Payload**:
 ```json
 {
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:01:00Z",
   "conditions": [
     {
       "type": "Applied",
@@ -314,9 +317,12 @@ Based on the adapter workflow state, adapters report status using these patterns
 
 **When**: Resources exist, postconditions met, workload succeeded
 
-**Status**:
+**Request Payload**:
 ```json
 {
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:02:00Z",
   "conditions": [
     {
       "type": "Applied",
@@ -344,9 +350,12 @@ Based on the adapter workflow state, adapters report status using these patterns
 
 **When**: Resources exist, postconditions met, but workload failed
 
-**Status**:
+**Request Payload**:
 ```json
 {
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:02:30Z",
   "conditions": [
     {
       "type": "Applied",
@@ -374,9 +383,12 @@ Based on the adapter workflow state, adapters report status using these patterns
 
 **When**: Adapter encountered an internal error
 
-**Status**:
+**Request Payload**:
 ```json
 {
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:00:15Z",
   "conditions": [
     {
       "type": "Applied",
@@ -489,7 +501,7 @@ The `metadata` field allows adapters to report additional metadata:
 **Structure**: Free-form JSON object
 
 **Common Fields**:
-- `jobName` - Name of Kubernetes Job/workload
+- `job_name` - Name of Kubernetes Job/workload
 - `executionTime` - Time taken to execute
 - `resourceNames` - Names of created resources
 - `generation` - Generation of resources
@@ -498,7 +510,7 @@ The `metadata` field allows adapters to report additional metadata:
 ```json
 {
   "metadata": {
-    "jobName": "validation-cls-123-gen1",
+    "job_name": "validation-cls-123-gen1",
     "executionTime": "115s",
     "resourceNames": [
       "validation-cls-123-gen1",
@@ -616,15 +628,38 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 Content-Type: application/json
 
 {
-  "adapterStatuses": [
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-10-17T12:00:05Z",
+  "conditions": [
     {
-      "adapter": "validation",
-      "observedGeneration": 1,
-      "conditions": [...],
-      "data": {...},
-      "lastUpdated": "2025-10-17T12:00:05Z"
+      "type": "Available",
+      "status": "True",
+      "reason": "JobSucceeded",
+      "message": "Validation completed successfully"
+    },
+    {
+      "type": "Applied",
+      "status": "True",
+      "reason": "ResourcesCreated",
+      "message": "All resources applied"
+    },
+    {
+      "type": "Health",
+      "status": "True",
+      "reason": "NoErrors",
+      "message": "Adapter is healthy"
     }
-  ]
+  ],
+  "data": {
+    "validation_results": {
+      "total_tests": 30,
+      "passed": 30
+    }
+  },
+  "metadata": {
+    "job_name": "validation-cls-123-gen1"
+  }
 }
 ```
 
@@ -664,13 +699,14 @@ Messages should be human-readable and provide context:
 - ✅ "Validation Job completed successfully after 115 seconds"
 - ❌ "Done"
 
-### 4. Update lastTransitionTime Correctly
+### 4. Let API Manage Timestamps
 
-Only update `lastTransitionTime` when the condition status actually changes (True ↔ False).
+Don't send `last_transition_time` or `last_report_time` in requests - the API manages these automatically based on `observed_time` and condition status changes.
 
-### 5. Report observedGeneration
+### 5. Always Report observed_generation and observed_time
 
-Always report the cluster generation you've reconciled to enable generation tracking.
+- `observed_generation`: The cluster generation you've reconciled
+- `observed_time`: When you observed the resource state (use current timestamp)
 
 ### 6. Use Data Field for Structured Information
 
@@ -683,6 +719,10 @@ Report adapter errors with `Health=False` and appropriate error messages.
 ### 8. Always Use POST
 
 Always POST to the same endpoint - the API handles upsert logic server-side for idempotency.
+
+### 9. Conditions: reason and message Are Optional
+
+While recommended for debugging, `reason` and `message` fields in conditions are optional in the API schema.
 
 ---
 

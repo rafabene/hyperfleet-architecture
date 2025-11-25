@@ -163,7 +163,7 @@ observed_generation: "5"  # Event generation that was processed
 - `conditions` - Required: applied, available, health
 - `data` - Optional: adapter-specific data
 - `observed_generation` - Event generation processed (for idempotency)
-- `lastUpdated` - Timestamp of status update
+- `observed_time` - When adapter observed this resource state
 
 ---
 
@@ -182,9 +182,11 @@ observed_generation: "5"  # Event generation that was processed
 ```
 POST /api/hyperfleet/v1/clusters/{clusterId}/status
 {
-  "conditions": { ... },
-  "data": { ... },
-  "lastUpdated": "..."
+  "adapter": "validation",
+  "observed_generation": 1,
+  "observed_time": "2025-01-01T10:00:00Z",
+  "conditions": [ ... ],
+  "data": { ... }
 }
 ```
 

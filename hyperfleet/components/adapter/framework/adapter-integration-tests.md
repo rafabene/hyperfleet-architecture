@@ -387,31 +387,28 @@ spec:
 ```json
 {
   "adapter": "validation-adapter",
-  "observedGeneration": 1,
+  "observed_generation": 1,
   "conditions": [
     {
       "type": "Applied",
       "status": "False",
       "reason": "PreconditionsNotMet",
       "message": "Preconditions not met: cluster phase is not Provisioning",
-      "lastTransitionTime": "2025-01-15T10:00:05Z"
     },
     {
       "type": "Available",
       "status": "False",
       "reason": "PreconditionsNotMet",
       "message": "Cannot proceed until preconditions are met",
-      "lastTransitionTime": "2025-01-15T10:00:05Z"
     },
     {
       "type": "Health",
       "status": "True",
       "reason": "NoErrors",
       "message": "Adapter is healthy",
-      "lastTransitionTime": "2025-01-15T10:00:05Z"
     }
   ],
-  "lastUpdated": "2025-01-15T10:00:05Z"
+  "observed_time": "2025-01-15T10:00:05Z"
 }
 ```
 
@@ -419,31 +416,28 @@ spec:
 ```json
 {
   "adapter": "validation-adapter",
-  "observedGeneration": 1,
+  "observed_generation": 1,
   "conditions": [
     {
       "type": "Applied",
       "status": "True",
       "reason": "JobCreated",
       "message": "Validation job created",
-      "lastTransitionTime": "2025-01-15T10:00:10Z"
     },
     {
       "type": "Available",
       "status": "False",
       "reason": "JobRunning",
       "message": "Job is executing",
-      "lastTransitionTime": "2025-01-15T10:00:10Z"
     },
     {
       "type": "Health",
       "status": "True",
       "reason": "NoErrors",
       "message": "Adapter is healthy",
-      "lastTransitionTime": "2025-01-15T10:00:10Z"
     }
   ],
-  "lastUpdated": "2025-01-15T10:00:10Z"
+  "observed_time": "2025-01-15T10:00:10Z"
 }
 ```
 
@@ -451,35 +445,32 @@ spec:
 ```json
 {
   "adapter": "validation-adapter",
-  "observedGeneration": 1,
+  "observed_generation": 1,
   "conditions": [
     {
       "type": "Applied",
       "status": "True",
       "reason": "JobCreated",
       "message": "Validation job created",
-      "lastTransitionTime": "2025-01-15T10:00:10Z"
     },
     {
       "type": "Available",
       "status": "True",
       "reason": "JobSucceeded",
       "message": "Job completed successfully",
-      "lastTransitionTime": "2025-01-15T10:02:00Z"
     },
     {
       "type": "Health",
       "status": "True",
       "reason": "AllChecksPass",
       "message": "Job completed successfully",
-      "lastTransitionTime": "2025-01-15T10:02:00Z"
     }
   ],
   "data": {
-    "jobName": "validation-cls-test-001-gen1",
+    "job_name": "validation-cls-test-001-gen1",
     "executionTime": "110s"
   },
-  "lastUpdated": "2025-01-15T10:02:00Z"
+  "observed_time": "2025-01-15T10:02:00Z"
 }
 ```
 

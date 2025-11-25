@@ -44,9 +44,9 @@ This document contains the post-MVP features and enhancements that were removed 
 ** MVP uses only Available, Applied, Health from adapters
 
 ### Adapter status reporting endpoint
-* observedGeneration Rejection - Defer to post-MVP:
+* observed_generation Rejection - Defer to post-MVP:
 ** For MVP: Log warning but accept mismatches
-** Don't return 409 Conflict for stale observedGeneration
+** Don't return 409 Conflict for stale observed_generation
 ** Post-MVP can add strict validation
 
 ### Status aggregation tests
@@ -62,7 +62,7 @@ This document contains the post-MVP features and enhancements that were removed 
 ** No test for NotReady → Ready transition
 ** Phase computed fresh each GET, no history
 
-* Stale observedGeneration Tests - MVP accepts:
+* Stale observed_generation Tests - MVP accepts:
 ** Don't test 409 Conflict response
 ** For MVP: Accept mismatched generations
 ** Just test warning logged
@@ -78,9 +78,9 @@ This document contains the post-MVP features and enhancements that were removed 
 ** MVP returns adapter conditions directly
 
 ### Contract validation logic
-* observedGeneration Rejection - MVP accepts mismatches:
+* observed_generation Rejection - MVP accepts mismatches:
 ** Don't return 409 Conflict for stale generation
-** Don't reject if observedGeneration > resource.generation
+** Don't reject if observed_generation > resource.generation
 ** Just log warnings
 ** Post-MVP can add strict validation
 
