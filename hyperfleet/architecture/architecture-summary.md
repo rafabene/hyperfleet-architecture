@@ -119,13 +119,21 @@ GET    /nodepools/{id}/statuses
 
 **API Specification**:
 
-The complete API schema definitions are maintained in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository:
+The complete API schema definitions are developed in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository, while the source of truth for the current OpenAPI contract is the one located in the main branch of [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/openapi/openapi.yaml)
 
-- **Cluster and NodePool Schemas**: [Resource Object Definitions](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
-- **ClusterStatus Schema**: [Status Object Definition](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
-- **Complete OpenAPI Spec**: [openapi.yaml](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+**Key Design Decisions**:
+- We do contract-first development
+  - Code generated after the contract is developed
+- The OpenAPI in the `hyperfleet-api` is the source of truth
+  - The contents should reflect what is deployed to production
+  - The version of the contract is stated in the `info.version` field
+  - **Complete OpenAPI Spec**: [openapi.yaml](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml) ([swagger UI view](https://openshift-hyperfleet.github.io/hyperfleet-api-spec/index.html))
+- `hyperfleet-api-spec` is a supporting repository to build the contract
+  - Uses Typespec for better developer ergonomics than plain YAML
+  - Generates provider-specific versions of the API contract
+  - Hosts Swagger UI for contract visualization
 
-> **Note**: The schemas shown in this document are illustrative examples. Always refer to the API spec repository for the authoritative, up-to-date schema definitions.
+> **Note**: The schemas shown in this document are illustrative examples. Always refer to the API spec for the authoritative, up-to-date schema definitions.
 
 **Benefits**:
 - Easy to test (no side effects)
