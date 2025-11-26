@@ -30,18 +30,67 @@ Ensuring proper IAM permission configuration for Workload Identity integration w
 
 ## 2. Exploration Summary: K8s Job vs Tekton Pipeline
 
-Two implementation approaches were evaluated:
+Two implementation approaches were evaluated. The decision can be updated based on the comparison and analysis below.
 
-1. **Kubernetes Job (Selected)**: Self-contained, simpler deployment model, native K8s failure handling, minimal external dependencies. More details refer to [update-job-status](https://gitlab.cee.redhat.com/amarin/update-job-status/).
-2. **Tekton Pipeline (Deferred)**: More complex orchestration capabilities, better suited for multi-stage workflows, requires Tekton operator installation. More details refer to [validation-pipeline-demo](https://github.com/86254860/validation-pipeline-demo).
+### Kubernetes Job
 
-**Decision**: K8s Job selected for initial implementation due to lower operational overhead and alignment with validation use case requirements.
+**Pros**
+- A native Kubernetes resource with minimal external dependencies.
+
+**Cons**
+- Requires a sidecar container to collect validation details and update the Job status.
+- Limited support for multi-step validation: dependencies, parallelism, and orchestration must be implemented within the Job logic by yourself.
+
+More details refer to [update-job-status](https://gitlab.cee.redhat.com/amarin/update-job-status/).
+
+### Tekton Pipeline
+
+**Pros**
+- Designed for multi-stage workflows with built-in support for task dependencies, parallel execution, and easy extension by adding new validation tasks.
+- Can write validation results directly into the PipelineRun CR, with flexible mechanisms to aggregate results from multiple tasks.
+
+**Cons**
+- Requires installing and maintaining the Tekton operator, requires more resources to run Tekton.
+- Each validation task runs in its own Pod; workflows with many tasks will create multiple Pods during execution.
+
+More details refer to [validation-pipeline-demo](https://github.com/86254860/validation-pipeline-demo).
+
+**Decision**: K8s Job selected for initial implementation due to lower operational overhead and alignment with validation use case requirements. This decision remains open for review, and GCP preference will play a key role in guiding our final choice.
 
 ## 3. GCP Validation Requirements (Based on CS GCP Preflight Logic)
 
 The validation requirements are derived from the production GCP preflight implementation in [uhc-clusters-service](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go). This ensures alignment with proven validation patterns.
 
-### 3.1 Credential Validation (MVP TBD)
+### 3.1 Overview of CS Supported Preflights (WIF Mode)
+
+The validation adapter focuses on the Workload Identity Federation (WIF) flow. The following preflight checks are performed in this mode:
+
+**Authentication:**
+- `createGcpClient`: Before executing specific checks, the service attempts to create a GCP client using the provided configuration. This serves as an initial connectivity and authentication check to ensure a valid GCP client can be instantiated.
+
+**Identity & Access:**
+- `ValidateWifResources`: Validates WIF configuration resources.
+- `APIsEnabled`: Verifies that required GCP APIs are enabled.
+
+**Project & Constraints:**
+- `ValidProjectID`: Validates the project ID.
+- `ValidProjectConstraints`: Checks for conflicting organizational policies.
+
+**Network Configuration:**
+- `ValidNetwork`: General VPC network validation.
+- `validatePscSubnet`: Checks Private Service Connect subnets.
+- `validateMachineCidr`: Ensures Machine CIDR is valid.
+- `validateVpcSubnets`: Verifies existence and configuration of VPC subnets.
+
+**Resource Availability & Quotas:**
+- `ValidateAvailabilityZones`: Checks validity and status of requested zones.
+- `InstanceTypeSupported`: Verifies machine types are available in the target zones.
+- `ServiceUsageQuota`: Checks for sufficient resource quotas (e.g., vCPUs).
+
+**Security:**
+- `ValidKeyRings`: Validates KMS Key Ring configuration if encryption is enabled.
+
+### 3.2 Credential Validation (MVP)
 
 **Purpose**: Verify that Workload Identity Federation (WIF) is configured for the validation Job.
 
@@ -61,7 +110,7 @@ Kubernetes Job Pod
 
 **Note**: At initial phase, credential validation only checks if WIF annotation exists. Actual authentication and authorization testing happens when API validator (or other validators) attempt to use WIF.
 
-### 3.2 Required GCP APIs (MVP TBD)
+### 3.3 Required GCP APIs (MVP)
 
 **Implementation Reference**: [CS Required GCP APIs](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L44-L63)
 
@@ -77,7 +126,7 @@ The following APIs **must be enabled** before cluster provisioning:
 | `dns.googleapis.com` | Cloud DNS management |
 | `container.googleapis.com` | GKE features |
 
-### 3.3 GCP Quota Validation (Post-MVP)
+### 3.4 GCP Quota Validation (Post-MVP)
 **Implementation Reference**: [CS quota preflight logic](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L190-L191)  
 
 **Regional vCPU Quota Validation Flow**:
@@ -139,7 +188,7 @@ If Regional Limit = 100, Current Usage = 80:
 - Persistent disk quota (pd-standard, pd-ssd)
 - GPU quotas (if applicable)
 
-### 3.4 Network Configuration Validation (Post-MVP)
+### 3.5 Network Configuration Validation (Post-MVP)
 
 **Implementation Reference**: [CS network preflight](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L188-196)  
 
@@ -215,7 +264,7 @@ for _, subnetCIDR := range subnetCidrs {
 }
 ```
 
-### 3.5 Region and Zone Availability (Post-MVP)
+### 3.6 Region and Zone Availability (Post-MVP)
 
 #### Region Existence
 ```go
@@ -552,20 +601,18 @@ Here's an k8s yaml example to define a status-updater container using kubectl to
 
 ### MVP - Proof of Concept
 
-**Goal**: Prove the adapter framework architecture works end-to-end with GCP validation adapter - fake or minimal validation logic (credentials + 3-4 API checks).
+**Goal**: Prove the adapter framework architecture works end-to-end with GCP validation adapter - minimal validation logic (credentials + 3-4 API checks).
 
 **Scope**: Absolute minimum to validate the solution architecture:
 - Status reporter sidecar (basic version)
-- GCP validation logic (**Option 1 or 2 is still TBD**, as the required implementation effort differs)
-    - Option 1: A fake validation logic
-    - Option 2: A real GCP validation logic with TWO validators only:
-        - **Credential validation** - Verify GCP credentials exist and are valid
-        - **API enablement check** - Check if required APIs are enabled
+- GCP validation logic with TWO validators only:
+    - **Credential validation** - Verify GCP credentials exist and are valid
+    - **API enablement check** - Check if required APIs are enabled
 - Basic integration testing
 
 #### Tasks
 - Implement status reporter logic
-- Implement GCP validation logic (Option 1 or 2 TBD)
+- Implement GCP validation logic
 - Write unit tests for smoke tests
 - Dockerfile and Makefile for image build and testing
 - RBAC and k8s related YAML files for GCP validation job
@@ -634,7 +681,7 @@ Based on this spike, implementation tickets should have the following acceptance
 
 **Ticket: GCP Validation MVP - Architecture Proof of Concept**
 
-**Goal**: Prove the adapter framework architecture works end-to-end with GCP validation adapter - fake or minimal validation logic (credentials + 3-4 API checks).
+**Goal**: Prove the adapter framework architecture works end-to-end with GCP validation adapter - minimal validation logic (credentials + 3-4 API checks).
 
 **Status Reporter Sidecar** (Basic):
 - [ ] Polls for `/results/validation-report.json` on shared emptyDir volume
@@ -644,13 +691,7 @@ Based on this spike, implementation tickets should have the following acceptance
 - [ ] Dockerfile builds successfully
 - [ ] Container image runs in K8s
 
-**GCP Validator** (Fake logic or minimal validation logic):  
-
-- // **Option 1:** A fake validation logic  
-- [ ] Implement GCP fake validation logic
-  - Returns Success if all checks pass
-  - Returns Failure if any check fails
-- // **Option 2:** A real GCP validation logic with TWO validators only:
+**GCP Validator** (Minimal validation logic):  
 - [ ] **Workload Identity Federation** (WIF) for GCP authentication
   - How to setup WIF to access customer's GCP project 
   - How to pass WIF to validator container
