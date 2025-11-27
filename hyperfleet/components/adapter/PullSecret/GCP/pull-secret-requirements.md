@@ -51,29 +51,6 @@ The adapter requires access to the following GCP Secret Manager APIs:
 - [Project must have sufficient quota for secrets](https://cloud.google.com/secret-manager/quotas)
 
 **Cluster Spec Example**:
-```yaml
-spec:
-  provider: gcp
-  gcp:
-    projectId: "hyperfleet-prod-12345"
-    region: "us-central1"
-  pullSecret:
-    source: "hyperfleet-api"  # Pull secret data stored in HyperFleet API
-    secretName: "cluster-{clusterId}-pull-secret"
-    replicationPolicy: "automatic"  # or "user-managed" with specific locations
-```
-
-### Secret Naming Convention
-
-**Format**: `hyperfleet-{cluster-id}-pull-secret`
-
-**Example**: `hyperfleet-cls-abc123-pull-secret`
-
-**Rationale**:
-- Prefix `hyperfleet-` identifies secrets managed by HyperFleet
-- Cluster ID ensures uniqueness
-- Suffix `-pull-secret` identifies secret type
-- Total length must be ≤ 255 characters (GCP limit)
 
 ### Secret Labels
 
