@@ -105,6 +105,8 @@ components:
 
     ReconcileClusterCloudEvent:
       type: object
+      required:
+        - data
       allOf:
         - $ref: '#/components/schemas/CloudEvent'
       properties:
@@ -115,6 +117,8 @@ components:
      
     ReconcileNodePoolCloudEvent:
       type: object
+      required:
+        - data
       allOf:
         - $ref: '#/components/schemas/CloudEvent'
       properties:
