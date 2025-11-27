@@ -534,7 +534,7 @@ The **Status Reporter Sidecar** is a **cloud-agnostic**, reusable container that
 └─────────────────────┘         └──────────────────────┘
 ```
 
-### 5.3 Exmaple to Update Job Status
+### 5.3 Example to Update Job Status
 Here's an k8s yaml example to define a status-updater container using kubectl to update the job status.
 ```
 - name: status-updater
@@ -593,13 +593,55 @@ Here's an k8s yaml example to define a status-updater container using kubectl to
           echo "Status update completed!"
 ```
 
-**Note:** It requires related RBAC permissions configuration (as defined in Section 4.3) to update the job status. More details refer to [this](https://gitlab.cee.redhat.com/amarin/update-job-status/-/blob/main/job.yaml).
+**Note:** RBAC permissions configuration (as defined in Section 4.3) is required to update the job status. More details refer to [this](https://gitlab.cee.redhat.com/amarin/update-job-status/-/blob/main/job.yaml).
 
 ---
 
-## 6. Implementation Plan
+## 6. Alternative Approach: CRD-Based Status Reporting
 
-### MVP - Proof of Concept
+### 6.1 Overview
+
+An alternative to updating Job status directly is to use a **Custom Resource Definition (CRD)** for adapter operation status reporting. In this approach, adapter operation results are stored in a dedicated custom resource (`AdapterResult`) rather than in the Job status field.
+
+### 6.2 Trade-offs Analysis
+
+| Aspect | **Job Status** | **AdapterResult CRD (Alternative)** |
+|--------|--------------------------|---------------------------------------|
+| **Implementation Complexity** | ✅ **Simple** - Uses native K8s resources only | ⚠️ **Complex** - Requires CRD definition, installation, RBAC updates |
+| **Setup Overhead** | ✅ **Low** - No additional CRD installation | ❌ **Higher** - CRD must be installed on every cluster |
+| **Data Structure** | ⚠️ **Limited** - Job conditions support basic fields (type, status, reason, message) | ✅ **Rich** - Custom schema allows detailed validation metadata, nested structures |
+| **Decoupling** | ⚠️ **Tight Coupling** - Results tied to Job lifecycle | ✅ **Decoupled** - Operation results independent of execution method (Job, Pod, other) |
+| **Extensibility** | ❌ **Limited** - Hard to add new fields to Job status without breaking compatibility | ✅ **Versioned** - CRD versioning (v1alpha1 → v1beta1 → v1) allows schema evolution |
+| **Reporter Changes** | Updates Job status with RBAC for `jobs/status` | Updates CR status with RBAC for `adapterresults/status` |
+| **MVP Readiness** | ✅ **Ready** - Minimal changes, proven pattern | ❌ **Delayed** - More upfront design and implementation work |
+| **Flexibility** | ❌ **Job-only** - Only works if adapter runs as a Job | ✅ **Resource-agnostic** - Works with Job, CronJob, DaemonSet, or custom controllers |
+
+### 6.3 Decision for MVP vs Post-MVP
+
+**MVP Decision**: **Use Job Status Approach** ✅
+
+**Rationale**:
+1. **Simplicity**: MVP goal is to prove the adapter framework architecture works end-to-end. Job status is sufficient for basic pass/fail reporting.
+2. **Lower Risk**: No additional dependencies or CRD management complexity.
+3. **Faster Implementation**: Team can focus on validation logic rather than infrastructure.
+4. **Job Conditions Are Sufficient**: For MVP scope (2 validators: WIF check + API enablement), Job conditions provide adequate status reporting.
+
+**Post-MVP Consideration**: **Evaluate CRD Approach** 🚀
+
+The `AdapterResult` CRD approach should be reconsidered when:
+- ✅ **Need Richer Data**: Operation reports require detailed metadata beyond Job conditions (per-validator metrics, DNS records, remediation hints, structured errors)
+- ✅ **Multiple Adapter Types**: As more adapters are implemented (DNS, pull secret, etc.), a unified status interface becomes valuable
+- ✅ **Multiple Execution Methods**: Adapters may run as Job, Tekton Pipeline, DaemonSet, or other resources
+- ✅ **UX Improvements**: Users frequently query adapter results and need better query experience across adapter types
+
+**Benefits of Generic CRD Design**:
+- **Single CRD for all adapters**: Validation, DNS, pull secret, and future adapters use the same `AdapterResult` CRD
+- **Consistent interface**: Same query patterns work for all adapter types (`kubectl get adapterresults -l adapter-type=<type>`)
+- **Easier framework evolution**: Adding new adapter types doesn't require new CRDs
+
+---
+
+### 7.1 MVP - Proof of Concept
 
 **Goal**: Prove the adapter framework architecture works end-to-end with GCP validation adapter - minimal validation logic (credentials + 3-4 API checks).
 
@@ -631,7 +673,7 @@ Here's an k8s yaml example to define a status-updater container using kubectl to
 
 ---
 
-### Post-MVP Enhancements
+### 7.2 Post-MVP Enhancements
 
 After MVP is approved and working, implement additional features iteratively.
 
@@ -671,9 +713,12 @@ After MVP is approved and working, implement additional features iteratively.
 - Performance optimization
 - Security scanning
 
+**Alternative Status Reporting**:
+- ✅ Evaluate CRD-based status reporting (see Section 6) if richer validation data or execution flexibility is needed
+
 ---
 
-## 7. Acceptance Criteria for Implementation Tickets
+## 8. Acceptance Criteria for Implementation Tickets
 
 Based on this spike, implementation tickets should have the following acceptance criteria:
 
