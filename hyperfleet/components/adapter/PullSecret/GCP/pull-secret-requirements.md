@@ -151,6 +151,7 @@ Minimal permissions for Pull Secret Adapter to manage secrets:
 - `secretmanager.secrets.delete`
 - `secretmanager.versions.add`
 - `secretmanager.versions.get`
+- `secretmanager.versions.access`
 - `secretmanager.versions.list`
 - `secretmanager.versions.destroy`  # Only for cleanup
 
