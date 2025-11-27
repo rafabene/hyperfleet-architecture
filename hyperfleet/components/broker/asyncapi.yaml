@@ -19,7 +19,7 @@ components:
         - payload:
             specversion: "1.0"
             type: "com.redhat.hyperfleet.cluster.reconcile.v1"
-            source: "sentinel"
+            source: "/hyperfleet/service/sentinel"
             id: "00000000-0000-0000-0000-000000000000"
             time: "2025-10-23T12:00:00Z"
             datacontenttype: "application/json"
@@ -40,7 +40,7 @@ components:
         - payload:
             specversion: "1.0"
             type: "com.redhat.hyperfleet.nodepool.reconcile.v1"
-            source: "sentinel"
+            source: "/hyperfleet/service/sentinel"
             id: "00000000-0000-0000-0000-000000000000"
             time: "2025-10-23T12:00:00Z"
             datacontenttype: "application/json"
