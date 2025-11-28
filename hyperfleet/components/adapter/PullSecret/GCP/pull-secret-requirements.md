@@ -61,6 +61,7 @@ spec:
   pullSecret:
     source: "hyperfleet-api"  # Pull secret data stored in HyperFleet API
     replicationPolicy: "automatic"  # or "user-managed" with specific locations
+```
 
 The secret name will be auto-derived by the adapter as: `hyperfleet-{cluster-id}-pull-secret`
 
