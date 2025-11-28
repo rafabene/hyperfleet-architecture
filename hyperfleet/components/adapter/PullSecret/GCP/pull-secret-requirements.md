@@ -160,9 +160,9 @@ Minimal permissions for Pull Secret Adapter to manage secrets:
 
 
 ## References
-- https://cloud.google.com/secret-manager/docs/creating-and-accessing-secrets
-- https://cloud.google.com/secret-manager/docs/configuring-secret-manager#enable-api-console
-- https://cloud.google.com/secret-manager/docs/creating-and-accessing-secrets#required-roles
-- https://cloud.google.com/secret-manager/docs/configuring-secret-manager#create-roles
-- https://docs.cloud.google.com/secret-manager/quotas
-- https://cloud.google.com/secret-manager/docs/choosing-replication
+- [Creating and Accessing Secrets](https://cloud.google.com/secret-manager/docs/creating-and-accessing-secrets)
+- [Configuring Secret Manager](https://cloud.google.com/secret-manager/docs/configuring-secret-manager#enable-api-console)
+- [Required Roles](https://cloud.google.com/secret-manager/docs/creating-and-accessing-secrets#required-roles)
+- [Creating Custom Roles](https://cloud.google.com/secret-manager/docs/configuring-secret-manager#create-roles)
+- [Quotas and Limits](https://docs.cloud.google.com/secret-manager/quotas)
+- [Choosing a Replication Policy](https://cloud.google.com/secret-manager/docs/choosing-replication)
