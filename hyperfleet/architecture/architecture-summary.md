@@ -239,8 +239,9 @@ hyperfleet_api:
   timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
+  href: .href
   generation: .generation
   region: .metadata.labels.region
 
@@ -314,9 +315,10 @@ Subscriptions:
   "time": "2025-10-21T14:30:00Z",
   "datacontenttype": "application/json",
   "data": {
-    "resourceType": "clusters",
-    "resourceId": "cls-abc-123",
-    "reason": "max-age-expired"
+    "kind": "Cluster",
+    "id": "cls-abc-123",
+    "href": "/clusters/cls-abc-123",
+    "generation": 1
   }
 }
 ```
@@ -746,8 +748,9 @@ hyperfleet_api:
   timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
+  href: .href
   generation: .generation
   region: .metadata.labels.region
 
@@ -766,8 +769,9 @@ hyperfleet_api:
   timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
+  href: .href
   generation: .generation
   region: .metadata.labels.region
 
@@ -916,9 +920,9 @@ spec:
 ### Key Metrics
 
 **Sentinel**:
-- `hyperfleet_sentinel_resources_pending{resource_type, shard}` - Resources awaiting reconciliation
-- `hyperfleet_sentinel_events_created_total{resource_type, shard}` - Events published
-- `hyperfleet_sentinel_publish_errors_total{resource_type, shard}` - Broker publish failures
+- `hyperfleet_sentinel_resources_pending{kind, shard}` - Resources awaiting reconciliation
+- `hyperfleet_sentinel_events_created_total{kind, shard}` - Events published
+- `hyperfleet_sentinel_publish_errors_total{kind, shard}` - Broker publish failures
 
 **API**:
 - `hyperfleet_api_requests_total{method, path, status}` - Request rate and status codes
@@ -929,8 +933,8 @@ spec:
 - `hyperfleet_adapter_events_consumed_total{adapter}` - Events received
 - `hyperfleet_adapter_jobs_created_total{adapter}` - Jobs created
 - `hyperfleet_adapter_job_duration_seconds{adapter, result}` - Job execution time
-- `hyperfleet_adapter_resources_created_total{adapter, resource_type}` - Kubernetes resources created (Jobs, Secrets, ConfigMaps, Services, etc.)
-- `hyperfleet_adapter_resources_failed_total{adapter, resource_type, reason}` - Resource creation failures
+- `hyperfleet_adapter_resources_created_total{adapter, kind}` - Kubernetes resources created (Jobs, Secrets, ConfigMaps, Services, etc.)
+- `hyperfleet_adapter_resources_failed_total{adapter, kind, reason}` - Resource creation failures
 
 **Kubernetes Resources** (created by adapters):
 - `kube_job_status_failed{namespace, job_name}` - Failed job count

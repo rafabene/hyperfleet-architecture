@@ -195,8 +195,8 @@ Sentinel includes `schemaversion` field in all published events:
 ```json
 {
   "specversion": "1.0",
-  "type": "io.hyperfleet.cluster.reconcile",
-  "source": "hyperfleet-sentinel",
+  "type": "com.redhat.hyperfleet.cluster.reconcile.v1",
+  "source": "sentinel",
   "schemaversion": "1.2",
   "data": { ... }
 }
