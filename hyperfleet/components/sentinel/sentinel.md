@@ -914,3 +914,12 @@ The deployment documentation includes:
 - ConfigMap examples for Sentinel and broker configuration
 - Prometheus metrics specification
 - Health probe configuration
+
+---
+
+## Post-MVP Enhancements
+
+### Advanced Alerting
+
+- **Dead Man's Switch**: Alerting when no messages are received within a configured time period.
+- **Queue Lag Monitoring**: Alerting when messages in the queue are not being consumed or backlog is increasing.
