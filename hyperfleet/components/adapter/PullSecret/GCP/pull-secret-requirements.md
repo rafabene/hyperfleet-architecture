@@ -52,6 +52,18 @@ The adapter requires access to the following GCP Secret Manager APIs:
 
 **Cluster Spec Example**:
 
+```yaml
+spec:
+  provider: gcp
+  gcp:
+    projectId: "hyperfleet-prod-12345"  # Red Hat Management Cluster project
+    region: "us-central1"
+  pullSecret:
+    source: "hyperfleet-api"  # Pull secret data stored in HyperFleet API
+    replicationPolicy: "automatic"  # or "user-managed" with specific locations
+
+The secret name will be auto-derived by the adapter as: `hyperfleet-{cluster-id}-pull-secret`
+
 ### Secret Labels
 
 All secrets created by the adapter must include these labels:
