@@ -152,18 +152,6 @@ data:
   BROKER_PROJECT_ID: "hyperfleet-prod"
 
 ---
-# AWS SQS:
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hyperfleet-sentinel-broker
-  namespace: hyperfleet-system
-data:
-  BROKER_TYPE: "awsSqs"
-  BROKER_REGION: "us-east-1"
-  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
-
----
 # RabbitMQ:
 apiVersion: v1
 kind: ConfigMap
@@ -194,9 +182,11 @@ data:
 **Note**: No RBAC needed since the service only reads configuration from mounted ConfigMap and Secret volumes. No Kubernetes API access required.
 
 **Broker Configuration**: Sentinel uses a separate `hyperfleet-sentinel-broker` ConfigMap. Adapters have their own broker ConfigMap (`hyperfleet-adapter-broker`) with different fields:
-- **Sentinel** (publisher): Uses BROKER_TOPIC, BROKER_EXCHANGE, or BROKER_QUEUE_URL to publish events
+- **Sentinel** (publisher): Uses BROKER_TOPIC, BROKER_EXCHANGE to publish events
 - **Adapters** (consumers): Use BROKER_SUBSCRIPTION_ID, BROKER_QUEUE_NAME to consume events
 - **Common fields** (BROKER_TYPE, BROKER_PROJECT_ID, BROKER_HOST) are duplicated in both ConfigMaps for simplicity
+
+> **Note:** For topic naming conventions and multi-tenant isolation strategies, see [Naming Strategy](./sentinel-naming-strategy.md).
 
 ---
 
@@ -222,5 +212,5 @@ The Sentinel service must expose the following Prometheus metrics:
 - All metrics must include `resource_type` label (from configuration resource_type field)
 - `ready_state` label values: "ready" or "not_ready"
 - `operation` label values: "fetch_resources", "config_load"
-- `broker_type` label values: "gcp-pubsub", "rabbitmq"
+- `broker_type` label values: "pubsub", "rabbitmq"
 - Expose metrics endpoint on port 8080 at `/metrics`

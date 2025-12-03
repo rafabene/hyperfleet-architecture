@@ -295,19 +295,6 @@ data:
   # Adapters use BROKER_SUBSCRIPTION_ID to consume
 
 ---
-# AWS SQS Example:
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hyperfleet-sentinel-broker
-  namespace: hyperfleet-system
-data:
-  BROKER_TYPE: "awsSqs"
-  BROKER_REGION: "us-east-1"
-  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
-  # Note: SQS uses same queue URL for publish and consume
-
----
 # RabbitMQ Example:
 apiVersion: v1
 kind: ConfigMap
@@ -323,6 +310,8 @@ data:
   BROKER_EXCHANGE_TYPE: "fanout"
   # Note: Sentinel publishes to exchange, Adapters consume from queues bound to this exchange
 ```
+
+> **Note:** For topic naming conventions and multi-tenant isolation strategies, see [Naming Strategy](./sentinel-naming-strategy.md).
 
 ### Adapter Status Update Contract
 
@@ -534,18 +523,6 @@ metadata:
 data:
   BROKER_TYPE: "pubsub"
   BROKER_PROJECT_ID: "hyperfleet-prod"
-
----
-# AWS SQS:
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hyperfleet-sentinel-broker
-  namespace: hyperfleet-system
-data:
-  BROKER_TYPE: "awsSqs"
-  BROKER_REGION: "us-east-1"
-  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
 
 ---
 # RabbitMQ:

@@ -39,32 +39,6 @@ data:
 
 ---
 # ============================================================================
-# Template: AWS SQS
-# ============================================================================
-# Use this template when deploying on AWS or using AWS SQS
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hyperfleet-message-sentinel-cluster-events-config
-  namespace: hyperfleet-system
-  labels:
-    app.kubernetes.io/name: hyperfleet-message-sentinel
-    app.kubernetes.io/component: message-sentinel
-    app.kubernetes.io/managed-by: hyperfleet-message-sentinel-controller
-data:
-  # Broker type identifier
-  BROKER_TYPE: "awsSqs"
-  
-  # AWS region where the SQS queue exists
-  BROKER_REGION: "us-east-1"
-  
-  # Full SQS queue URL
-  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
-
-  # Sentinel type identifier (framework uses this to select the right client)
-  SENTINEL_TYPE: "cluster"
----
-# ============================================================================
 # Template: RabbitMQ
 # ============================================================================
 # Use this template when deploying on-premises or using RabbitMQ
@@ -101,7 +75,7 @@ data:
 #
 # IMPORTANT: You typically do NOT need to manually create or edit this ConfigMap.
 # The broker component will automatically:
-#   1. Detect your environment (GCP/AWS/on-premises)
+#   1. Detect your environment (GCP/on-premises)
 #   2. Deploy the appropriate broker infrastructure
 #   3. Create this ConfigMap with the correct values
 #
@@ -115,7 +89,6 @@ data:
 #
 # Scenario 2: Multi-region deployment
 #   - For GCP: Update BROKER_PROJECT_ID for each region's project
-#   - For AWS: Update BROKER_REGION and BROKER_QUEUE_URL for regional queues
 #   - For RabbitMQ: Update BROKER_HOST to point to regional RabbitMQ cluster
 #
 # Scenario 3: Development/local testing
@@ -126,10 +99,6 @@ data:
 # Example for production GCP (multi-region):
 #   Region us-east: BROKER_PROJECT_ID = "hyperfleet-prod-us"
 #   Region eu-west: BROKER_PROJECT_ID = "hyperfleet-prod-eu"
-#
-# Example for production AWS:
-#   Region us-east-1: BROKER_REGION = "us-east-1", BROKER_QUEUE_URL = "https://sqs.us-east-1..."
-#   Region eu-west-1: BROKER_REGION = "eu-west-1", BROKER_QUEUE_URL = "https://sqs.eu-west-1..."
 
 ---
 # ============================================================================
@@ -137,17 +106,11 @@ data:
 # ============================================================================
 #
 # Required fields (all brokers):
-#   BROKER_TYPE: Broker type identifier (pubsub, awsSqs, rabbitmq, kafka)
+#   BROKER_TYPE: Broker type identifier (pubsub, rabbitmq)
 #
 # Google Pub/Sub specific:
 #   BROKER_PROJECT_ID:       GCP project ID
 #   BROKER_SUBSCRIPTION_ID:  Pub/Sub subscription name
-#
-# AWS SQS specific:
-#   BROKER_REGION:           AWS region (e.g., us-east-1)
-#   BROKER_QUEUE_URL:        Full SQS queue URL
-#   BROKER_WAIT_TIME:        Long polling wait time (optional)
-#   BROKER_VISIBILITY_TIMEOUT: Message visibility timeout (optional)
 #
 # RabbitMQ specific:
 #   BROKER_HOST:             RabbitMQ hostname

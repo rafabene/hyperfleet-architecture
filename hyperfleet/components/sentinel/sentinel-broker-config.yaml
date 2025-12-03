@@ -21,20 +21,7 @@ data:
   # Adapters use BROKER_SUBSCRIPTION_ID to consume
 
 ---
-# Option 2: AWS SQS
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hyperfleet-sentinel-broker
-  namespace: hyperfleet-system
-data:
-  BROKER_TYPE: "awsSqs"
-  BROKER_REGION: "us-east-1"
-  BROKER_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-cluster-events"
-  # Note: SQS uses same queue URL for publish and consume
-
----
-# Option 3: RabbitMQ
+# Option 2: RabbitMQ
 apiVersion: v1
 kind: ConfigMap
 metadata:
