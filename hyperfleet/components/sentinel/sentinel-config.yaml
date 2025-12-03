@@ -10,8 +10,8 @@ resource_type: clusters  # Resource to watch: clusters, nodepools, manifests, wo
 
 # === POLLING CONFIGURATION ===
 poll_interval: 5s         # How often to check the API
-backoff_not_ready: 10s    # Wait time for resources still provisioning
-backoff_ready: 30m        # Wait time for stable/ready resources
+max_age_not_ready: 10s    # Wait time for resources still provisioning
+max_age_ready: 30m        # Wait time for stable/ready resources
 
 # === RESOURCE SELECTOR (optional) ===
 # Label selector for filtering which resources this Sentinel instance monitors

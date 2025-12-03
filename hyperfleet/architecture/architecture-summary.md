@@ -119,13 +119,21 @@ GET    /nodepools/{id}/statuses
 
 **API Specification**:
 
-The complete API schema definitions are maintained in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository:
+The complete API schema definitions are developed in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository, while the source of truth for the current OpenAPI contract is the one located in the main branch of [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/openapi/openapi.yaml)
 
-- **Cluster and NodePool Schemas**: [Resource Object Definitions](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
-- **ClusterStatus Schema**: [Status Object Definition](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
-- **Complete OpenAPI Spec**: [openapi.yaml](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml)
+**Key Design Decisions**:
+- We do contract-first development
+  - Code generated after the contract is developed
+- The OpenAPI in the `hyperfleet-api` is the source of truth
+  - The contents should reflect what is deployed to production
+  - The version of the contract is stated in the `info.version` field
+  - **Complete OpenAPI Spec**: [openapi.yaml](https://github.com/openshift-hyperfleet/hyperfleet-api-spec/blob/main/schemas/core/openapi.yaml) ([swagger UI view](https://openshift-hyperfleet.github.io/hyperfleet-api-spec/index.html))
+- `hyperfleet-api-spec` is a supporting repository to build the contract
+  - Uses Typespec for better developer ergonomics than plain YAML
+  - Generates provider-specific versions of the API contract
+  - Hosts Swagger UI for contract visualization
 
-> **Note**: The schemas shown in this document are illustrative examples. Always refer to the API spec repository for the authoritative, up-to-date schema definitions.
+> **Note**: The schemas shown in this document are illustrative examples. Always refer to the API spec for the authoritative, up-to-date schema definitions.
 
 **Benefits**:
 - Easy to test (no side effects)
@@ -154,7 +162,7 @@ clusters
   - id (uuid, primary key)
   - name (string)
   - spec (jsonb) - cluster configuration
-  - status (jsonb) - aggregated status with phase and lastUpdated
+  - status (jsonb) - aggregated status with phase and last_updated_time
   - labels (jsonb) - for sharding and filtering
   - created_at (timestamp)
   - updated_at (timestamp)
@@ -164,14 +172,14 @@ cluster_statuses
   - cluster_id (uuid, foreign key)
   - adapter_statuses (jsonb) - array of adapter status objects, each containing:
     - adapter (string) - e.g., "validation", "dns", "controlplane"
-    - observedGeneration (integer) - cluster generation this adapter reconciled
+    - observed_generation (integer) - cluster generation this adapter reconciled
     - conditions (jsonb array) - minimum 3 required:
       - Available: work completed successfully?
       - Applied: resources created successfully?
       - Health: any unexpected errors?
     - data (jsonb, optional) - adapter-specific structured data
     - metadata (jsonb, optional) - additional metadata
-    - lastUpdated (timestamp) - when this adapter status was last updated
+    - last_updated_time (timestamp) - when this adapter status was last updated
   - last_updated (timestamp) - when ClusterStatus was last updated
   - created_at (timestamp)
 ```
@@ -185,10 +193,10 @@ cluster_statuses
   - API preserves `created_at` (first report time) and updates `updated_at` on each report
   - API calculates `last_transition_time` when adapter's `Available` condition changes
 - **Timestamp Calculation**:
-  - `adapters[].lastUpdated`: Set by each adapter in their status report (when they last checked)
-  - `cluster.status.lastUpdated`: Calculated by API as `min(adapters[].lastUpdated)` - represents confidence of cluster status
+  - `adapters[].last_updated_time`: Set by each adapter in their status report (when they last checked)
+  - `cluster.status.last_updated_time`: Calculated by API as `min(adapters[].last_updated_time)` - represents confidence of cluster status
   - Using the OLDEST adapter timestamp ensures Sentinel triggers reconciliation when ANY adapter is stale
-- Each adapter has `observedGeneration` to track which cluster generation it reconciled
+- Each adapter has `observed_generation` to track which cluster generation it reconciled
 - Labels stored as JSONB for flexible querying by Sentinel shards
 - See [Status Guide](../docs/status-guide.md) for complete status contract details
 
@@ -200,7 +208,7 @@ cluster_statuses
 
 **Why**:
 - **Centralized Orchestration Logic**: Single component decides "when" to reconcile
-- **Simple Backoff Strategy**: Time-based decisions using status.lastUpdated (updated on every adapter check)
+- **Simple Max Age Strategy**: Time-based decisions using status.last_updated_time (updated on every adapter check)
 - **Horizontal Scalability**: Sharding via label selectors (by region, environment, etc.)
 - **Broker Abstraction**: Pluggable event publishers (GCP Pub/Sub, RabbitMQ, Stub)
 - **Self-Healing**: Continuously retries without manual intervention
@@ -209,8 +217,8 @@ cluster_statuses
 1. **Fetch Resources**: Poll HyperFleet API for resources matching shard selector
 2. **Decision Logic**: Determine if resource needs reconciliation based on:
    - `status.phase` (Ready vs Not Ready)
-   - `status.lastUpdated` (time since last adapter check)
-   - Configured backoff intervals (10s for not-ready, 30m for ready)
+   - `status.last_updated_time` (time since last adapter check)
+   - Configured max age intervals (10s for not-ready, 30m for ready)
 3. **Event Creation**: Create reconciliation event with resource context
 4. **Event Publishing**: Publish event to configured message broker
 5. **Metrics & Observability**: Expose Prometheus metrics for monitoring
@@ -220,19 +228,20 @@ cluster_statuses
 # sentinel-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 10s
-backoff_ready: 30m
+max_age_not_ready: 10s
+max_age_ready: 30m
 resource_selector:
   - label: region
     value: us-east
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
-  timeout: 30s
+  timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
+  href: .href
   generation: .generation
   region: .metadata.labels.region
 
@@ -251,11 +260,11 @@ data:
 ```
 FOR EACH resource in FetchResources(resourceType, resourceSelector):
   IF resource.status.phase != "Ready":
-    backoff = backoffNotReady (10s)
+    max_age = max_age_not_ready (10s)
   ELSE:
-    backoff = backoffReady (30m)
+    max_age = max_age_ready (30m)
 
-  IF now >= resource.status.lastUpdated + backoff:
+  IF now >= resource.status.last_updated_time + max_age:
     event = CreateEvent(resource)
     PublishEvent(broker, event)
 ```
@@ -306,9 +315,10 @@ Subscriptions:
   "time": "2025-10-21T14:30:00Z",
   "datacontenttype": "application/json",
   "data": {
-    "resourceType": "clusters",
-    "resourceId": "cls-abc-123",
-    "reason": "backoff-expired"
+    "kind": "Cluster",
+    "id": "cls-abc-123",
+    "href": "/clusters/cls-abc-123",
+    "generation": 1
   }
 }
 ```
@@ -359,34 +369,34 @@ Using cluster creation as an example
    Payload example:
    {
      "adapter": "dns",                           // Identifies which adapter is reporting
-     "observedGeneration": 1,
+     "observed_generation": 1,
      "conditions": [
        {
          "type": "Available",
          "status": "True",
          "reason": "AllRecordsCreated",
          "message": "All DNS records created and verified",
-         "lastTransitionTime": "2025-10-21T14:35:00Z"
+         "last_transition_time": "2025-10-21T14:35:00Z"
        },
        {
          "type": "Applied",
          "status": "True",
          "reason": "JobLaunched",
          "message": "DNS Job created successfully",
-         "lastTransitionTime": "2025-10-21T14:33:00Z"
+         "last_transition_time": "2025-10-21T14:33:00Z"
        },
        {
          "type": "Health",
          "status": "True",
          "reason": "NoErrors",
          "message": "DNS adapter executed without errors",
-         "lastTransitionTime": "2025-10-21T14:35:00Z"
+         "last_transition_time": "2025-10-21T14:35:00Z"
        }
      ],
      "data": {
        "recordsCreated": ["api.cluster.example.com", "*.apps.cluster.example.com"]
      },
-     "lastUpdated": "2025-10-21T14:35:00Z"      // When adapter checked (now())
+     "last_updated_time": "2025-10-21T14:35:00Z"      // When adapter checked (now())
    }
 
    API response: 200 OK (whether first report or update)
@@ -520,7 +530,7 @@ sequenceDiagram
     participant Job as Kubernetes Job
 
     User->>API: POST /clusters
-    API->>DB: INSERT cluster<br/>status.phase = "Not Ready" (aggregated)<br/>status.adapters = []<br/>status.lastUpdated = now()
+    API->>DB: INSERT cluster<br/>status.phase = "Not Ready" (aggregated)<br/>status.adapters = []<br/>status.last_updated_time = now()
     DB-->>API: cluster created
     API-->>User: 201 Created
 
@@ -531,7 +541,7 @@ sequenceDiagram
     DB-->>API: [cluster list]
     API-->>Sentinel: [{id, status, ...}]
 
-    Note over Sentinel: Decision: phase != "Ready" &&<br/>lastUpdated + 10s < now
+    Note over Sentinel: Decision: phase != "Ready" &&<br/>last_updated_time + 10s < now
 
     Sentinel->>Broker: Publish event<br/>{resourceType: "clusters",<br/>resourceId: "cls-123"}
 
@@ -549,15 +559,15 @@ sequenceDiagram
     Job->>Job: Execute validation logic
     Job-->>Adapter: Job Complete
 
-    Adapter->>API: POST /clusters/cls-123/statuses<br/>{adapter: "validation",<br/>observedGeneration: 1,<br/>conditions: [Available, Applied, Health],<br/>lastUpdated: now()<br/>}
-    API->>DB: INSERT INTO cluster_statuses<br/>UPDATE clusters.status.lastUpdated = min(adapters[].lastUpdated)<br/>UPDATE clusters.status (aggregate from conditions)
+    Adapter->>API: POST /clusters/cls-123/statuses<br/>{adapter: "validation",<br/>observed_generation: 1,<br/>conditions: [Available, Applied, Health],<br/>last_updated_time: now()<br/>}
+    API->>DB: INSERT INTO cluster_statuses<br/>UPDATE clusters.status.last_updated_time = min(adapters[].last_updated_time)<br/>UPDATE clusters.status (aggregate from conditions)
     DB-->>API: ClusterStatus saved
     API-->>Adapter: 201 Created
 
     Note over Sentinel: Next poll cycle (10s later)
 
     Sentinel->>API: GET /clusters
-    API-->>Sentinel: [{id, status.lastUpdated = now(), ...}]
+    API-->>Sentinel: [{id, status.last_updated_time = now(), ...}]
 
     Note over Sentinel: Decision: Create event again<br/>(cycle continues for other adapters)
 
@@ -579,7 +589,7 @@ sequenceDiagram
 
     Note over Adapter: Adapter always POSTs<br/>API handles upsert internally
 
-    Adapter->>API: POST /clusters/{id}/statuses<br/>{adapter: "dns",<br/>observedGeneration: 1,<br/>conditions: [...],<br/>lastUpdated: now()}
+    Adapter->>API: POST /clusters/{id}/statuses<br/>{adapter: "dns",<br/>observed_generation: 1,<br/>conditions: [...],<br/>last_updated_time: now()}
 
     Note over API,DB: API decides: INSERT or UPDATE
 
@@ -589,7 +599,7 @@ sequenceDiagram
         API->>DB: UPDATE adapter in cluster_statuses.adapter_statuses<br/>Preserve created_at, update updated_at
     end
 
-    API->>DB: UPDATE clusters.status<br/>- Aggregate phase from all adapter conditions<br/>- Update lastUpdated = min(adapters[].lastUpdated)<br/>- Build adapters summary array
+    API->>DB: UPDATE clusters.status<br/>- Aggregate phase from all adapter conditions<br/>- Update last_updated_time = min(adapters[].last_updated_time)<br/>- Build adapters summary array
     DB-->>API: ClusterStatus updated
     API-->>Adapter: 200 OK
 
@@ -597,10 +607,10 @@ sequenceDiagram
 
     Sentinel->>API: GET /clusters
     API->>DB: SELECT clusters
-    DB-->>API: [cluster list with updated lastUpdated]
+    DB-->>API: [cluster list with updated last_updated_time]
     API-->>Sentinel: [{id, status, ...}]
 
-    Note over Sentinel: Decision: Create event<br/>if backoff expired
+    Note over Sentinel: Decision: Create event<br/>if max-age expired
 ```
 
 ---
@@ -627,7 +637,7 @@ sequenceDiagram
 - **Adapter Testing**: Mock events from broker, verify job creation
 
 ### 5. Improved Observability
-- **Centralized Decision Logic**: All backoff/retry logic in one place (Sentinel)
+- **Centralized Decision Logic**: All max-age/retry logic in one place (Sentinel)
 - **Clear Metrics**: Sentinel exposes events_created, resources_pending, etc.
 - **Status History**: Database stores full adapter status timeline
 
@@ -656,7 +666,7 @@ The architecture uses **Kubernetes-style Conditions** instead of a single `phase
 // Multi-dimensional status - captures full state
 {
   "adapter": "dns",
-  "observedGeneration": 1,
+  "observed_generation": 1,
   "conditions": [
     {
       "type": "Available",
@@ -686,7 +696,7 @@ The architecture uses **Kubernetes-style Conditions** instead of a single `phase
 - **Enables aggregation**: Cluster `status.phase` computed from all adapter conditions
 - **Extensible**: Adapters can add custom conditions beyond the 3 required
 - **Kubernetes-native**: Familiar pattern for Kubernetes operators
-- **Generation tracking**: `observedGeneration` prevents stale status issues
+- **Generation tracking**: `observed_generation` prevents stale status issues
 
 **Aggregation:**
 The cluster's aggregated `status.phase` is computed from adapter conditions:
@@ -727,19 +737,20 @@ See [Status Guide](../docs/status-guide.md) for complete details on the status c
 # sentinel-us-east-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 10s
-backoff_ready: 30m
+max_age_not_ready: 10s
+max_age_ready: 30m
 resource_selector:
   - label: region
     value: us-east
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
-  timeout: 30s
+  timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
+  href: .href
   generation: .generation
   region: .metadata.labels.region
 
@@ -747,19 +758,20 @@ message_data:
 # sentinel-eu-west-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 15s
-backoff_ready: 1h
+max_age_not_ready: 15s
+max_age_ready: 1h
 resource_selector:
   - label: region
     value: eu-west
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api:8080
-  timeout: 30s
+  timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
+  href: .href
   generation: .generation
   region: .metadata.labels.region
 
@@ -908,9 +920,9 @@ spec:
 ### Key Metrics
 
 **Sentinel**:
-- `hyperfleet_sentinel_resources_pending{resource_type, shard}` - Resources awaiting reconciliation
-- `hyperfleet_sentinel_events_created_total{resource_type, shard}` - Events published
-- `hyperfleet_sentinel_publish_errors_total{resource_type, shard}` - Broker publish failures
+- `hyperfleet_sentinel_resources_pending{kind, shard}` - Resources awaiting reconciliation
+- `hyperfleet_sentinel_events_created_total{kind, shard}` - Events published
+- `hyperfleet_sentinel_publish_errors_total{kind, shard}` - Broker publish failures
 
 **API**:
 - `hyperfleet_api_requests_total{method, path, status}` - Request rate and status codes
@@ -921,8 +933,8 @@ spec:
 - `hyperfleet_adapter_events_consumed_total{adapter}` - Events received
 - `hyperfleet_adapter_jobs_created_total{adapter}` - Jobs created
 - `hyperfleet_adapter_job_duration_seconds{adapter, result}` - Job execution time
-- `hyperfleet_adapter_resources_created_total{adapter, resource_type}` - Kubernetes resources created (Jobs, Secrets, ConfigMaps, Services, etc.)
-- `hyperfleet_adapter_resources_failed_total{adapter, resource_type, reason}` - Resource creation failures
+- `hyperfleet_adapter_resources_created_total{adapter, kind}` - Kubernetes resources created (Jobs, Secrets, ConfigMaps, Services, etc.)
+- `hyperfleet_adapter_resources_failed_total{adapter, kind, reason}` - Resource creation failures
 
 **Kubernetes Resources** (created by adapters):
 - `kube_job_status_failed{namespace, job_name}` - Failed job count

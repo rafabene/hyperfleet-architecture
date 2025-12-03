@@ -121,8 +121,8 @@ data:
   config.yaml: |
     resource_type: clusters
     poll_interval: 5s
-    backoff_not_ready: 10s
-    backoff_ready: 30m
+    max_age_not_ready: 10s
+    max_age_ready: 30m
     resource_selector:
       - label: region
         value: us-east

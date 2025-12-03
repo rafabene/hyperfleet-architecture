@@ -130,7 +130,7 @@ These milestones represent the suggested phases for delivering the MVP
 - **Multiple Sentinels**: One per resource type (clusters, node pools)
 - **Sharding**: Distributes load across sentinel instances to prevent API overload
 - **Config-Driven**: Resource-agnostic framework reusable for all resource types
-- **Backoff Strategies**: Different polling intervals for Ready vs Not Ready resources
+- **Max Age Strategies**: Different polling intervals for Ready vs Not Ready resources
 
 ---
 

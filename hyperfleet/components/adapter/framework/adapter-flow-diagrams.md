@@ -92,7 +92,7 @@ sequenceDiagram
 
     Note over S: For each cluster:<br/>Check if requires event?<br/>(10s for Not Ready, 30m for Ready)
 
-    S->>S: Evaluate: now >= lastEventTime + backoff
+    S->>S: Evaluate: now >= lastEventTime + max_age
 
     alt Requires event
         S->>B: Publish CloudEvent<br/>{resourceType: "clusters", resourceId: "cls-123"}
@@ -216,7 +216,7 @@ flowchart LR
         Check -->|Yes| Create[Create CloudEvent]
         Check -->|No| Skip[Skip]
 
-        Create --> Event["CloudEvent:<br/>{<br/>  type: cluster.reconcile,<br/>  source: sentinel,<br/>  data: {<br/>    resourceType: clusters,<br/>    resourceId: cls-123<br/>  }<br/>}"]
+        Create --> Event["CloudEvent:<br/>{<br/>  type: cluster.reconcile,<br/>  source: sentinel,<br/>  data: {<br/>    resourceType: clusters,<br/>    resourceId: cls-123,<br/>    clusterId: cls-123,<br/>    href: /api/v1/clusters/cls-123,<br/>    generation: 5,<br/>    region: us-east-1<br/>  }<br/>}"]
     end
 
     Event -->|Publish| Broker[Message Broker<br/>Topic: hyperfleet-events]
@@ -250,9 +250,11 @@ flowchart LR
 ## Key Takeaways
 
 ### Anemic Events Pattern
-- Events contain **only** `resourceType` and `resourceId`
-- Adapters **always** fetch full cluster from API
+- Events contain **only** minimal fields: `resourceType`, `resourceId`, `clusterId`, `href`, `generation`, `region`
+- Adapters **always** fetch full resource data from API using `href` or constructing endpoint from `resourceType`/`resourceId`
 - Single source of truth: HyperFleet API database
+- `generation` enables stale event detection
+- `clusterId` enables parent-child relationships (e.g., nodepools → cluster)
 
 ### Status Upsert Pattern
 - Adapters POST status updates to HyperFleet API
@@ -283,8 +285,8 @@ flowchart LR
 ### Reconciliation Loop
 1. Sentinel continuously polls HyperFleet API (every 5 seconds)
 2. For each cluster, Sentinel checks `status.phase` (Ready vs Not Ready)
-3. Sentinel applies backoff interval based on phase (10s for Not Ready, 30m for Ready)
-4. When cluster requires event (backoff period passed), Sentinel publishes CloudEvent to broker
+3. Sentinel applies max age interval based on phase (10s for Not Ready, 30m for Ready)
+4. When cluster requires event (max age period passed), Sentinel publishes CloudEvent to broker
 5. Adapters receive events, fetch cluster, evaluate preconditions
 6. If preconditions met: check if resources exist, create if needed, check postconditions, report status
 7. Loop continues - Sentinel keeps polling and publishing events, adapters respond to each event
