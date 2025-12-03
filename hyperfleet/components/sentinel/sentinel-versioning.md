@@ -178,9 +178,11 @@ Month 3: Deploy Adapter v2.1.0 removing schema 1.5 support (contract phase)
 
 **Container image tags:**
 ```
-quay.io/openshift-hyperfleet/sentinel:1.2.3      # Semantic version
-quay.io/openshift-hyperfleet/sentinel:a1b2c3d    # Git SHA
+quay.io/openshift-hyperfleet/sentinel:v1.2.3                  # Semantic version (production)
+quay.io/openshift-hyperfleet/sentinel:hyperfleet-dev-a1b2c3d  # Namespace + SHA (development)
 ```
+
+> **Note:** For detailed image tagging conventions, see [Naming Strategy](./sentinel-naming-strategy.md#container-image-naming-strategy).
 
 **Kubernetes pod labels and annotations:**
 ```yaml
