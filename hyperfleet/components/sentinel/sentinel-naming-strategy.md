@@ -33,7 +33,7 @@ This document defines naming strategies for Sentinel and HyperFleet components t
 
 ## Why
 
-In shared development environments (e.g., hyperfleet-dev cluster), multiple developers testing simultaneously can cause message interference if all Sentinels publish to the same topics. A configurable topic prefix allows each developer or team to isolate their message flows at the topic level, preventing events from one developer's Sentinel from being consumed by another's adapters.
+In shared development environments (e.g., hyperfleet-dev cluster), multiple developers testing simultaneously can cause message interference if all Sentinels publish to the same topics. By using the namespace and resource type in topic names, each developer or team can isolate their message flows at the topic level, preventing events from one developer's Sentinel from being consumed by another's adapters.
 
 For container images, without clear naming conventions, developers can accidentally overwrite each other's images when pushing to the same registry.
 
@@ -44,20 +44,30 @@ For container images, without clear naming conventions, developers can accidenta
 ### Topic Name Format
 
 ```text
-{prefix}-{resource.Kind}
+{namespace}-{resourceType}
 ```
 
 Where:
-- `prefix`: Configurable via environment variable `BROKER_TOPIC_PREFIX`, defaults to the Kubernetes namespace
-- `resource.Kind`: The resource type being watched (e.g., `Cluster`, `NodePool`)
+- `namespace`: The Kubernetes namespace where Sentinel is deployed
+- `resourceType`: The resource type being watched (`clusters` or `nodepools`)
+
+The topic name is configured via the `BROKER_TOPIC` environment variable. When using Helm, the default is automatically constructed from the namespace and resource type.
+
+### Configuration
+
+The topic name is configured via:
+
+- **Helm**: `broker.topic` value (default: `{namespace}-{resourceType}`)
+- **Environment Variable**: `BROKER_TOPIC` (for local development)
 
 ### Examples
 
-| Prefix | Resource Kind | Topic Name |
-|--------|---------------|------------|
-| `hyperfleet-system` | `Cluster` | `hyperfleet-system-Cluster` |
-| `hyperfleet-dev` | `Cluster` | `hyperfleet-dev-Cluster` |
-| `team-a` | `Cluster` | `team-a-Cluster` |
+| Namespace | Resource Type | Topic Name |
+|-----------|---------------|------------|
+| `hyperfleet-system` | `clusters` | `hyperfleet-system-clusters` |
+| `hyperfleet-dev-rafael` | `clusters` | `hyperfleet-dev-rafael-clusters` |
+| `hyperfleet-dev-rafael` | `nodepools` | `hyperfleet-dev-rafael-nodepools` |
+| `team-a` | `clusters` | `team-a-clusters` |
 
 ---
 
