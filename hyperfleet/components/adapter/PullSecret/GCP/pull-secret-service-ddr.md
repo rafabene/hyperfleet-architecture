@@ -28,100 +28,13 @@ To minimize the risks related to this, rollout will be done in different milesto
 
 #### M1. GCP Secret Manager Storage
 
-- Implement a message broker to publish and subscribe to pull secret related messages
 - Create internal API/Services/Jobs to maintain customer's pull secrets
 - Store pull secret credentials in RedHat GCP Secret Manager
 - Add test coverage to validate the pull secret adapter functionalities
 
-> **Note:** M1 is purely a CS task, as it involves storing pull secret data in a vault (GCP Secret Manager)
+> **Note:** M1 is purely a task for storing pull secret data in a vault (GCP Secret Manager)
 
 ---
-
-## HyperFleet Architecture - High Level Design
-
-### Core Components
-
-| Component | What | Source |
-|-----------|------|--------|
-| **HyperFleet API** | Simple REST API providing CRUD operations for HyperFleet resources (clusters, node pools, etc.) and their statuses | [Link](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#1-hyperfleet-api) |
-| **Database (PostgreSQL)** | Persistent storage for cluster resources and adapter status updates | [Link](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#2-database-postgresql) |
-| **Sentinel** | Service that continuously polls HyperFleet API, decides when resources need reconciliation, creates events, and publishes them to the message broker | [Link](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#3-sentinel) |
-| **Message Broker** | Message broker implementing fan-out pattern to distribute reconciliation events to multiple adapters | [Link](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#4-message-broker) |
-| **Adapter Deployments** | Event-driven services that consume reconciliation events, evaluate preconditions, create Kubernetes Jobs, and report status back to HyperFleet API | [Link](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#5-adapter-deployments) |
-| **Kubernetes Resources** | Kubernetes resources (like pipelines/jobs) created by adapters to execute provisioning tasks and manage cluster lifecycle | [Link](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#6-kubernetes-resources) |
-
-![HyperFleet Architecture - High Level Overview](./images/image3.png)
-
-
-**Source:** https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#high-level-overview
-
-### Adapter Types (MVP)
-
-**Scope:** ~5 adapters for GCP cluster provisioning
-
-1. **Validation Adapter** - Check GCP prerequisites
-2. **DNS Adapter** - Create Cloud DNS records
-3. **Placement Adapter** - Select region and management cluster
-4. **Pull Secret Adapter** - Store credentials in Secret Manager
-5. **HyperShift Adapter** - Create HostedCluster CR
-
-**Source:** https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/mvp/mvp-scope.md
-
-### Adapter Workflow
-
-Using cluster creation as an example:
-
-```
-1. Consume event from broker subscription
-2. Fetch cluster details from API: GET /clusters/{id}
-3. Evaluate preconditions:
-   - Check adapter-specific requirements
-   - Check dependencies (e.g., DNS requires Validation complete)
-4. IF preconditions met:
-     - Create Kubernetes Job with cluster context
-     - Job executes adapter logic (e.g., call cloud provider APIs)
-     - Monitor job completion
-5. Report status (adapter always POSTs - API handles upsert internally):
-   POST /clusters/{id}/statuses
-
-   Payload example:
-   {
-     "adapter": "dns",                     // Identifies which adapter is reporting
-     "observedGeneration": 1,
-     "conditions": [
-       {
-         "type": "Available",
-         "status": "True",
-         "reason": "AllRecordsCreated",
-         "message": "All DNS records created and verified",
-         "lastTransitionTime": "2025-10-21T14:35:00Z"
-       },
-       {
-         "type": "Applied",
-         "status": "True",
-         "reason": "JobLaunched",
-         "message": "DNS Job created successfully",
-         "lastTransitionTime": "2025-10-21T14:33:00Z"
-       },
-       {
-         "type": "Health",
-         "status": "True",
-         "reason": "NoErrors",
-         "message": "DNS adapter executed without errors",
-         "lastTransitionTime": "2025-10-21T14:35:00Z"
-       }
-     ],
-     "data": {
-       "recordsCreated": ["api.cluster.example.com", "*.apps.cluster.example.com"]
-     },
-     "lastUpdated": "2025-10-21T14:35:00Z"    // When adapter checked (now())
-   }
-
-   API response: 200 OK (whether first report or update)
-6. Acknowledge message to broker
-```
-
-**Source:** https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md#5-adapter-deployments
 
 ### Configuration (via AdapterConfig)
 
@@ -134,11 +47,49 @@ metadata:
 spec:
   adapterType: validation
 
-  # Precondition criteria for when adapter should run
+  # Precondition criteria for when Pull Secret Adapter should run
   criteria:
     preconditions:
-      - expression: "cluster.status.phase != 'Ready'"
-    dependencies: []
+      # Provider must be GCP (MVP scope)
+      - expression: "spec.provider == 'gcp'"
+        message: "Pull Secret Adapter only supports GCP in MVP"
+
+      # GCP Project ID must be set
+      - expression: "spec.gcp.projectId != nil && spec.gcp.projectId != ''"
+        message: "GCP Project ID is required for Secret Manager"
+
+      # Cluster must not be in Ready or Deleting state
+      - expression: "cluster.status.phase != 'Ready' && cluster.status.phase != 'Deleting'"
+        message: "Pull secret provisioning only runs during cluster creation (MVP scope)"
+
+      # Pull secret should not already be provisioned
+      - expression: "status.adapters['pullsecret'].conditions['Available'].status != 'True'"
+        message: "Pull secret already provisioned successfully"
+
+    # Dependencies on other adapters that must complete first
+    dependencies:
+      # Validation adapter must complete successfully
+      - adapter: validation
+        conditions:
+          - type: Available
+            status: "True"
+          - type: Health
+            status: "True"
+        message: "Validation adapter must verify GCP prerequisites first"
+
+      # DNS adapter must complete successfully
+      - adapter: dns
+        conditions:
+          - type: Available
+            status: "True"
+        message: "DNS records must be created before pull secret provisioning"
+
+      # Placement adapter must complete successfully
+      - adapter: placement
+        conditions:
+          - type: Available
+            status: "True"
+        message: "Cluster placement must be determined before pull secret provisioning"
 
   # HyperFleet API configuration
   hyperfleetAPI:
@@ -172,7 +123,7 @@ spec:
 |-----------|------|---------|
 | **Pull Secret Adapter** | Deployment | Consumes events, orchestrates jobs, reports status |
 | **Pull Secret Job** | Job | Executes GCP API calls or uses the GCP SDK both related to GCP Secret Manager and K8s secret operations |
-| **GCP Secret Manager** | External Service | Stores pull secret data in customer's project |
+| **GCP Secret Manager** | External Service | Stores pull secret data in RH project |
 | **Kubernetes Secret** | Resource | Provides pull secret to HyperShift |
 
 ### Integration Points
