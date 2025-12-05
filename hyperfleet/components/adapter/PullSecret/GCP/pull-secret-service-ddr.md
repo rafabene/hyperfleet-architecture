@@ -16,7 +16,7 @@ The service operates as an event-driven adapter within the HyperFleet architectu
 
 The Pull Secret Service is an event-driven adapter that manages the complete lifecycle of image registry pull secrets for HyperShift-managed OpenShift clusters provisioned on Google Cloud Platform (GCP).
 
-### Roll-out Plan
+### Rollout Plan
 
 To minimize the risks related to this, rollout will be done in different milestones:
 
@@ -42,10 +42,10 @@ To minimize the risks related to this, rollout will be done in different milesto
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
 metadata:
-  name: validation-adapter
+  name: pullsecret-adapter
   namespace: hyperfleet-system
 spec:
-  adapterType: validation
+  adapterType: pullsecret
 
   # Precondition criteria for when Pull Secret Adapter should run
   criteria:
@@ -212,15 +212,6 @@ MVP Scope - primarily focused on the Job implementation (see notes: [HyperFleet:
 
 ---
 
-## Roll-out Plan
-
-To minimize the risks related to this, rollout will be done in different milestones:
-
-- **M1:** Pull Secret Service for MVP scope
-- **M2:** Pull Secret Service to extract out quay functionality from AMS
-- **M3:** Pull Secret Service to support for other clouds and registries
-
----
 
 ## References
 
