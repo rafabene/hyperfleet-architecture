@@ -32,7 +32,8 @@ To minimize the risks related to this, rollout will be done in different milesto
 - Store pull secret credentials in RedHat GCP Secret Manager
 - Add test coverage to validate the pull secret adapter functionalities
 
-> **Note:** M1 is purely a task for storing pull secret data in a vault (GCP Secret Manager)
+> **Note 1:** M1 is purely a task for storing pull secret data in a vault (GCP Secret Manager).
+> **Note 2:** The pull secret is stored in the account where the Hyperfleet service runs.
 
 ---
 
