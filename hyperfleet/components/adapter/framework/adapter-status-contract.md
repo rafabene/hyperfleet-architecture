@@ -6,7 +6,7 @@ This document defines the contract between HyperFleet adapters and the HyperFlee
 
 **Related Documentation:**
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture and workflow
-- [Adapter Config Template](./adapter-config-template.yaml) - Configuration structure
+- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
 - [Status Guide](../../docs/status-guide.md) - Comprehensive status guide
 
 ---
@@ -15,7 +15,7 @@ This document defines the contract between HyperFleet adapters and the HyperFlee
 
 ### Status Reporting Endpoint
 
-**Base URL**: `{hyperfleetApiBaseUrl}/api/{hyperfleetApiVersion}/clusters/{clusterId}/statuses`
+**Base URL**: `{hyperfleetApiBaseUrl}/api/hyperfleet/{hyperfleetApiVersion}/clusters/{clusterId}/statuses`
 
 **Method**:
 - `POST` - Upsert ClusterStatus (create or update)

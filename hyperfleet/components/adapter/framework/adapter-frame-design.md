@@ -107,10 +107,11 @@ hyperfleet-adapter/
 - **GetParameterValue(name, env, eventData)**: Extracts parameter values from environment or event data based on source specification
 
 **Key Structures:**
-- `Config`: Root configuration structure matching adapter-config-template.yaml
-- `ParameterConfig`: Defines parameter extraction rules (env.* or event.* sources)
-- `PreconditionConfig`: Defines API calls and conditions for resource creation
-- `PostConfig`: Defines status evaluation and reporting logic
+- `Config`: Root configuration structure matching adapter-config-template-MVP.yaml
+- `ParamConfig`: Defines parameter extraction rules (env.* or event.* sources)
+- `PreconditionConfig`: Defines API calls with `apiCall`, `capture`, `conditions`/`expression`
+- `ResourceConfig`: Defines resources with `manifest`, `discovery`, `recreateOnChange`
+- `PostConfig`: Defines `payloads` (with `build`/`buildRef`) and `postActions`
 
 **Configuration Lifecycle:**
 
@@ -136,7 +137,7 @@ config := LoadConfig("/etc/adapter/config/adapter-config.yaml")
 // For EACH event received from broker
 for event := range broker.Subscribe() {
     // Extract dynamic values from THIS event
-    params := ExtractParameters(event, config.Parameters)
+    params := ExtractParams(event, config.Params)
     // params["clusterId"] = "cluster-123"  ← Different per event
     // params["resourceId"] = "resource-456" ← Different per event
     
@@ -225,24 +226,30 @@ spec:
 - Supports all CEL built-in functions and operators
 - Custom functions can be registered for adapter-specific logic
 
+**CEL Optional Chaining:**
+- Use `?.` for safe field access on potentially missing fields
+- Use `.orValue(default)` to provide a default value when field is missing
+- Example: `resources.?clusterNamespace.?status.?phase.orValue("")`
+- Prevents null pointer errors when resources don't exist yet
+
 **Template Design Philosophy:**
 
 The adapter configuration uses a **dual-syntax approach** for flexibility and clarity:
 
 1. **Go Templates (`{{ .var }}`)**: Used throughout for variable interpolation
    - Consistent syntax for all value substitution
-   - Example: `"{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"`
-   - Supports Sprig template functions (date, random, string manipulation)
+   - Example: `"{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"`
+   - Supports Sprig template functions (date, lower, random, string manipulation)
 
 2. **`field` (Simple Path)**: For straightforward JSON path extraction
-   - Example: `field: "status.phase"` or `field: "spec.vpc_id"`
+   - Example: `field: "status.phase"` or `field: "name"`
    - Internally translated to CEL expression by the adapter
    - More readable for common cases
    - Recommended for simple field access
 
 3. **`expression` (CEL)**: For complex logic, filtering, and transformations
-   - Example: `expression: "status.adapters.filter(a, a.name == '{{ .metadata.name }}')[0].installed"`
-   - Full CEL power for conditional logic, filtering, null-safety
+   - Example: `expression: "resources.?clusterNamespace.?status.?phase.orValue(\"\") == \"Active\""`
+   - Full CEL power for conditional logic, filtering, null-safety with optional chaining
    - Required for complex operations (filter, map, has, size, etc.)
 
 **Design Benefits:**
@@ -255,18 +262,17 @@ The adapter configuration uses a **dual-syntax approach** for flexibility and cl
 **When to Use Each:**
 
 ```yaml
-# Use 'field' for simple path extraction
-extract:
-  - as: "clusterPhase"
+# Use 'field' for simple path extraction (in precondition capture)
+capture:
+  - name: "clusterPhase"
     field: "status.phase"  # Simple, readable
 
-# Use 'expression' for complex logic
-extract:
-  - as: "adapterInstalled"
-    expression: "status.adapters.filter(a, a.name == '{{ .metadata.name }}')[0].installed"
+# Use 'expression' for complex logic (in post conditions)
+expression: |
+  status.adapters.filter(a, a.name == '{{ .metadata.name }}')[0].installed
 
-# Use Go templates for variable interpolation
-url: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
+# Use Go templates for variable interpolation (note: /api/hyperfleet/ prefix)
+url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
 ```
 
 **Condition Syntax:**
@@ -368,7 +374,7 @@ when:
 **Features:**
 - Configurable timeout from `hyperfleetApi.timeout`
 - Retry logic with exponential/linear/constant backoff (post-MVP)
-- Template variable substitution in endpoints (e.g., `{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}`)
+- Template variable substitution in endpoints (e.g., `{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}`)
 - JSON request/response handling
 - Error handling with status code checking
 
@@ -539,20 +545,22 @@ subscriber.Subscribe(ctx, func(ctx context.Context, msg []byte) error {
 - **DeleteResource(ctx, namespace, kind, name)**: Deletes a resource
 
 **Resource Creation:**
-- Parse resource templates (YAML or Go templates)
+- Parse resource manifests (inline YAML or external template via `ref`)
 - Substitute template variables (e.g., `{{ .clusterId }}`, `{{ .vpcId }}`)
 - Apply resource to Kubernetes cluster
-- Track resource for status reporting
+- Track resource by name for status reporting
 
-**Resource Tracking:**
-- Each resource can have a `track` configuration:
-  - `as`: Alias name for referencing in status evaluation
-  - `discovery`: Rules for discovering the resource (byName or bySelectors)
-- Store tracked resources in map: `resources[alias] = resourceStatus`
+**Resource Configuration:**
+- Each resource has:
+  - `name`: Resource identifier for referencing in status evaluation (e.g., `resources.clusterNamespace`)
+  - `manifest`: Inline YAML spec or `ref` to external template file
+  - `discovery`: Rules for discovering existing resources
+  - `recreateOnChange`: Optional flag to recreate resource when generation changes (e.g., for Jobs)
+- Store resources in map: `resources[name] = resourceStatus`
 
 **Resource Discovery:**
-- **byName**: Direct lookup by resource name (e.g., `cluster-provisioner-{{ .clusterId }}`)
-- **bySelectors**: List resources matching label selectors
+- `namespace`: Target namespace for resource lookup (supports templating)
+- `bySelectors.labelSelector`: Label key-value pairs to match resources
 - Used for finding resources created in previous events or by other adapters
 
 **Template Processing:**
@@ -593,13 +601,14 @@ subscriber.Subscribe(ctx, func(ctx context.Context, msg []byte) error {
 - Build final status payload:
   ```json
   {
-    "conditions": {
-      "applied": { "status": "False", "reason": "PreconditionsNotMet", "message": "Waiting for dependencies" },
-      "available": { "status": "False", "reason": "ResourcesNotCreated", "message": "..." },
-      "health": { "status": "False", "reason": "ResourcesNotCreated", "message": "..." }
-    },
+    "adapter": "example-adapter",
+    "conditions": [
+      { "type": "Applied", "status": "False", "reason": "PreconditionsNotMet", "message": "Waiting for dependencies" },
+      { "type": "Available", "status": "False", "reason": "ResourcesNotCreated", "message": "..." },
+      { "type": "Health", "status": "True", "reason": "Healthy", "message": "Adapter is healthy" }
+    ],
     "data": { ... },
-    "observed_generation": "5",
+    "observed_generation": 5,
     "observed_time": "2025-01-01T00:00:00Z"
   }
   ```
@@ -672,9 +681,9 @@ subscriber.Subscribe(ctx, func(ctx context.Context, msg []byte) error {
 **Resource Existence Check:**
 - **Only executes when preconditions are met**
 - Check if resources already exist before creating
-- Use discovery rules from `track.discovery` configuration:
-  - `byName`: Direct lookup by resource name (e.g., `cluster-provisioner-{{ .clusterId }}`)
-  - `bySelectors`: List resources matching label selectors
+- Use discovery rules from resource `discovery` configuration:
+  - `namespace`: Target namespace for resource lookup
+  - `bySelectors.labelSelector`: Label selector to find matching resources
 - If resources exist: Skip creation, proceed to post-processing (evaluate post conditions/data and report)
 - If resources don't exist: Create new resources, then report
 
@@ -690,18 +699,18 @@ subscriber.Subscribe(ctx, func(ctx context.Context, msg []byte) error {
 
 **Post-Processing (When Resources Exist):**
 - **Only executes when preconditions are met AND resources already exist**
-- Discover tracked resources using `track.discovery` rules:
-  - Look up resources by name or label selectors
+- Discover tracked resources using resource `discovery` configuration:
+  - Look up resources by namespace and label selectors
   - Fetch resource status from Kubernetes API
 - Build variables map for expression evaluation:
-  - `resources.*`: Tracked Kubernetes resources (by alias from `track.as`)
-  - Named external resources: Variables from `fetchExternalResource` parameters (e.g., `clusterJob`, `provisioningSecret`)
+  - `resources.*`: Tracked Kubernetes resources (by resource name)
+  - Captured variables: Values from precondition `capture` fields (e.g., `clusterName`, `vpcId`)
   - Parameters: All extracted parameters (from event, API calls, etc.)
-- Evaluate post conditions (from `post.parameters.build.conditions`):
+- Evaluate post conditions (from `post.payloads[].build.conditions`):
   - **applied**: Expression evaluating if resources are applied (e.g., Deployment Available, Service Ready)
   - **available**: Expression evaluating if resources are available (e.g., LoadBalancer ingress exists, replicas ready)
   - **health**: Expression evaluating resource health (e.g., no failures, phase not Terminating)
-- Evaluate post data (from `post.parameters.build.data`):
+- Evaluate post data (from `post.payloads[].build.data`):
   - Custom data expressions for additional status information
   - May reference external resources from other namespaces
 - Build status payload with evaluated conditions and data

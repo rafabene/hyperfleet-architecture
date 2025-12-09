@@ -97,10 +97,10 @@ defer apiServer.Close()
 ```
 
 **API Endpoints to Mock**:
-- `GET /api/v1/clusters/{clusterId}` - Return cluster object
-- `GET /api/v1/clusters/{clusterId}/statuses` - Return existing status or 404
-- `POST /api/v1/clusters/{clusterId}/statuses` - Create status
-- `PATCH /api/v1/clusters/{clusterId}/statuses/{statusId}` - Update status
+- `GET /api/hyperfleet/v1/clusters/{clusterId}` - Return cluster object
+- `GET /api/hyperfleet/v1/clusters/{clusterId}/statuses` - Return existing status or 404
+- `POST /api/hyperfleet/v1/clusters/{clusterId}/statuses` - Create/upsert status
+- `PATCH /api/hyperfleet/v1/clusters/{clusterId}/statuses/{statusId}` - Update status
 
 **Request/Response Tracking**:
 - Track all API calls made by adapter
@@ -289,96 +289,112 @@ metadata:
 spec:
   adapter:
     version: "1.0.0"
-  ruleEngine:
-    type: "expr"
-    compileOnStartup: true
   hyperfleetApi:
     timeout: 2s
-  messageBroker:
-    maxConcurrency: 10
+    retryAttempts: 3
+    retryBackoff: exponential
   kubernetes:
-    inCluster: false
-    namespace: "test-namespace"
-  parameters:
+    apiVersion: "v1"
+  params:
     - name: "clusterId"
-      source: "event.clusterId"
-      required: true
-    - name: "resourceId"
-      source: "event.resourceId"
-      required: true
-    - name: "clusterHref"
-      source: "event.href"
+      source: "event.id"
+      type: "string"
       required: true
   preconditions:
-    - type: "api_call"
-      method: "GET"
-      endpoint: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
-      storeResponseAs: "clusterDetails"
-      when:
-        expression: |
-          clusterDetails.status.phase == "Provisioning"
+    - name: "clusterStatus"
+      apiCall:
+        method: "GET"
+        url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
+        timeout: 10s
+        retryAttempts: 3
+        retryBackoff: "exponential"
+      capture:
+        - name: "clusterPhase"
+          field: "status.phase"
+        - name: "generationId"
+          field: "generation"
+      conditions:
+        - field: "clusterPhase"
+          operator: "equals"
+          value: "NotReady"
   resources:
-    - apiVersion: "batch/v1"
-      kind: "Job"
-      metadata:
-        name: "validation-{{ .clusterId }}-gen{{ .generation }}"
-      spec:
-        template:
-          spec:
-            containers:
-              - name: "validation"
-                image: "quay.io/hyperfleet/validation-job:test"
-            restartPolicy: "Never"
-      track:
-        as: "validationJob"
-        discovery:
-          byName: "validation-{{ .clusterId }}-gen{{ .generation }}"
+    - name: "validationJob"
+      recreateOnChange: true
+      manifest:
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: "validation-{{ .clusterId | lower }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/resource-type: "job"
+            hyperfleet.io/managed-by: "{{ .metadata.name }}"
+        spec:
+          template:
+            spec:
+              containers:
+                - name: "validation"
+                  image: "quay.io/hyperfleet/validation-job:test"
+              restartPolicy: "Never"
+      discovery:
+        namespace: "{{ .clusterId | lower }}"
+        bySelectors:
+          labelSelector:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/resource-type: "job"
+            hyperfleet.io/managed-by: "{{ .metadata.name }}"
   post:
-    parameters:
+    payloads:
       - name: "statusPayload"
         build:
+          adapter: "{{ .metadata.name }}"
           conditions:
-            applied:
+            - type: "Applied"
               status:
                 expression: |
-                  resources.validationJob != nil &&
-                  resources.validationJob.status.succeeded > 0
+                  resources.?validationJob.?status.?succeeded.orValue(0) > 0 ? "True" : "False"
               reason:
                 expression: |
-                  "JobCreated"
+                  resources.?validationJob.?status.?succeeded.orValue(0) > 0 ? "JobCreated" : "JobPending"
               message:
                 expression: |
-                  "Validation job created"
-            available:
+                  resources.?validationJob.?status.?succeeded.orValue(0) > 0 ? "Validation job created" : "Job creation in progress"
+            - type: "Available"
               status:
                 expression: |
-                  resources.validationJob.status.succeeded > 0
+                  resources.?validationJob.?status.?succeeded.orValue(0) > 0 ? "True" : "False"
               reason:
                 expression: |
-                  resources.validationJob.status.conditions[?(@.type=='Complete')].reason ?? "JobSucceeded"
+                  resources.?validationJob.?status.?succeeded.orValue(0) > 0 ? "JobSucceeded" : "JobNotComplete"
               message:
                 expression: |
-                  resources.validationJob.status.conditions[?(@.type=='Complete')].message ?? "Job completed"
-            health:
+                  resources.?validationJob.?status.?succeeded.orValue(0) > 0 ? "Job completed" : "Job not yet complete"
+            - type: "Health"
               status:
                 expression: |
-                  (resources.validationJob.status.failed ?? 0) == 0
+                  adapter.?executionStatus.orValue("") == "success" ? "True" : (adapter.?executionStatus.orValue("") == "failed" ? "False" : "Unknown")
               reason:
                 expression: |
-                  "AllChecksPass"
+                  adapter.?errorReason.orValue("") != "" ? adapter.?errorReason.orValue("") : "Healthy"
               message:
                 expression: |
-                  "Job completed successfully"
+                  adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations completed successfully"
+          observed_generation:
+            expression: "generationId"
+          observed_time:
+            value: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
     postActions:
-      - type: "api_call"
-        method: "POST"
-        endpoint: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses"
-        headers:
-          - name: "Authorization"
-            value: "Bearer {{ .hyperfleetApiToken }}"
-          - name: "Content-Type"
-            value: "application/json"
-        body: "{{ .statusPayload }}"
+      - name: "reportStatus"
+        apiCall:
+          method: "POST"
+          url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses"
+          body: "{{ .statusPayload }}"
+          timeout: 30s
+          retryAttempts: 3
+          retryBackoff: "exponential"
+          headers:
+            - name: "Content-Type"
+              value: "application/json"
 ```
 
 ### Expected Status Fixtures
@@ -825,18 +841,22 @@ assert.IdempotentBehavior(t, adapter, event3)
 2. Configure adapter with custom conditions:
    ```yaml
    post:
-     parameters:
+     payloads:
        - name: "statusPayload"
          build:
+           adapter: "{{ .metadata.name }}"
            conditions:
-             applied: {...}
-             available: {...}
-             health: {...}
-             customCondition:
+             - type: "Applied"
+               # ... status/reason/message expressions
+             - type: "Available"
+               # ... status/reason/message expressions
+             - type: "Health"
+               # ... status/reason/message expressions
+             - type: "CustomCondition"
                status:
                  expression: |
-                   resources.validationJob.status.succeeded > 0 &&
-                   resources.dnsJob.status.succeeded > 0
+                   resources.?validationJob.?status.?succeeded.orValue(0) > 0 &&
+                   resources.?dnsJob.?status.?succeeded.orValue(0) > 0 ? "True" : "False"
                reason:
                  expression: |
                    "AllJobsSucceeded"

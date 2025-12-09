@@ -4,7 +4,7 @@ This document describes how to deploy the HyperFleet Adapter Framework in Kubern
 
 **Related Documentation:**
 - [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
-- [Adapter Config Template](./adapter-config-template.yaml) - Configuration structure
+- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
 - [Adapter Design Decisions](./adapter-design-decisions.md) - Architecture decisions
 
 ---
@@ -823,11 +823,20 @@ kubectl get cm hyperfleet-environment -n hyperfleet-system -o yaml
 
 ---
 
+## Post-MVP Enhancements
+
+### KEDA Autoscaling
+
+Scale adapters based on message queue depth using KEDA (Kubernetes Event-Driven Autoscaling). Enables scale-to-zero when no messages in queue (cost savings), automatic scale-up based on queue backlog, and supports Pub/Sub, SQS, and RabbitMQ triggers.
+
+---
+
 ## References
 
 - [Adapter Framework Design](./adapter-frame-design.md)
-- [Adapter Config Template](./adapter-config-template.yaml)
+- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml)
 - [Adapter Design Decisions](./adapter-design-decisions.md)
 - [Helm Documentation](https://helm.sh/docs/)
 - [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
 - [Prometheus Operator](https://prometheus-operator.dev/)
+- [KEDA Documentation](https://keda.sh/docs/)
