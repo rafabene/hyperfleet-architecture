@@ -30,27 +30,44 @@ Challenges:
 The customer will have to run this gcloud command to grant permissions:
 
 ```
-gcloud projects add-iam-policy-binding  projects/CUSTOMER_NAME_PROJECT \
+gcloud projects add-iam-policy-binding  projects/CUSTOMER_PROJECT_NAME \
   --role="roles/pubsub.admin" \
   --member="principal://iam.googleapis.com/projects/HYPERFLEET_PROJECT_NUMBER/locations/global/workloadIdentityPools/HYPERFLEET_PROJECT_NAME.svc.id.goog/subject/ns/CLUSTER_NAME/sa/CLUSTER_NAME" --condition=None 
 ```
 
-Question: Do the namespace and Kubernetes Service Account names be the same?
+**Question: Do the namespace and Kubernetes Service Account names be the same?**
 No, this is TBD, we simplified this for the example
 
 It is also good to have a namespace+ksa per customer, so in case a token is leaked, only that customer project is exposed
 
-Question: Does the kubernetes service account need to exist before the permissions are granted?
+**Question: Does the kubernetes service account need to exist before the permissions are granted?**
 No, it is not required
 
-Question: the name/Id of the Hyperfleet Regional cluster is not specified when granting permissions, why?
+**Question: the name/Id of the Hyperfleet Regional cluster is not specified when granting permissions, why?**
 All GKE clusters share the same Workload Identity Pool. Any cluster in `HYPERFLEET_PROJECT_NAME` with a workload running in a namespace+ksa named `CLUSTER_NAME` will have the granted permissions.
 
-Question: can it be restricted to a cluster?
-TBC. The `--condition` parameter can be used to filter permission
+**Question: can access be restricted in a more fine grained way?**
+
+First, we can use `add-iam-policy-binding` directly on resources. E.g. we can apply it on a specific existing topic.
+
+We can also use the `--condition` parameter can be used to evaluate the permission.
+
+e.g. limit access to topics that have a project tag "purpose" with value "hyperfleet"
+
+```
+gcloud projects add-iam-policy-binding  projects/CUSTOMER_PROJECT_NAME \
+  --role="roles/pubsub.admin" \
+  --member="principal://iam.googleapis.com/projects/HYPERFLEET_PROJECT_NUMBER/locations/global/workloadIdentityPools/HYPERFLEET_PROJECT_NAME.svc.id.goog/subject/ns/amarin/sa/gcloud-ksa"     --condition=^:^'expression=resource.matchTag("CUSTOMER_PROJECT_NAME/purpose", "hyperfleet"):title=hyperfleet-tag-condition:description=Grant access only for resources tagged as purpose hyperfleet'
+``` 
+
+note:
+- GCP tags are different from labels)
+- Specifying some conditions is tricky when using gcloud
+  - tag names require to be prefixed with  `CUSTOMER_PROJECT_NAME/`
+  - since the condition contains a `,` we need to specify another separator for condition properties using the syntax `^:^`
 
 
-Question: If Hyperfleet moves to another GCP project, does the customer need to re-grant permissions?
+**Question: If Hyperfleet moves to another GCP project, does the customer need to re-grant permissions?**
 Yes, since permissions are associated to a pool with HYPERFLEET_PROJECT_NAME
 
 
