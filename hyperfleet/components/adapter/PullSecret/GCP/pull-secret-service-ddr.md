@@ -5,7 +5,7 @@
 The Pull Secret Adapter is responsible for securely storing and managing image registry pull secrets in GCP Secret Manager for HyperShift-managed OpenShift clusters. These secrets enable cluster nodes to pull container images from authenticated registries (e.g., Red Hat registries, Quay.io).
 
 The service operates as an event-driven adapter within the HyperFleet architecture, consuming CloudEvents from Sentinel and orchestrating two critical workflows:
-1. Storing pull secrets in the customer's GCP Secret Manager for worker node access
+1. Storing pull secrets in the Red Hat GCP Secret Manager
 2. Provisioning Kubernetes secrets in the management cluster for HyperShift control plane access
 
 ---
@@ -33,6 +33,7 @@ To minimize the risks related to this, rollout will be done in different milesto
 - Add test coverage to validate the pull secret adapter functionalities
 
 > **Note 1:** M1 is purely a task for storing pull secret data in a vault (GCP Secret Manager).
+
 > **Note 2:** The pull secret is stored in the account where the Hyperfleet service runs.
 
 ---
