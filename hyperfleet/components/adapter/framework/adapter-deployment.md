@@ -6,6 +6,7 @@ This document describes how to deploy the HyperFleet Adapter Framework in Kubern
 - [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
 - [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
 - [Adapter Design Decisions](./adapter-design-decisions.md) - Architecture decisions
+- [Logging Specification](../../../docs/logging-specification.md) - Logging configuration standards
 
 ---
 

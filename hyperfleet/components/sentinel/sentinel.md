@@ -915,6 +915,8 @@ The deployment documentation includes:
 - Prometheus metrics specification
 - Health probe configuration
 
+For logging configuration standards, see [Logging Specification](../../docs/logging-specification.md).
+
 ---
 
 ## Post-MVP Enhancements

@@ -455,7 +455,7 @@ when:
 - OpenTelemetry distributed tracing
 - Prometheus metrics enhancements
 - Advanced metrics
-- Structured logging enhancements
+- Structured logging enhancements (see [Logging Specification](../../../docs/logging-specification.md))
 
 **Deployment & Operations:**
 - ArgoCD/Flux GitOps integration
