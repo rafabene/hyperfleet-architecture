@@ -2,11 +2,12 @@
 
 ## Problem statement
 
-We need to provide a secure way to access customer's cloud infrastructure from several CLM components.
+We need to provide a secure way to access customer's cloud infrastructure from several Hyperfleeet components.
 
-CLM components like "validator adapter task" and "DNS adapter task" need to query customer resources in their GCP project.
-
-Note that this problem is different from having Hyperfleet components accessing Hyperfleet cloud resources, like Cloud DBs or broker topics/subscriptions. In the later case, the credentials are for a single GCP project owned and managed by Red Hat (or the provider of the solution, but in this case the GCP team from Red Hat, if operating as a 3p)
+There are different situations requiring permissions:
+- Hyperfleet components (Sentinel, Adapter) accessing Hyperfleet GCP resources like PubSub
+- Hyperfleet components (Task Adapters, e.g a k8s job) accessing customer's GCP project to verify things
+- Hypershift Operator component accessing customer's GCP project to build infrastructure
 
 Challenges:
 - Obtain customer credentials, or make customer to authorize an identity in our side with permissions
@@ -14,34 +15,54 @@ Challenges:
 - Ideally, design a solution that can be used in other cloud providers
 
 
-## TL;DR; solution
+## TL;DR; solution using Workload Identity Federation for GKE
+
+Workload Identity Federation has been evolving over the years and different approaches are explained in Google's documentation. Here is the simplest solution that fits Hyperfleet use cases.
 
 - A customer has their infrastructure in `CUSTOMER_PROJECT_NAME` GCP project
-- A customer creates a HostedCluster with name `CLUSTER_NAME`
-- An adapter task runs wants to access customer infrastructure for the `CLUSTER_NAME` HostedCluster
+- A customer creates a HostedCluster with name `HOSTEDCLUSTER_NAME`
+- An adapter task runs wants to access customer infrastructure for the `HOSTEDCLUSTER_NAME` HostedCluster
   - It runs in a GKE cluster for the Regional setup
   - In a GCP project with 
      - GCP project name `HYPERFLEET_PROJECT_NAME`
      - GCP project number `HYPERFLEET_PROJECT_NUMBER`
-  - In a namespace named `CLUSTER_NAME`
-  - With a Kubernetes Service Account named `CLUSTER_NAME`
+  - In a namespace named `HOSTEDCLUSTER_NAME`
+  - With a Kubernetes Service Account named `HOSTEDCLUSTER_NAME`
 - For the example, let's say the adapter requires `pubsub.admin` permissions
 
-The customer will have to run this gcloud command to grant permissions:
+The customer will have to run this gcloud command to grant permissions (or via API):
 
 ```
 gcloud projects add-iam-policy-binding  projects/CUSTOMER_PROJECT_NAME \
   --role="roles/pubsub.admin" \
-  --member="principal://iam.googleapis.com/projects/HYPERFLEET_PROJECT_NUMBER/locations/global/workloadIdentityPools/HYPERFLEET_PROJECT_NAME.svc.id.goog/subject/ns/CLUSTER_NAME/sa/CLUSTER_NAME" --condition=None 
+  --member="principal://iam.googleapis.com/projects/HYPERFLEET_PROJECT_NUMBER/locations/global/workloadIdentityPools/HYPERFLEET_PROJECT_NAME.svc.id.goog/subject/ns/HOSTEDCLUSTER_NAME/sa/HOSTEDCLUSTER_NAME" --condition=None 
 ```
 
-**Question: Do the namespace and Kubernetes Service Account names be the same?**
+### Q&A
+
+**Question: How does it work for the first use case where there is no customer involved?**  
+In that case `CUSTOMER_PROJECT_NAME == HYPERFLEET_PROJECT_NAME` and we grant permissions to the same GCP project that hosts all Hyperfleet infrastructure.
+
+**Question: Do the namespace and Kubernetes Service Account names have to be the same HOSTEDCLUSTER_NAME?**  
 No, this is TBD, we simplified this for the example
+This makes the assumption that Adaptor Tasks will run each in a namespace named after `HOSTEDCLUSTER_NAME`
 
-It is also good to have a namespace+ksa per customer, so in case a token is leaked, only that customer project is exposed
+**Question: Does the kubernetes namespace + service account need to exist before the permissions are granted?**  
+No, it is not required. 
 
-**Question: Does the kubernetes service account need to exist before the permissions are granted?**
-No, it is not required
+The customer only need the names to grant the permissions.
+
+**Question: Why using `HOSTEDCLUSTER_NAME` instead of `HOSTEDCLUSTER_ID` ?**  
+The permission grant occurs before the creation of the HostedCluster, even before the `spec` is stored in our Hyperfleet API, and we need an id.
+
+Implication -> **Hosted Cluster names have to be unique per Hyperfleet Region**
+
+An alternative is having the customer trust all workloads in the Hyperfleet Regional cluster, regardless of namespace+service account ([docs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity#kubernetes-resources-iam-policies))
+
+But is good to have a namespace+ksa per customer, in case a token is leaked, only that customer is exposed
+
+**Does the customer need to create a Workload Identity Pool and a Provider?**  
+No, setting IAM permissions to a `principal` following the naming conventions is everything that is required on their side.
 
 **Question: the name/Id of the Hyperfleet Regional cluster is not specified when granting permissions, why?**
 All GKE clusters share the same Workload Identity Pool. Any cluster in `HYPERFLEET_PROJECT_NAME` with a workload running in a namespace+ksa named `CLUSTER_NAME` will have the granted permissions.
@@ -57,7 +78,7 @@ e.g. limit access to topics that have a project tag "purpose" with value "hyperf
 ```
 gcloud projects add-iam-policy-binding  projects/CUSTOMER_PROJECT_NAME \
   --role="roles/pubsub.admin" \
-  --member="principal://iam.googleapis.com/projects/HYPERFLEET_PROJECT_NUMBER/locations/global/workloadIdentityPools/HYPERFLEET_PROJECT_NAME.svc.id.goog/subject/ns/amarin/sa/gcloud-ksa"     --condition=^:^'expression=resource.matchTag("CUSTOMER_PROJECT_NAME/purpose", "hyperfleet"):title=hyperfleet-tag-condition:description=Grant access only for resources tagged as purpose hyperfleet'
+  --member="principal://iam.googleapis.com/projects/HYPERFLEET_PROJECT_NUMBER/locations/global/workloadIdentityPools/HYPERFLEET_PROJECT_NAME.svc.id.goog/subject/ns/HOSTEDCLUSTER_NAME/sa/HOSTEDCLUSTER_NAME"     --condition=^:^'expression=resource.matchTag("CUSTOMER_PROJECT_NAME/purpose", "hyperfleet"):title=hyperfleet-tag-condition:description=Grant access only for resources tagged as purpose hyperfleet'
 ``` 
 
 note:
@@ -68,12 +89,29 @@ note:
 
 
 **Question: If Hyperfleet moves to another GCP project, does the customer need to re-grant permissions?**
-Yes, since permissions are associated to a pool with HYPERFLEET_PROJECT_NAME
+Yes, since permissions are associated to a pool with HYPERFLEET_PROJECT_NAME, if that changes, the customer needs to grant permissions to the new Workload Identity Pool.
+
+Note that this is similar to having a Google Service Account as identity, since it will also be associated with a GCP project.
+
+**Question: Do we need to annotate Kubernetes Service Accounts or create Google Service Accounts?**
+No. We are using "Workload Identity Federation for GKE" note the suffix "for GKE
+
+In the past, it was required to have a Google Service Account created and then associate the Kubernetes Service Account with it using annotations in the descriptor.
 
 
 
+**Question: If I have two Hyperfleet clusters in the same GCP project, with the same namespace name and same Kubernetes Service Account name.... do they really share customer permissions?**
 
-## Current GCP team approach 
+Yes, that is named "identity sameness", it is explained also in GCP documentation: https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity#identity_sameness
+
+As with the `HOSTEDCLUSTER_NAME` discussion before, there are other `principals` that can be used for identity, or we can set `conditions` to make it more fine grained.
+
+
+**Do I need to configure the Google Cloud SDK in any special way?**  
+No, the SDK will recognize the Google identity automatically when running in the pod
+
+
+## Current GCP team approach for Hypershift Operator
 
 The current approach by GCP team for Hypershift Operator in their PoC is a temporal solution sharing customer generated credentials. 
 
@@ -119,46 +157,63 @@ For Hypershift Operator, the component that stores the key and signs tokens is t
 Pros:
 - No changes to the existing UX for the customer. They will leverage the CLI to drive the process
 
-## Leverage Regional cluster Workload Identity Pool
 
-Instead of managing manually the private_key/public_key we can make use of the Google-managed encryption for GKE.
+## Exploring Workload Identity Federation
 
-A GKE cluster will be associated with a Workload Identity Pool which will sign tokens for identities that the customer can enable as an OIDC provider for their projects. This all happens through configuration in GCP and no private keys have to be exchanged between the customer and Hyperfleet
+Some explanation results when using Workload Identity Federation for GKE
 
-- GKE Regional Cluster has an associated Workload Identity Pool
-- The pool will sign tokens for the k8s Service Accounts in the GKE cluster
-- The customer configures grants permissions to a k8s service account running of the GKE Regional Cluster
-- A workload in the GKE Regional cluster running as the k8s Service Account can access customer's cloud resources
-
-As an example: 
-- For a customer project named CUSTOMER_PROJECT, 
-- The role `pubsub.admin` will be granted
-- To a k8s service account named `hyperfleet-sa`
-  - In the namespace `hyperfleet`
-  - In the GCP Project `hcm-hyperfleet` (with project number 12341234)
-
+1. Create a Kubernetes Namespace and Service Account
 ```
-gcloud projects add-iam-policy-binding  projects/CUSTOMER_PROJECT \
-  --role="roles/pubsub.admin" \
-  --member="principal://iam.googleapis.com/projects/12341234/locations/global/workloadIdentityPools/hcm-hyperfleet.svc.id.goog/subject/ns/hyperfleet/sa/hyperfleet-sa" --condition=None
-
+NAME=myname
+kubectl create namespace $NAME
+kubectl create serviceaccount $NAME -n $NAME
 ```
 
-This command gives direct permission to the k8s service account, without requiring:
-- An intermediate GCP Service Account
-- No need for a customer OIDC Provider nor Workload Identity Pool
-- No need to annotate anything in the k8s Service Account, nor the namespace
 
+2. Create a pod with gcloud in a cluster running with the created Service Account in the namespace
 
-#### caveat: Workload Identity sameness
+<details>
+<summary>gcloud-sdk-deployment.yaml</summary>
 
-GCP documentation: https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity#identity_sameness
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gcloud
 
-There is a minor caveat with the GCP implementation of Workload Identity for GKE, where permissions are granted to a k8s service account in a namespace **regardless of the cluster. This means that the same combination of namespace+serviceaccount will have the same customer permissions in all GKE clusters created in a GCP project.
+  namespace: $NAME
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gcloud
+  template:
+    metadata:
+      labels:
+        app: gcloud
+    spec:
+      containers:
+      - name: gcloud
+        image: google/cloud-sdk:slim
+        command: ["/bin/sh", "-c", "--"]
+        args: ["while true; do sleep 30; done;"]
 
-Some explanation:
+EOF
+```
+</details>
 
-All GKE cluster in a GCP project with Workload Identity enabled use the same Workload Identity Pool named `PROJECT_ID.svc.id.goog`. This is a Google managed Identity Pool that is not visible in the GCP console.
+2. Getting the Google identity associated to the pod
+
+```
+kubectl exec -ti $POD -- gcloud auth list
+
+Credentialed Accounts
+ACTIVE  ACCOUNT
+*       PROJECT_NAME.svc.id.goog
+```
+
+All GKE cluster in a GCP project with Workload Identity enabled use the same Workload Identity Pool named `PROJECT_NAME.svc.id.goog`. This is a Google managed Identity Pool that is not visible in the GCP console.
 
 For example, for the GCP project `hcm-hyperfleet` the identity pool is `hcm-hyperfleet.svc.id.goog` and can be checked with the command:
 
@@ -169,7 +224,7 @@ name: projects/275239757837/locations/global/workloadIdentityPools/hcm-hyperflee
 state: ACTIVE
 ```
 
-But not if tried to list it as other Workload Identity pools that are usually used for external identity federation like AWS or Azure
+But it can not be found when listing other Workload Identity pools that are usually used for external identity federation like AWS or Azure
 
 ```
 gcloud iam workload-identity-pools list  --location=global --project hcm-hyperfleet
@@ -177,15 +232,68 @@ gcloud iam workload-identity-pools list  --location=global --project hcm-hyperfl
 Listed 0 items.
 ```
 
+Note: Even if all clusters in a GCP project are destroyed, the Workload Identity Pool managed by Google remains.
 
-For the cluster hyperfleet-dev, the JWT configuration can be found at:
+4. Auth tokens
 
-https://container.googleapis.com/v1/projects/hcm-hyperfleet/locations/us-central1-a/clusters/hyperfleet-dev/.well-known/openid-configuration
+GKE automatically injects tokens in the file system at `/var/run/secrets/kubernetes.io/serviceaccount/token`, let's explore the contents with the (jwt-cliL[https://github.com/mike-engel/jwt-cli]) utility to decode the JWT 
 
+```
+kubectl exec -ti $POD -- cat /var/run/secrets/kubernetes.io/serviceaccount/token \
+xargs jwt decode
+```
 
+<details>
+<summary>Contents of JWT token</summary>
+
+```
+Token header
+------------
+{
+  "alg": "RS256",
+  "kid": "wzQEgawE7XtHecI3Ob1Wy_ucMaUDmIdr6JUSueVqFYA"
+}
+
+Token claims
+------------
+{
+  "aud": [
+    "https://container.googleapis.com/v1/projects/hcm-hyperfleet/locations/us-central1-a/clusters/hyperfleet-dev"
+  ],
+  "exp": 1796970676,
+  "iat": 1765434676,
+  "iss": "https://container.googleapis.com/v1/projects/hcm-hyperfleet/locations/us-central1-a/clusters/hyperfleet-dev",
+  "jti": "ff08f939-8e17-4ff0-8ebf-c0ed4012cc24",
+  "kubernetes.io": {
+    "namespace": "amarin",
+    "node": {
+      "name": "gke-hyperfleet-dev-default-pool-78e4bad4-882j",
+      "uid": "e85d0fce-d62c-46b8-87f7-6bca42909d26"
+    },
+    "pod": {
+      "name": "gcloud-66b75ff5dc-c8zqr",
+      "uid": "d4202860-0f9d-4c81-8a25-559de58b5c01"
+    },
+    "serviceaccount": {
+      "name": "gcloud-ksa",
+      "uid": "8c1869ef-b894-46ee-8b88-548cb1509cf1"
+    },
+    "warnafter": 1765438283
+  },
+  "nbf": 1765434676,
+  "sub": "system:serviceaccount:amarin:gcloud-ksa"
+}
+```
+</details>
+
+Some of these assertions in the JWT token can be used to set conditions to limit for example to a single cluster
 
 References:
-- Workload Identity from GKE: https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity#authenticating_to
+
+A note of caution. The are multiple scattered references for Workload Identity, Workload Identity Federation and Workload Identity Federation for GKE. Each may have subtle differences
+
+
+- Workload Identity Federation for GKE: https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity#authenticating_to
 - Workload Identity Sameness: https://medium.com/google-cloud/solving-the-workload-identity-sameness-with-iam-conditions-c02eba2b0c13
 
 
