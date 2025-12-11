@@ -181,7 +181,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gcloud
-
   namespace: $NAME
 spec:
   replicas: 1
@@ -193,6 +192,7 @@ spec:
       labels:
         app: gcloud
     spec:
+       serviceAccountName: $NAME
       containers:
       - name: gcloud
         image: google/cloud-sdk:slim
