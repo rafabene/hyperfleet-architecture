@@ -121,7 +121,7 @@ The current approach by GCP team for Hypershift Operator in their PoC is a tempo
     - In the customer's GCP project that will host the worker nodes
   - Grant permissions in the customer's GCP project to certain kubernetes service accounts in the customer HostedCluster to be created
     - This step only requires the name of the customer_k8s_sa (to be created later)
-    - As an example: "principal://iam.googleapis.com/projects/[HYPERFLEET_MANAGEMENT_CLUSTER_GCP_PROJECT_NUMBER]/locations/global/workloadIdentityPools/[HYPERFLEET_MANAGEMENT_CLUSTER_GCP_PROJECT_NAME].svc.id.goog/subject/system:serviceaccount:[NAMESPACE]:[K8S_SERVICE_ACCOUNT]"
+    - As an example: `"principal://iam.googleapis.com/projects/[HYPERFLEET_MANAGEMENT_CLUSTER_GCP_PROJECT_NUMBER]/locations/global/workloadIdentityPools/[HYPERFLEET_MANAGEMENT_CLUSTER_GCP_PROJECT_NAME].svc.id.goog/subject/system:serviceaccount:[NAMESPACE]:[K8S_SERVICE_ACCOUNT]"`
   - Transfer the private_key to the Hypershift Operator leveraging CLM
     - CLM API accepts the private_key as part of the cluster.spec
     - CLM will transfer the private_key to HO using the "maestro adapter"
