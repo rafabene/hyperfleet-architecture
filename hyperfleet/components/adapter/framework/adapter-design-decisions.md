@@ -5,7 +5,7 @@ This document captures the key design decisions, trade-offs, and rationale behin
 **Related Documentation:**
 - [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
 - [Adapter Status Contract](./adapter-status-contract.md) - Status reporting contract
-- [Adapter Config Template](./adapter-config-template.yaml) - Configuration structure
+- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
 
 ---
 
@@ -151,16 +151,19 @@ This document captures the key design decisions, trade-offs, and rationale behin
 
 **Implementation:**
 ```yaml
-conditions:
-  applied:    # Resources created/configured
-  available:  # Workload ready/operational  
-  health:     # No degradation/errors
-data:         # Custom adapter data
-observed_generation: "5"  # Event generation that was processed
+adapter: "example-adapter"  # Adapter name for tracking
+conditions:                  # Array of condition objects
+  - type: "Applied"          # Resources created/configured
+  - type: "Available"        # Workload ready/operational  
+  - type: "Health"           # No degradation/errors
+data: {}                     # Optional adapter-specific data
+observed_generation: 5       # Event generation that was processed
+observed_time: "..."         # Timestamp when status was reported
 ```
 
 **Status Fields:**
-- `conditions` - Required: applied, available, health
+- `adapter` - Required: adapter name for tracking which adapter reported status
+- `conditions` - Required: array of condition objects (Applied, Available, Health)
 - `data` - Optional: adapter-specific data
 - `observed_generation` - Event generation processed (for idempotency)
 - `observed_time` - When adapter observed this resource state
@@ -180,7 +183,7 @@ observed_generation: "5"  # Event generation that was processed
 
 **Implementation:**
 ```
-POST /api/hyperfleet/v1/clusters/{clusterId}/status
+POST /api/hyperfleet/v1/clusters/{clusterId}/statuses
 {
   "adapter": "validation",
   "observed_generation": 1,
