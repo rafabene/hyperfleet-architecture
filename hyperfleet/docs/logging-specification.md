@@ -9,13 +9,22 @@ This document defines the standard logging approach for all HyperFleet component
 ### Goals
 
 - **Consistency**: All components configure logging the same way
-- **Traceability**: Distributed tracing via common fields (`trace_id`, `event_id`)
+- **Traceability**: Distributed tracing via `trace_id` and correlation fields
 - **Observability**: Structured logs that integrate with log aggregation systems
 
 ### Non-Goals
 
 - Creating a shared logging library
 - Mandating a specific logging framework
+
+### Shared Libraries
+
+Shared libraries (e.g., broker client) MUST inherit the logging context from the calling component:
+
+- When Sentinel publishes to the broker → logs include `component=sentinel`
+- When an Adapter subscribes from the broker → logs include `component=adapter-validation`
+
+The shared library should not set its own `component` value - it uses the context provided by the caller.
 
 ---
 
@@ -27,7 +36,7 @@ All components MUST support configuration via **command-line flags** and **envir
 |--------|------|---------------------|---------|-------------|
 | Log Level | `--log-level` | `LOG_LEVEL` | `info` | Minimum level: `debug`, `info`, `warn`, `error` |
 | Log Format | `--log-format` | `LOG_FORMAT` | `text` | Output format: `text` or `json` |
-| Log Output | `--log-output` | `LOG_OUTPUT` | `stdout` | Destination: `stdout`, `stderr`, or file path |
+| Log Output | `--log-output` | `LOG_OUTPUT` | `stdout` | Destination: `stdout` or `stderr` |
 
 **Precedence** (highest to lowest): flags → environment variables → config file → defaults
 
@@ -74,17 +83,19 @@ Include when available for distributed tracing:
 | `trace_id` | Distributed | OpenTelemetry trace ID (propagated across services) |
 | `span_id` | Distributed | Current span identifier |
 | `request_id` | Single service | HTTP request identifier (API only) |
-| `event_id` | Event-driven | CloudEvents ID |
+| `event_id` | Adapters | CloudEvents ID (from received event) |
 
 ### Resource Fields
 
-Include when processing a resource:
+Include when the log entry relates to a HyperFleet resource:
 
 | Field | Description |
 |-------|-------------|
 | `cluster_id` | Cluster identifier |
 | `resource_type` | Resource type (`clusters`, `nodepools`) |
 | `resource_id` | Resource identifier |
+
+> **Note:** For Cluster resources, `cluster_id` is sufficient. For child resources (e.g., NodePools), include `resource_type` and `resource_id` to identify the specific resource.
 
 ### Error Fields
 
@@ -94,6 +105,9 @@ Include when logging errors:
 |-------|------|-------------|
 | `error` | string | Error message |
 | `stack_trace` | array | Stack trace (only for unexpected errors or debug level) |
+| `request_context` | object | Relevant request/payload data for debugging (sensitive data MUST be masked) |
+
+> **Note:** When logging errors, include enough context to investigate incidents without needing to reproduce the issue. Always mask sensitive data per the Sensitive Data section.
 
 ---
 
@@ -104,13 +118,13 @@ Include when logging errors:
 For local development:
 
 ```text
-{timestamp} {LEVEL} [{component}] [{hostname}] {message} {key=value}...
+{timestamp} {LEVEL} [{component}] [{version}] [{hostname}] {message} {key=value}...
 ```
 
 ```text
-2025-01-15T10:30:00.123Z INFO  [sentinel] [sentinel-7d4b8c6f5] Publishing event cluster_id=cls-123
-2025-01-15T10:30:05.456Z ERROR [sentinel] [sentinel-7d4b8c6f5] Failed to publish error="connection refused"
-2025-01-15T10:30:05.456Z ERROR [sentinel] [sentinel-7d4b8c6f5] Unexpected error error="nil pointer"
+2025-01-15T10:30:00.123Z INFO  [sentinel] [v1.2.3] [sentinel-7d4b8c6f5] Publishing event subset=clusters cluster_id=cls-123
+2025-01-15T10:30:05.456Z ERROR [sentinel] [v1.2.3] [sentinel-7d4b8c6f5] Failed to publish subset=clusters error="connection refused"
+2025-01-15T10:30:05.456Z ERROR [sentinel] [v1.2.3] [sentinel-7d4b8c6f5] Unexpected error subset=clusters error="nil pointer"
     main.processCluster() processor.go:89
     main.reconcileLoop() loop.go:45
 ```
@@ -127,13 +141,13 @@ For log aggregation:
   "component": "sentinel",
   "version": "v1.2.3",
   "hostname": "sentinel-7d4b8c6f5",
+  "subset": "clusters",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "event_id": "evt-abc-123",
   "cluster_id": "cls-123"
 }
 ```
 
-**Error with stack trace:**
+**Error with stack trace and request context:**
 
 ```json
 {
@@ -143,13 +157,18 @@ For log aggregation:
   "component": "sentinel",
   "version": "v1.2.3",
   "hostname": "sentinel-7d4b8c6f5",
+  "subset": "clusters",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "cluster_id": "cls-123",
   "error": "nil pointer dereference",
   "stack_trace": [
     "main.processCluster() processor.go:89",
     "main.reconcileLoop() loop.go:45"
-  ]
+  ],
+  "request_context": {
+    "resource_generation": 5,
+    "last_observed_generation": 4
+  }
 }
 ```
 
@@ -167,6 +186,7 @@ Additional fields per component:
 | `path` | Request path |
 | `status_code` | Response status |
 | `duration_ms` | Request duration |
+| `user_agent` | Client user agent |
 
 ### Sentinel
 
@@ -174,14 +194,15 @@ Additional fields per component:
 |-------|-------------|
 | `decision_reason` | Why event was published (`generation_mismatch`, `max_age_expired`) |
 | `topic` | Pub/Sub topic name |
-| `shard` | Shard identifier (if sharding enabled) |
+| `subset` | Resource subset identifier (e.g., `clusters`, `nodepools`) |
+
+> **Note:** Use `component=sentinel` with `subset` to identify specific instances. This allows filtering all Sentinels (`WHERE component='sentinel'`) or a specific subset (`WHERE component='sentinel' AND subset='clusters'`).
 
 ### Adapters
 
 | Field | Description |
 |-------|-------------|
 | `adapter` | Adapter type name |
-| `job_name` | Kubernetes Job name |
 | `job_result` | Outcome (`success`, `failed`, `skipped`) |
 | `observed_generation` | Resource generation processed |
 | `subscription` | Pub/Sub subscription name |
@@ -209,3 +230,5 @@ The following MUST be redacted or omitted:
 - Passwords and secrets
 - Cloud provider access keys
 - Personal identifiable information (PII)
+
+---
