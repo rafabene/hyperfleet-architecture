@@ -26,6 +26,26 @@ Shared libraries (e.g., broker client) MUST inherit the logging context from the
 
 The shared library should not set its own `component` value - it uses the context provided by the caller.
 
+**Example:**
+
+```go
+// ✅ DO: Caller creates logger with context and passes it to the library
+logger := slog.With("component", "sentinel", "subset", "clusters")
+broker.Publish(ctx, event, broker.WithLogger(logger))
+
+// ✅ DO: Shared library uses the passed logger (preserves caller context)
+func (b *Broker) Publish(ctx context.Context, event Event, opts ...Option) {
+    cfg := applyOptions(opts)
+    cfg.Logger.Info("publishing event", "topic", b.topic)
+}
+
+// ❌ DON'T: Shared library creating its own logger loses caller context
+func (b *Broker) Publish(ctx context.Context, event Event) {
+    logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+    logger.Info("publishing event") // Missing component, subset, trace_id, etc.
+}
+```
+
 ---
 
 ## Configuration
