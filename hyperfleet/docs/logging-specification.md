@@ -232,3 +232,24 @@ The following MUST be redacted or omitted:
 - Personal identifiable information (PII)
 
 ---
+
+## Log Size Guidelines
+
+To prevent truncation by log aggregators and control storage costs:
+
+| Element | Recommendation |
+|---------|----------------|
+| Message | Keep under 1 KB |
+| Stack trace | Limit to 10-15 frames |
+| Total entry | Keep under 64 KB |
+
+**Best practices:**
+
+- Log resource IDs, not full payloads (use `cluster_id`, not the entire spec)
+- Truncate long strings with `...` indicator
+- For debugging, log full payloads at `debug` level only
+- Avoid logging large binary data or base64-encoded content
+
+> **Note:** Most log aggregation platforms (Cloud Logging, CloudWatch, Splunk) have limits between 64 KB and 256 KB per entry. Keeping entries under 64 KB ensures compatibility across platforms.
+
+---
