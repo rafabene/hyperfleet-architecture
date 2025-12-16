@@ -1425,17 +1425,23 @@ readinessProbe:
 
 ### Post-MVP Enhancements
 
-**Advanced Error Handling:**
+**Advanced Resource Management:** (HIGH)
+- **Resource Management `onFailure`**: Configurable behavior when the *workload* represented by the resource fails (e.g., Job pod fails, Deployment crashes) after successful resource creation/update.
+- **Resource Management `onNewGeneration`**: Handling logic when a new resource generation is detected (update existing vs. recreate).
+- **Resource Management `onDeleting`**: Cleanup logic when parent resource is deleting (cascading deletion, finalizer removal).
+- **Resource Security**: Reconciliation and restoration of lost/deleted Custom Resources (CRs) to ensure state matches intent (drift detection).
+
+**Advanced Error Handling:** (HIGH)
 - `onFailure` configuration per action (block, warn, continue)
 - Granular error handling strategies
 - Error recovery workflows
 
-**Resource-Level Controls:**
+**Resource-Level Controls:** (MEDIUM)
 - Per-resource `timeout` configuration
 - Per-resource `retry` strategy (attempts, backoff)
 - Resource-level `onFailure` actions
 
-**Additional Features:**
+**Additional Features:** (MEDIUM)
 1. **Authentication**: Service Account token support for API calls
 2. **Resource Updates**: Handle update events, not just create
 3. **Template Caching**: Cache compiled templates for performance
@@ -1443,6 +1449,24 @@ readinessProbe:
 5. **Rate Limiting**: Rate limit API calls and K8s operations
 6. **Webhook Support**: Support webhook-based event delivery
 7. **Advanced Observability**: Distributed tracing, custom metrics
+
+**Config Template DSL Enhancements:** (LOW)
+
+1. **Condition Match Result Export**: Export precondition evaluation results for downstream usage in resources and post-processing. Access pattern: `adapter.preconditions.<conditionName>.matched` (boolean), with nested access support.
+
+2. **Resource Dependency (`when` or `runAfter`)**: Introduce `when` or `runAfter` to resources for dependency resolution and conditional creation. Enables parallel resource creation where dependencies allow.
+
+3. **Action Dependency (`when` or `runAfter` for Preconditions and PostActions)**: Support parallel execution of preconditions and post-actions with dependency management. Actions without dependencies execute in parallel.
+
+**Security Enhancements:** (LOW)
+
+1. **Namespace-Scoped RBAC**: Replace ClusterRole with namespace-scoped Role for adapters. Adapters should only have permissions in namespaces they manage, following the principle of least privilege. Requires dynamic Role/RoleBinding creation per managed namespace.
+
+**Scalability Enhancements:** (LOW)
+
+1. **Queue-Based Autoscaling**: Scale adapter pods based on message queue depth/stress. Proposed solutions:
+   - **KEDA**: Kubernetes Event-Driven Autoscaling with native queue triggers (Pub/Sub, SQS, RabbitMQ)
+   - **Metrics-Based HPA**: Use Horizontal Pod Autoscaler with custom metrics from queue monitoring (e.g., Prometheus metrics for queue length/lag)
 
 ## Testing Strategy
 
