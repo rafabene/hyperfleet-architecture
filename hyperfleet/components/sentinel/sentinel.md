@@ -1,7 +1,5 @@
 ## What & Why
 
-> **Note:** This document uses simple YAML configuration files with inline examples. For additional context on Sentinel configuration and deployment, refer to the upstream implementation in [openshift-hyperfleet/architecture PR #18](https://github.com/openshift-hyperfleet/architecture/pull/18).
-
 **What**
 
 Implement a "HyperFleet Sentinel" service that continuously polls the HyperFleet API for resources (clusters, node pools, etc.) and publishes reconciliation events directly to the message broker to trigger adapter processing. The Sentinel acts as the "watchful guardian" of the HyperFleet system with simple, configurable max age intervals. Multiple Sentinel deployments can be configured via YAML configuration files to handle different shards of resources for horizontal scalability.
