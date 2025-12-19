@@ -7,7 +7,7 @@
 ---
 ## Metadata
 **JIRA Story**: HYPERFLEET-60  
-**Date**: December 3, 2025  
+**Date**: December 3, 2025,  
 **Status**: Outdated, the following spike report serves as a record of the DNS-related findings.
 ---
 
