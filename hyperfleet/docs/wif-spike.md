@@ -59,7 +59,7 @@ The permission grant occurs before the creation of the HostedCluster, even befor
 
 Implication -> **Hosted Cluster names have to be unique per Hyperfleet Region**
 
-An alternative is having the customer trust all workloads in the Hyperfleet Regional cluster, regardless of namespace+service account ([docs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity#kubernetes-resources-iam-policies))
+An alternative is having the customer trust all workloads in the Hyperfleet Regional cluster, regardless of namespace+service account ([docs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity#kubernetes-resources-iam-policies)). Another doc describing [GCP principal identifiers](https://docs.cloud.google.com/iam/docs/principal-identifiers#allow)
 
 But is good to have a namespace+ksa per customer, in case a token is leaked, only that customer is exposed
 
