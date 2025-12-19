@@ -1,9 +1,7 @@
 # SPIKE REPORT: Define Validation Adapter Criteria and Implementation Plan for GCP
-**JIRA Story**: [HYPERFLEET-59](https://issues.redhat.com/browse/HYPERFLEET-59)  
-**Prepared By**: dawang@redhat.com  
+**JIRA Story**: HYPERFLEET-59   
 **Date**: November 21, 2025  
-**Status**: Reviewing  
-**Reviewers**: amarin@redhat.com, croche@redhat.com
+**Status**: Approve
 
 ---
 
@@ -529,8 +527,7 @@ The **Status Reporter Sidecar** is a **cloud-agnostic**, reusable container that
 │  3. Write JSON ─────┼────────>│  2. File detected    │
 │     to /results/    │ Shared  │  3. Read JSON        │
 │  4. Exit (0 or 1)   │ Volume  │  4. Update Job       │
-│                     │         │  5. Create Event     │
-│                     │         │  6. Exit (0)         │
+│                     │         │  5. Exit             │
 └─────────────────────┘         └──────────────────────┘
 ```
 
