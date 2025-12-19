@@ -1,24 +1,21 @@
 # SPIKE REPORT: Define DNS Adapter Requirements and Implementation Plan for GCP
-> Note: This spike report is a draft outlining a GCP DNS adapter that follows a workflow similar to the DNS creation process implemented for CS ROSA HCP.
->
-> In our recent meeting, the GCP team proposed moving all DNS creation to HO. Amador already confirmed Hypershift's alignment with this plan. As a result, instead of building DNS creation logic, it requires a DNS placement adapter to support DNS zone placement decisions. See the [DNS Management Proposal](https://docs.google.com/document/d/1xa_QQic8h2_n_fjpCuiLmQOal_9JOzvZO0PR1v9k8_s/edit?tab=t.0). 
->
-> This DNS adapter will no longer be needed. The following spike report serves as a record of the DNS-related findings.
+> Note: This spike report is outdated due to the DNS adapter rescope described in HYPERFLEET-55. As a result, the focus has shifted from implementing DNS creation logic to developing a DNS placement adapter that supports DNS zone placement decisions.
+
+---
+> This spike report is a draft outlining a GCP DNS adapter that follows a workflow similar to the DNS creation process implemented for CS ROSA HCP.
 
 ---
 ## Metadata
-**JIRA Story**: [HYPERFLEET-60 ](https://issues.redhat.com/browse/HYPERFLEET-60) 
-**Prepared By**: dawang@redhat.com  
-**Date**: December 3, 2025  
-**Status**: Draft  
-**Reviewers**: No need review, just a record of the DNS-related findings
+**JIRA Story**: HYPERFLEET-60  
+**Date**: December 3, 2025,  
+**Status**: Outdated, the following spike report serves as a record of the DNS-related findings.
 ---
 
 ## 1. Executive Summary
 
 This spike defines the implementation approach for a **GCP DNS adapter** that runs as part of the adapter framework to automate DNS infrastructure setup for GKE cluster provisioning. The solution leverages **Config Connector DNS Custom Resources** to create and manage Cloud DNS zones and records, following patterns proven in CS ROSA HCP DNS implementation.
 
-### Key Decisions
+### Candidate Solutions
 - **Implementation Vehicle**: Config Connector DNS Custom Resources (DNSManagedZone, DNSRecordSet)
 - **Deployment**: DNS adapter framework creates DNS CRs when cluster creation events occur
 - **Architecture**: Declarative DNS management via Kubernetes CRs
@@ -36,7 +33,7 @@ CS ROSA HCP creates the DNS infrastructure for each cluster using AWS Route53, i
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                     CS ROSA HCP DNS Workflow                     │
+│                     CS ROSA HCP DNS Workflow                    │
 └─────────────────────────────────────────────────────────────────┘
 
 Step 1: Allocate Base Domain
