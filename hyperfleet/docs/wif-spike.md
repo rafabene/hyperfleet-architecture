@@ -4,10 +4,12 @@
 
 We need to provide a secure way to access customer's cloud infrastructure from several Hyperfleeet components.
 
-There are different situations requiring permissions:
-- Hyperfleet components (Sentinel, Adapter) accessing Hyperfleet GCP resources like PubSub
+There are different use cases requiring permissions:
 - Hyperfleet components (Task Adapters, e.g a k8s job) accessing customer's GCP project to verify things
+- Hyperfleet components (Sentinel, Adapter) accessing Hyperfleet GCP resources like PubSub
 - Hypershift Operator component accessing customer's GCP project to build infrastructure
+
+Note that the second use case is the same as the first one but considering HYPERFLEET as being the CUSTOMER.
 
 Challenges:
 - Obtain customer credentials, or make customer to authorize an identity in our side with permissions
@@ -111,7 +113,7 @@ As with the `HOSTEDCLUSTER_NAME` discussion before, there are other `principals`
 No, the SDK will recognize the Google identity automatically when running in the pod
 
 
-## Current GCP team approach for Hypershift Operator
+## Alternative 1: Current GCP team approach for Hypershift Operator
 
 The current approach by GCP team for Hypershift Operator in their PoC is a temporal solution sharing customer generated credentials. 
 
@@ -148,6 +150,7 @@ Cons:
 
 CLM can leverage the proposed mechanism but it comes with many challenges.
 - Enable an API endpoint to accept the private_key (or have it in the `cluster.spec`)
+  - An alternative is that a CLM component will create the private_key/public_key so it doesn't have to be transmitted from the customer
 - Store the private_key securely
 - Retrieve the private_key from the adapters that require it
 - Create a signed token per request
@@ -156,6 +159,18 @@ For Hypershift Operator, the component that stores the key and signs tokens is t
 
 Pros:
 - No changes to the existing UX for the customer. They will leverage the CLI to drive the process
+
+
+## Alternative 2: Workloads requiring access to customer infrastructure runs on Management Clusters
+
+The adapter tasks are owned by provider teams (GCP, ROSA, etc...).  One approach to avoid access to customer infrastructure from CLM is to run the tasks in the Management Clusters.
+
+This way, provider teams are more autonomous on how to solve security when accessing customer resources. One team can decide to use cloud IAM, and another to manage their own private/public keys.
+
+This solution requires a method to run tasks in the Management Clusters, e.g. using Maestro or having access to MC kubeconfig.
+
+This removes the need to deal with customer resources access from CLM components.
+
 
 
 ## Exploring Workload Identity Federation
