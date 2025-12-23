@@ -759,6 +759,9 @@ subscriber.Subscribe(ctx, func(ctx context.Context, msg []byte) error {
 - Continue processing other events on individual failures
 
 **Graceful Shutdown:**
+
+> **📋 See [Graceful Shutdown Standard](../../../docs/graceful-shutdown.md) for complete shutdown specifications**
+
 - Listen for SIGTERM/SIGINT
 - Stop accepting new events
 - Wait for in-flight events to complete
