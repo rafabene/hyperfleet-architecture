@@ -198,11 +198,11 @@ readinessProbe:
    - Configured via `terminationGracePeriodSeconds` in the pod spec (default: 30s)
 3. Exit cleanly
 
-> **Note**: In Go, `http.Server.Shutdown()` handles step 2 automatically. The shutdown timeout in code should be slightly less than `terminationGracePeriodSeconds` (e.g., 25s if grace period is 30s) to allow clean exit before Kubernetes sends SIGKILL.
+> **Note**: In Go, `http.Server.Shutdown()` handles step 2 automatically. For complete shutdown specifications, see [Graceful Shutdown Standard](./graceful-shutdown.md).
 
 ```go
-// Example: Graceful shutdown with 25s timeout (terminationGracePeriodSeconds = 30)
-ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+// Example: Graceful shutdown with 20s timeout (terminationGracePeriodSeconds = 30)
+ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 defer cancel()
 server.Shutdown(ctx)
 ```
@@ -213,4 +213,5 @@ server.Shutdown(ctx)
 
 - [Kubernetes Liveness and Readiness Probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
 - [Prometheus Exposition Formats](https://prometheus.io/docs/instrumenting/exposition_formats/)
+- [HyperFleet Graceful Shutdown Standard](./graceful-shutdown.md)
 - [HyperFleet Logging Specification](./logging-specification.md)
