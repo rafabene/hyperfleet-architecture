@@ -194,18 +194,11 @@ readinessProbe:
 ### Shutdown Behavior
 
 1. On `SIGTERM`, set `/readyz` to return `503 Service Unavailable`
-2. Graceful shutdown: stop accepting new connections and wait for in-flight requests
-   - Configured via `terminationGracePeriodSeconds` in the pod spec (default: 30s)
-3. Exit cleanly
+2. Kubernetes removes pod from Service endpoints
+3. Graceful shutdown completes in-flight work
+4. Exit cleanly
 
-> **Note**: In Go, `http.Server.Shutdown()` handles step 2 automatically. For complete shutdown specifications, see [Graceful Shutdown Standard](./graceful-shutdown.md).
-
-```go
-// Example: Graceful shutdown with 20s timeout (terminationGracePeriodSeconds = 30)
-ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-defer cancel()
-server.Shutdown(ctx)
-```
+For complete shutdown specifications, timeout configuration, and code examples, see [Graceful Shutdown Standard](./graceful-shutdown.md).
 
 ---
 
