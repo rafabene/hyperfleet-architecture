@@ -29,6 +29,7 @@ spec:
         app: cluster-sentinel
     spec:
       serviceAccountName: hyperfleet-sentinel
+      terminationGracePeriodSeconds: 30
       containers:
       - name: sentinel
         image: quay.io/hyperfleet/sentinel:v1.0.0
@@ -37,8 +38,8 @@ spec:
         - /sentinel
         args:
         - --config=/etc/sentinel/config.yaml  # Path to YAML config file
-        - --metrics-bind-address=:8080
-        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=:9090
+        - --health-probe-bind-address=:8080
         env:
         # HYPERFLEET_API_TOKEN="secret-token"
         - name: HYPERFLEET_API_TOKEN
@@ -66,10 +67,10 @@ spec:
           mountPath: /var/secrets/google
           readOnly: true
         ports:
-        - containerPort: 8080
+        - containerPort: 9090
           name: metrics
           protocol: TCP
-        - containerPort: 8081
+        - containerPort: 8080
           name: health
           protocol: TCP
         livenessProbe:
@@ -213,4 +214,6 @@ The Sentinel service must expose the following Prometheus metrics:
 - `ready_state` label values: "ready" or "not_ready"
 - `operation` label values: "fetch_resources", "config_load"
 - `broker_type` label values: "pubsub", "rabbitmq"
-- Expose metrics endpoint on port 8080 at `/metrics`
+- Expose metrics endpoint on port 9090 at `/metrics`
+
+For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../docs/health-endpoints.md).

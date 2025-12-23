@@ -239,6 +239,7 @@ spec:
         adapter-type: validation
     spec:
       serviceAccountName: {{ include "hyperfleet-adapter.serviceAccountName" . }}-validation
+      terminationGracePeriodSeconds: 30
       containers:
         - name: adapter
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -467,7 +468,7 @@ roleRef:
 livenessProbe:
   httpGet:
     path: /healthz
-    port: 8081
+    port: 8080
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5
@@ -476,7 +477,7 @@ livenessProbe:
 readinessProbe:
   httpGet:
     path: /readyz
-    port: 8081
+    port: 8080
   initialDelaySeconds: 10
   periodSeconds: 5
   timeoutSeconds: 3
@@ -498,6 +499,8 @@ readinessProbe:
 **Port Configuration:**
 - Metrics: `9090` (Prometheus scraping)
 - Health: `8080` (Liveness and readiness probes)
+
+For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../../docs/health-endpoints.md).
 
 ---
 
@@ -739,7 +742,7 @@ kubectl auth can-i create jobs --as=system:serviceaccount:hyperfleet-system:hype
 kubectl top pod -n hyperfleet-system -l app=hyperfleet-adapter
 
 # Check metrics
-curl http://<pod-ip>:8080/metrics
+curl http://<pod-ip>:9090/metrics
 
 # Check for OOMKilled
 kubectl get pods -n hyperfleet-system -l app=hyperfleet-adapter -o jsonpath='{.items[*].status.containerStatuses[*].lastState}'

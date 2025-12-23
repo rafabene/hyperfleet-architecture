@@ -45,10 +45,12 @@ data:
 
 ## Metrics Format
 
-**Standard**: Prometheus format (OpenMetrics compatible)  
-**Endpoint**: `/metrics`  
-**Port**: `8080` (same as health endpoint)  
+**Standard**: Prometheus format (OpenMetrics compatible)
+**Endpoint**: `/metrics`
+**Port**: `9090`
 **Protocol**: HTTP
+
+For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../../docs/health-endpoints.md).
 
 ---
 
@@ -440,13 +442,12 @@ adapter_event_processing_duration_seconds_count{adapter_name="validation",resour
 
 ### Health and Metrics Endpoints
 
-**Health Endpoint**: `GET /health`
-- Returns `200 OK` if adapter is healthy
-- Returns `503 Service Unavailable` if adapter is unhealthy
+**Health Endpoints** (Port `8080`):
+- `GET /healthz` - Liveness probe, returns `200 OK` if adapter is alive
+- `GET /readyz` - Readiness probe, returns `200 OK` if adapter is ready to serve traffic
 
-**Metrics Endpoint**: `GET /metrics`
-- Returns Prometheus-formatted metrics
-- Available on same port as health endpoint (default: 8080)
+**Metrics Endpoint** (Port `9090`):
+- `GET /metrics` - Returns Prometheus-formatted metrics
 
 ### Example Service Configuration
 
@@ -462,9 +463,13 @@ spec:
   selector:
     app: validation-adapter
   ports:
-    - name: http
+    - name: health
       port: 8080
       targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
       protocol: TCP
   type: ClusterIP
 ```
@@ -484,7 +489,7 @@ spec:
     matchLabels:
       app: validation-adapter
   endpoints:
-    - port: http
+    - port: metrics
       path: /metrics
       interval: 30s
       scrapeTimeout: 10s
