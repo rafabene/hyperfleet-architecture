@@ -83,16 +83,21 @@ GET /api/hyperfleet/v1/clusters/abc-123
 ```
 
 **Error response format:**
+
+Error responses follow [RFC 9457 Problem Details](../../docs/error-model.md) format:
+
 ```http
 HTTP/1.1 404 Not Found
-Content-Type: application/json
+Content-Type: application/problem+json
 
 {
-  "error": {
-    "code": "PATH_NOT_FOUND" | "UNSUPPORTED_API_VERSION",
-    "message": "API version is required. Use /api/hyperfleet/v1/..." | "API version 'v5' is not supported.",
-    "supported_versions": ["v1", "v2"]
-  }
+  "type": "https://api.hyperfleet.io/errors/resource-not-found",
+  "title": "Resource Not Found",
+  "status": 404,
+  "detail": "API version 'v5' is not supported.",
+  "instance": "/api/hyperfleet/v5/clusters",
+  "code": "HYPERFLEET-NTF-005",
+  "supported_versions": ["v1", "v2"]
 }
 ```
 
@@ -176,4 +181,5 @@ v2.0.0: Remove deprecated field, make "metadata" required, change "status" from 
 ## References
 
 - [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md)
+- [HyperFleet Error Model and Codes Standard](../../docs/error-model.md)
 - [Semantic Versioning 2.0.0](https://semver.org/)
