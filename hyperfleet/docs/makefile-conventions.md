@@ -76,7 +76,10 @@ Repositories **MAY** implement these targets if applicable:
 
 | Target | Description | When to Use | Example |
 |--------|-------------|-------------|---------|
+| `generate` | Generate code from specifications | If repo uses code generation (OpenAPI, Protocol Buffers, etc.) | Generate Go models from OpenAPI specs |
+| `test-all` | Run all tests and checks | Comprehensive pre-commit validation | Runs test + lint + test-integration + test-helm |
 | `test-integration` | Run integration tests | If repo has integration tests requiring external dependencies | Tests against real GCP/K8s |
+| `test-helm` | Run all Helm validation | If repo contains Helm charts | Runs helm-lint + helm-template |
 | `image` | Build container image | If repo produces a container image | `make image IMAGE_TAG=v1.0.0` |
 | `image-push` | Push container image to registry | If repo publishes to container registry | `make image-push` |
 | `helm-lint` | Lint Helm charts | If repo contains Helm charts | Validate chart syntax |
@@ -86,10 +89,12 @@ Repositories **MAY** implement these targets if applicable:
 
 **Example invocation:**
 ```bash
+make generate                   # Generate code from specs
+make test-all                   # Run all tests and checks (recommended before commit)
 make test-integration           # Run integration tests
+make test-helm                  # Run all Helm validation (lint + template)
 make image IMAGE_TAG=v1.0.0    # Build container image
 make image-push                 # Push to registry
-make helm-lint                  # Validate Helm charts
 ```
 
 ### Target Naming Rules
@@ -125,7 +130,19 @@ build:
 | Test coverage | `coverage.txt`, `coverage.html` | Coverage reports |
 | Container images | N/A (tagged only) | Not stored locally after build |
 
-**Important:** Both `bin/` and `build/` should be in `.gitignore`.
+**Important:** All temporary files should be in `.gitignore`:
+
+```gitignore
+# Build outputs
+bin/
+build/
+
+# Test coverage
+coverage.txt
+coverage.html
+coverage.out
+*.coverprofile
+```
 
 ---
 
