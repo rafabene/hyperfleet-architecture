@@ -13,7 +13,19 @@
 
 ## 1. Overview
 
-This document establishes the policy for handling generated code in HyperFleet repositories. Generated code includes any files automatically created from source specifications such as OpenAPI schemas, Protocol Buffers, or other code generation tools.
+This document establishes the policy for handling generated code in HyperFleet repositories.
+
+### What is Generated Code?
+
+Generated code refers to any files automatically created by tools from source specifications. These files should never be manually edited.
+
+**Examples in HyperFleet:**
+
+| File Pattern | Generator | Source |
+|--------------|-----------|--------|
+| `model_*.go` | oapi-codegen | OpenAPI specification (`openapi.yaml`) |
+| `*_mock.go` | mockgen | Go interfaces |
+| `*.pb.go` | protoc | Protocol Buffer definitions (`.proto`) |
 
 **Key Decision:** Generated code **MUST NOT** be committed to Git repositories. Instead, it is generated on-demand during the build process.
 
