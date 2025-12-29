@@ -44,7 +44,7 @@ HyperFleet APIs MUST return errors using the [RFC 9457](https://www.rfc-editor.o
   "title": "Validation Error",
   "status": 400,
   "detail": "Cluster name is required",
-  "instance": "/api/hyperfleet/v1/clusters/requests/req-abc123"
+  "instance": "/api/hyperfleet/v1/clusters"
 }
 ```
 
@@ -80,7 +80,7 @@ Content-Type: application/problem+json
   "title": "Validation Error",
   "status": 400,
   "detail": "Cluster name is required",
-  "instance": "/api/hyperfleet/v1/clusters/requests/req-abc123",
+  "instance": "/api/hyperfleet/v1/clusters",
   "code": "HYPERFLEET-VAL-001",
   "timestamp": "2025-01-15T10:30:00.123Z",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -194,7 +194,7 @@ Content-Type: application/problem+json
   "title": "Validation Error",
   "status": 400,
   "detail": "Cluster name is required",
-  "instance": "/api/hyperfleet/v1/clusters/requests/req-abc123",
+  "instance": "/api/hyperfleet/v1/clusters",
   "code": "HYPERFLEET-VAL-001",
   "timestamp": "2025-01-15T10:30:00.123Z",
   "errors": [
@@ -219,7 +219,7 @@ Content-Type: application/problem+json
   "title": "Validation Error",
   "status": 400,
   "detail": "Request validation failed with 3 errors",
-  "instance": "/api/hyperfleet/v1/clusters/requests/req-abc123",
+  "instance": "/api/hyperfleet/v1/clusters",
   "code": "HYPERFLEET-VAL-000",
   "timestamp": "2025-01-15T10:30:00.123Z",
   "errors": [
@@ -269,12 +269,14 @@ Content-Type: application/problem+json
 
 | Code | Title | Description |
 |------|-------|-------------|
-| `HYPERFLEET-VAL-000` | Validation Error | Multiple validation errors |
+| `HYPERFLEET-VAL-000` | Validation Error | Multiple validation errors (catch-all) |
 | `HYPERFLEET-VAL-001` | Required Field Missing | A required field was not provided |
 | `HYPERFLEET-VAL-002` | Invalid Field Value | Field value doesn't meet constraints |
 | `HYPERFLEET-VAL-003` | Invalid Request Body | Request body is not valid JSON |
 | `HYPERFLEET-VAL-004` | Invalid Query Parameter | Query parameter is invalid |
 | `HYPERFLEET-VAL-005` | Invalid Path Parameter | Path parameter is invalid |
+
+> **Note:** `VAL-000` is reserved as the catch-all code for responses containing multiple validation errors. Use specific codes (`VAL-001`, `VAL-002`, etc.) for single-field errors, and `VAL-000` when reporting multiple distinct field failures in the `errors` array.
 
 ### Authentication Errors (AUT)
 
@@ -425,7 +427,7 @@ Content-Type: application/problem+json
   "title": "Validation Error",
   "status": 400,
   "detail": "Cluster name is required",
-  "instance": "/api/hyperfleet/v1/clusters/requests/req-abc123",
+  "instance": "/api/hyperfleet/v1/clusters",
   "code": "HYPERFLEET-VAL-001",
   "timestamp": "2025-01-15T10:30:00.123Z",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -510,7 +512,7 @@ Content-Type: application/problem+json
   "title": "Internal Error",
   "status": 500,
   "detail": "An unexpected error occurred. Please try again later.",
-  "instance": "/api/hyperfleet/v1/clusters/requests/req-mno345",
+  "instance": "/api/hyperfleet/v1/clusters",
   "code": "HYPERFLEET-INT-001",
   "timestamp": "2025-01-15T10:34:00.345Z",
   "trace_id": "8ff92f3577b34da6a3ce929d0e0e4740"
