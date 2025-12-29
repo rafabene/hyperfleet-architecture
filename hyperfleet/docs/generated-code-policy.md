@@ -49,7 +49,7 @@ Generated code refers to any files automatically created by tools from source sp
 |---------|-------------|
 | Single source of truth | Specifications are the authoritative source |
 | Always in sync | Generated code is always derived from current specs |
-| Smaller repositories | Reduced clone times and disk usage |
+| Smaller repositories | Reduced clone time and disk usage |
 | Clear workflow | Developers know to modify specs, not generated files |
 | Industry alignment | Follows best practices for generated artifacts |
 
