@@ -61,14 +61,14 @@ Generated code refers to any files automatically created by tools from source sp
 
 | Repository | Generated Code Location | Source Specification | Status |
 |------------|------------------------|---------------------|--------|
-| `hyperfleet-api` | `pkg/api/openapi/`, `*_mock.go` | OpenAPI specification | ✅ Compliant |
-| `hyperfleet-sentinel` | `pkg/api/openapi/`, `openapi/openapi.yaml` | OpenAPI specification | ✅ Compliant |
+| `hyperfleet-api` | `pkg/api/openapi/`, `*_mock.go` | `openapi/openapi.yaml` (owned) | ✅ Compliant |
+| `hyperfleet-sentinel` | `pkg/api/openapi/` | `openapi/openapi.yaml` (fetched from hyperfleet-api) | ✅ Compliant |
 
 **Note:** `hyperfleet-adapter`, `hyperfleet-broker`, and adapter repositories do not currently have generated code.
 
 ### File Patterns to Exclude
 
-Each repository should add appropriate patterns to `.gitignore`:
+Each repository should add appropriate patterns to `.gitignore`. Note the distinction between **generated code** (auto-created from specs) and **fetched sources** (downloaded but not generated).
 
 **hyperfleet-api:**
 ```gitignore
@@ -82,10 +82,10 @@ Each repository should add appropriate patterns to `.gitignore`:
 
 **hyperfleet-sentinel:**
 ```gitignore
-# Generated OpenAPI client
+# Generated OpenAPI client (from oapi-codegen)
 pkg/api/openapi/
 
-# Downloaded OpenAPI spec
+# Fetched OpenAPI spec (downloaded from hyperfleet-api, not generated)
 openapi/openapi.yaml
 ```
 
