@@ -199,16 +199,17 @@ The Sentinel service must expose the following Prometheus metrics:
 
 | Metric Name | Type | Labels | Description |
 |-------------|------|--------|-------------|
-| `hyperfleet_sentinel_pending_resources` | Gauge | `resource_selector`, `resource_type` | Number of resources matching this selector |
-| `hyperfleet_sentinel_events_published_total` | Counter | `resource_selector`, `resource_type` | Total number of events published to broker |
-| `hyperfleet_sentinel_resources_skipped_total` | Counter | `resource_selector`, `resource_type`, `ready_state` | Total number of resources skipped due to backoff |
-| `hyperfleet_sentinel_poll_duration_seconds` | Histogram | `resource_selector`, `resource_type` | Time spent in each polling cycle |
-| `hyperfleet_sentinel_api_errors_total` | Counter | `resource_selector`, `resource_type`, `operation` | Total API errors by operation (fetch_resources, config_load) |
-| `hyperfleet_sentinel_broker_errors_total` | Counter | `resource_selector`, `resource_type`, `broker_type` | Total broker publishing errors |
-| `hyperfleet_sentinel_config_loads_total` | Counter | `resource_selector`, `resource_type` | Total configuration loads at startup |
+| `hyperfleet_sentinel_pending_resources` | Gauge | `component`, `version`, `resource_selector`, `resource_type` | Number of resources matching this selector |
+| `hyperfleet_sentinel_events_published_total` | Counter | `component`, `version`, `resource_selector`, `resource_type` | Total number of events published to broker |
+| `hyperfleet_sentinel_resources_skipped_total` | Counter | `component`, `version`, `resource_selector`, `resource_type`, `ready_state` | Total number of resources skipped due to backoff |
+| `hyperfleet_sentinel_poll_duration_seconds` | Histogram | `component`, `version`, `resource_selector`, `resource_type` | Time spent in each polling cycle |
+| `hyperfleet_sentinel_api_errors_total` | Counter | `component`, `version`, `resource_selector`, `resource_type`, `operation` | Total API errors by operation (fetch_resources, config_load) |
+| `hyperfleet_sentinel_broker_errors_total` | Counter | `component`, `version`, `resource_selector`, `resource_type`, `broker_type` | Total broker publishing errors |
+| `hyperfleet_sentinel_config_loads_total` | Counter | `component`, `version`, `resource_selector`, `resource_type` | Total configuration loads at startup |
 
 **Implementation Requirements**:
 - Use standard Prometheus Go client library
+- All metrics must include `component` and `version` labels (see [Metrics Standard](../../standards/metrics.md))
 - All metrics must include `resource_selector` label (from resource_selector string)
 - All metrics must include `resource_type` label (from configuration resource_type field)
 - `ready_state` label values: "ready" or "not_ready"
@@ -217,3 +218,5 @@ The Sentinel service must expose the following Prometheus metrics:
 - Expose metrics endpoint on port 9090 at `/metrics`
 
 For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../standards/health-endpoints.md).
+
+For cross-component metrics conventions, see [HyperFleet Metrics Standard](../../standards/metrics.md).

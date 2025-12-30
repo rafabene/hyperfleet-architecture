@@ -8,6 +8,7 @@ This document defines the minimum set of metrics that all HyperFleet adapters mu
 **Last Updated**: November 2025
 
 **Related Documentation:**
+- [HyperFleet Metrics Standard](../../../standards/metrics.md) - Cross-component metrics conventions
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture
 - [Adapter Observability Config](./adapter-observability-config-template.yaml) - Observability configuration template
 - [Adapter Deployment Guide](./adapter-deployment.md) - Deployment and operations
@@ -50,6 +51,8 @@ data:
 **Port**: `9090`
 **Protocol**: HTTP
 
+**Required Labels**: All metrics MUST include `component` and `version` labels as defined in the [Metrics Standard](../../../standards/metrics.md).
+
 For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../../standards/health-endpoints.md).
 
 ---
@@ -58,7 +61,7 @@ For complete health and readiness endpoint standards, see [Health Endpoints Spec
 
 ### 1. Event Processing Metrics
 
-#### `adapter_events_processed_total`
+#### `hyperfleet_adapter_events_processed_total`
 
 **Type**: Counter  
 **Purpose**: Total number of CloudEvents processed by the adapter
@@ -70,10 +73,10 @@ For complete health and readiness endpoint standards, see [Health Endpoints Spec
 
 **Example**:
 ```prometheus
-adapter_events_processed_total{adapter_name="validation",resource_kind="Cluster",status="success"} 1523
-adapter_events_processed_total{adapter_name="validation",resource_kind="Cluster",status="error"} 12
-adapter_events_processed_total{adapter_name="validation",resource_kind="Cluster",status="skipped"} 89
-adapter_events_processed_total{adapter_name="validation",resource_kind="NodePool",status="success"} 342
+hyperfleet_adapter_events_processed_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success"} 1523
+hyperfleet_adapter_events_processed_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="error"} 12
+hyperfleet_adapter_events_processed_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="skipped"} 89
+hyperfleet_adapter_events_processed_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="NodePool",status="success"} 342
 ```
 
 **Usage**:
@@ -83,7 +86,7 @@ adapter_events_processed_total{adapter_name="validation",resource_kind="NodePool
 
 ---
 
-#### `adapter_event_processing_duration_seconds`
+#### `hyperfleet_adapter_event_processing_duration_seconds`
 
 **Type**: Histogram  
 **Purpose**: Time taken to process a CloudEvent (end-to-end)
@@ -97,11 +100,11 @@ adapter_events_processed_total{adapter_name="validation",resource_kind="NodePool
 
 **Example**:
 ```prometheus
-adapter_event_processing_duration_seconds_bucket{adapter_name="validation",resource_kind="Cluster",status="success",le="0.5"} 0
-adapter_event_processing_duration_seconds_bucket{adapter_name="validation",resource_kind="Cluster",status="success",le="1"} 5
-adapter_event_processing_duration_seconds_bucket{adapter_name="validation",resource_kind="Cluster",status="success",le="5"} 142
-adapter_event_processing_duration_seconds_sum{adapter_name="validation",resource_kind="Cluster",status="success"} 456.78
-adapter_event_processing_duration_seconds_count{adapter_name="validation",resource_kind="Cluster",status="success"} 150
+hyperfleet_adapter_event_processing_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success",le="0.5"} 0
+hyperfleet_adapter_event_processing_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success",le="1"} 5
+hyperfleet_adapter_event_processing_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success",le="5"} 142
+hyperfleet_adapter_event_processing_duration_seconds_sum{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success"} 456.78
+hyperfleet_adapter_event_processing_duration_seconds_count{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success"} 150
 ```
 
 **Usage**:
@@ -113,7 +116,7 @@ adapter_event_processing_duration_seconds_count{adapter_name="validation",resour
 
 ### 2. Resource Management Metrics
 
-#### `adapter_resources_created_total`
+#### `hyperfleet_adapter_resources_created_total`
 
 **Type**: Counter  
 **Purpose**: Total number of Kubernetes resources created by the adapter
@@ -121,24 +124,22 @@ adapter_event_processing_duration_seconds_count{adapter_name="validation",resour
 **Labels**:
 - `adapter_name` - Name of the adapter
 - `resource_type` - Kubernetes resource kind (e.g., "Job", "Deployment", "ConfigMap")
-- `namespace` - Namespace where resource was created
 - `status` - Creation outcome: `success`, `error`
 
 **Example**:
 ```prometheus
-adapter_resources_created_total{adapter_name="validation",resource_type="Job",namespace="cluster-cls-123",status="success"} 45
-adapter_resources_created_total{adapter_name="validation",resource_type="ConfigMap",namespace="cluster-cls-123",status="success"} 45
-adapter_resources_created_total{adapter_name="validation",resource_type="Job",namespace="cluster-cls-456",status="error"} 2
+hyperfleet_adapter_resources_created_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_type="Job",status="success"} 45
+hyperfleet_adapter_resources_created_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_type="ConfigMap",status="success"} 45
+hyperfleet_adapter_resources_created_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_type="Job",status="error"} 2
 ```
 
 **Usage**:
 - Track resource creation activity
 - Identify resource creation failures
-- Monitor resource distribution across namespaces
 
 ---
 
-#### `adapter_resources_deleted_total`
+#### `hyperfleet_adapter_resources_deleted_total`
 
 **Type**: Counter  
 **Purpose**: Total number of Kubernetes resources deleted by the adapter
@@ -146,25 +147,23 @@ adapter_resources_created_total{adapter_name="validation",resource_type="Job",na
 **Labels**:
 - `adapter_name` - Name of the adapter
 - `resource_type` - Kubernetes resource kind
-- `namespace` - Namespace where resource was deleted
 - `status` - Deletion outcome: `success`, `error`
 
 **Example**:
 ```prometheus
-adapter_resources_deleted_total{adapter_name="validation",resource_type="Job",namespace="cluster-cls-123",status="success"} 23
-adapter_resources_deleted_total{adapter_name="validation",resource_type="Job",namespace="cluster-cls-123",status="error"} 1
+hyperfleet_adapter_resources_deleted_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_type="Job",status="success"} 23
+hyperfleet_adapter_resources_deleted_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_type="Job",status="error"} 1
 ```
 
 **Usage**:
 - Track cleanup operations
 - Identify deletion failures
-- Monitor resource lifecycle
 
 ---
 
 ### 3. API Call Metrics
 
-#### `adapter_api_requests_total`
+#### `hyperfleet_adapter_api_requests_total`
 
 **Type**: Counter  
 **Purpose**: Total number of API calls made by the adapter
@@ -178,10 +177,10 @@ adapter_resources_deleted_total{adapter_name="validation",resource_type="Job",na
 
 **Example**:
 ```prometheus
-adapter_api_requests_total{adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}",status_code="200"} 1523
-adapter_api_requests_total{adapter_name="validation",api="hyperfleet",method="POST",endpoint="/statuses",status_code="200"} 1487
-adapter_api_requests_total{adapter_name="validation",api="kubernetes",method="POST",endpoint="/namespaces/{ns}/jobs",status_code="201"} 1432
-adapter_api_requests_total{adapter_name="validation",api="kubernetes",method="GET",endpoint="/namespaces/{ns}/jobs/{name}",status_code="200"} 2145
+hyperfleet_adapter_api_requests_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}",status_code="200"} 1523
+hyperfleet_adapter_api_requests_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="hyperfleet",method="POST",endpoint="/statuses",status_code="200"} 1487
+hyperfleet_adapter_api_requests_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="kubernetes",method="POST",endpoint="/namespaces/{ns}/jobs",status_code="201"} 1432
+hyperfleet_adapter_api_requests_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="kubernetes",method="GET",endpoint="/namespaces/{ns}/jobs/{name}",status_code="200"} 2145
 ```
 
 **Usage**:
@@ -191,7 +190,7 @@ adapter_api_requests_total{adapter_name="validation",api="kubernetes",method="GE
 
 ---
 
-#### `adapter_api_request_duration_seconds`
+#### `hyperfleet_adapter_api_request_duration_seconds`
 
 **Type**: Histogram  
 **Purpose**: Time taken for API requests
@@ -206,10 +205,10 @@ adapter_api_requests_total{adapter_name="validation",api="kubernetes",method="GE
 
 **Example**:
 ```prometheus
-adapter_api_request_duration_seconds_bucket{adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}",le="0.1"} 1200
-adapter_api_request_duration_seconds_bucket{adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}",le="0.5"} 1500
-adapter_api_request_duration_seconds_sum{adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}"} 156.78
-adapter_api_request_duration_seconds_count{adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}"} 1523
+hyperfleet_adapter_api_request_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}",le="0.1"} 1200
+hyperfleet_adapter_api_request_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}",le="0.5"} 1500
+hyperfleet_adapter_api_request_duration_seconds_sum{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}"} 156.78
+hyperfleet_adapter_api_request_duration_seconds_count{component="adapter-validation",version="v1.0.0",adapter_name="validation",api="hyperfleet",method="GET",endpoint="/clusters/{id}"} 1523
 ```
 
 **Usage**:
@@ -221,7 +220,7 @@ adapter_api_request_duration_seconds_count{adapter_name="validation",api="hyperf
 
 ### 4. Precondition Metrics
 
-#### `adapter_preconditions_evaluated_total`
+#### `hyperfleet_adapter_preconditions_evaluated_total`
 
 **Type**: Counter  
 **Purpose**: Total number of precondition evaluations
@@ -233,9 +232,9 @@ adapter_api_request_duration_seconds_count{adapter_name="validation",api="hyperf
 
 **Example**:
 ```prometheus
-adapter_preconditions_evaluated_total{adapter_name="validation",precondition_name="clusterStatus",result="pass"} 1523
-adapter_preconditions_evaluated_total{adapter_name="validation",precondition_name="validationAvailable",result="fail"} 89
-adapter_preconditions_evaluated_total{adapter_name="validation",precondition_name="quotaStatus",result="error"} 3
+hyperfleet_adapter_preconditions_evaluated_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",precondition_name="clusterStatus",result="pass"} 1523
+hyperfleet_adapter_preconditions_evaluated_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",precondition_name="validationAvailable",result="fail"} 89
+hyperfleet_adapter_preconditions_evaluated_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",precondition_name="quotaStatus",result="error"} 3
 ```
 
 **Usage**:
@@ -247,7 +246,7 @@ adapter_preconditions_evaluated_total{adapter_name="validation",precondition_nam
 
 ### 5. Status Reporting Metrics
 
-#### `adapter_status_reports_total`
+#### `hyperfleet_adapter_status_reports_total`
 
 **Type**: Counter  
 **Purpose**: Total number of status reports sent to HyperFleet API
@@ -260,10 +259,10 @@ adapter_preconditions_evaluated_total{adapter_name="validation",precondition_nam
 
 **Example**:
 ```prometheus
-adapter_status_reports_total{adapter_name="validation",status="success",applied="true",available="true"} 834
-adapter_status_reports_total{adapter_name="validation",status="success",applied="true",available="false"} 612
-adapter_status_reports_total{adapter_name="validation",status="success",applied="false",available="false"} 89
-adapter_status_reports_total{adapter_name="validation",status="error",applied="false",available="false"} 7
+hyperfleet_adapter_status_reports_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",status="success",applied="true",available="true"} 834
+hyperfleet_adapter_status_reports_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",status="success",applied="true",available="false"} 612
+hyperfleet_adapter_status_reports_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",status="success",applied="false",available="false"} 89
+hyperfleet_adapter_status_reports_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",status="error",applied="false",available="false"} 7
 ```
 
 **Usage**:
@@ -275,7 +274,7 @@ adapter_status_reports_total{adapter_name="validation",status="error",applied="f
 
 ### 6. Error Metrics
 
-#### `adapter_errors_total`
+#### `hyperfleet_adapter_errors_total`
 
 **Type**: Counter  
 **Purpose**: Total number of errors encountered by the adapter
@@ -283,13 +282,13 @@ adapter_status_reports_total{adapter_name="validation",status="error",applied="f
 **Labels**:
 - `adapter_name` - Name of the adapter
 - `error_type` - Error category: `api_error`, `k8s_error`, `config_error`, `precondition_error`, `processing_error`
-- `component` - Component where error occurred: `event_processor`, `precondition_evaluator`, `resource_manager`, `status_reporter`
+- `error_component` - Internal component where error occurred: `event_processor`, `precondition_evaluator`, `resource_manager`, `status_reporter`
 
 **Example**:
 ```prometheus
-adapter_errors_total{adapter_name="validation",error_type="api_error",component="precondition_evaluator"} 12
-adapter_errors_total{adapter_name="validation",error_type="k8s_error",component="resource_manager"} 5
-adapter_errors_total{adapter_name="validation",error_type="processing_error",component="event_processor"} 3
+hyperfleet_adapter_errors_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",error_type="api_error",error_component="precondition_evaluator"} 12
+hyperfleet_adapter_errors_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",error_type="k8s_error",error_component="resource_manager"} 5
+hyperfleet_adapter_errors_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",error_type="processing_error",error_component="event_processor"} 3
 ```
 
 **Usage**:
@@ -301,7 +300,7 @@ adapter_errors_total{adapter_name="validation",error_type="processing_error",com
 
 ### 7. Workload Monitoring Metrics
 
-#### `adapter_workload_status_total`
+#### `hyperfleet_adapter_workload_status_total`
 
 **Type**: Counter  
 **Purpose**: Total number of workload status checks performed
@@ -313,9 +312,9 @@ adapter_errors_total{adapter_name="validation",error_type="processing_error",com
 
 **Example**:
 ```prometheus
-adapter_workload_status_total{adapter_name="validation",workload_type="Job",status="running"} 412
-adapter_workload_status_total{adapter_name="validation",workload_type="Job",status="succeeded"} 834
-adapter_workload_status_total{adapter_name="validation",workload_type="Job",status="failed"} 23
+hyperfleet_adapter_workload_status_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",workload_type="Job",status="running"} 412
+hyperfleet_adapter_workload_status_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",workload_type="Job",status="succeeded"} 834
+hyperfleet_adapter_workload_status_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",workload_type="Job",status="failed"} 23
 ```
 
 **Usage**:
@@ -325,7 +324,7 @@ adapter_workload_status_total{adapter_name="validation",workload_type="Job",stat
 
 ### 8. Health Metrics
 
-#### `adapter_last_processed_timestamp_seconds`
+#### `hyperfleet_adapter_last_processed_timestamp_seconds`
 
 **Type**: Gauge  
 **Purpose**: Unix timestamp of the last successfully processed event. Used as a "Dead Man's Switch" to detect if the adapter has silently stopped processing events.
@@ -335,7 +334,7 @@ adapter_workload_status_total{adapter_name="validation",workload_type="Job",stat
 
 **Example**:
 ```prometheus
-adapter_last_processed_timestamp_seconds{adapter_name="validation"} 1698057600
+hyperfleet_adapter_last_processed_timestamp_seconds{component="adapter-validation",version="v1.0.0",adapter_name="validation"} 1698057600
 ```
 
 **Usage**:
@@ -349,8 +348,8 @@ adapter_last_processed_timestamp_seconds{adapter_name="validation"} 1698057600
 
 ### 1. Metric Naming Convention
 
-Follow Prometheus naming best practices:
-- Use `adapter_` prefix for all adapter metrics
+Follow Prometheus naming best practices and HyperFleet standards:
+- Use `hyperfleet_adapter_` prefix for all adapter metrics (see [Metrics Standard](../../../standards/metrics.md))
 - Use snake_case for metric names
 - Use descriptive names that indicate what is being measured
 - Use consistent label names across metrics
@@ -383,28 +382,30 @@ Follow Prometheus naming best practices:
 // Example: Instrument event processing
 func (a *Adapter) ProcessEvent(event CloudEvent) error {
     startTime := time.Now()
-    
+
     // Process event
     err := a.processEventInternal(event)
-    
+
     // Record metrics
     status := "success"
     if err != nil {
         status = "error"
     }
-    
+
+    // Metric: hyperfleet_adapter_events_processed_total
     a.metrics.eventsProcessed.WithLabelValues(
         a.config.Name,
         event.Data.Kind, // e.g., "Cluster", "NodePool"
         status,
     ).Inc()
-    
+
+    // Metric: hyperfleet_adapter_event_processing_duration_seconds
     a.metrics.eventDuration.WithLabelValues(
         a.config.Name,
         event.Data.Kind,
         status,
     ).Observe(time.Since(startTime).Seconds())
-    
+
     return err
 }
 ```
@@ -423,17 +424,17 @@ func (a *Adapter) ProcessEvent(event CloudEvent) error {
 
 **Prometheus Format**:
 ```prometheus
-# HELP adapter_events_processed_total Total number of CloudEvents processed by the adapter
-# TYPE adapter_events_processed_total counter
-adapter_events_processed_total{adapter_name="validation",resource_kind="Cluster",status="success"} 1523
+# HELP hyperfleet_adapter_events_processed_total Total number of CloudEvents processed by the adapter
+# TYPE hyperfleet_adapter_events_processed_total counter
+hyperfleet_adapter_events_processed_total{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success"} 1523
 
-# HELP adapter_event_processing_duration_seconds Time taken to process a CloudEvent
-# TYPE adapter_event_processing_duration_seconds histogram
-adapter_event_processing_duration_seconds_bucket{adapter_name="validation",resource_kind="Cluster",status="success",le="0.1"} 0
-adapter_event_processing_duration_seconds_bucket{adapter_name="validation",resource_kind="Cluster",status="success",le="0.5"} 5
-adapter_event_processing_duration_seconds_bucket{adapter_name="validation",resource_kind="Cluster",status="success",le="+Inf"} 150
-adapter_event_processing_duration_seconds_sum{adapter_name="validation",resource_kind="Cluster",status="success"} 456.78
-adapter_event_processing_duration_seconds_count{adapter_name="validation",resource_kind="Cluster",status="success"} 150
+# HELP hyperfleet_adapter_event_processing_duration_seconds Time taken to process a CloudEvent
+# TYPE hyperfleet_adapter_event_processing_duration_seconds histogram
+hyperfleet_adapter_event_processing_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success",le="0.1"} 0
+hyperfleet_adapter_event_processing_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success",le="0.5"} 5
+hyperfleet_adapter_event_processing_duration_seconds_bucket{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success",le="+Inf"} 150
+hyperfleet_adapter_event_processing_duration_seconds_sum{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success"} 456.78
+hyperfleet_adapter_event_processing_duration_seconds_count{component="adapter-validation",version="v1.0.0",adapter_name="validation",resource_kind="Cluster",status="success"} 150
 ```
 
 ---
@@ -503,13 +504,13 @@ spec:
 
 ```promql
 # Events processed per second (by status)
-rate(adapter_events_processed_total[5m])
+rate(hyperfleet_adapter_events_processed_total[5m])
 
 # Success rate percentage
 (
-  sum(rate(adapter_events_processed_total{status="success"}[5m]))
+  sum(rate(hyperfleet_adapter_events_processed_total{status="success"}[5m]))
   /
-  sum(rate(adapter_events_processed_total[5m]))
+  sum(rate(hyperfleet_adapter_events_processed_total[5m]))
 ) * 100
 ```
 
@@ -517,27 +518,27 @@ rate(adapter_events_processed_total[5m])
 
 ```promql
 # p95 event processing time
-histogram_quantile(0.95, 
-  rate(adapter_event_processing_duration_seconds_bucket[5m])
+histogram_quantile(0.95,
+  rate(hyperfleet_adapter_event_processing_duration_seconds_bucket[5m])
 )
 
 # Average event processing time
-rate(adapter_event_processing_duration_seconds_sum[5m])
+rate(hyperfleet_adapter_event_processing_duration_seconds_sum[5m])
 /
-rate(adapter_event_processing_duration_seconds_count[5m])
+rate(hyperfleet_adapter_event_processing_duration_seconds_count[5m])
 ```
 
 ### Resource Creation Rate
 
 ```promql
 # Resources created per minute
-sum(rate(adapter_resources_created_total{status="success"}[5m])) * 60
+sum(rate(hyperfleet_adapter_resources_created_total{status="success"}[5m])) * 60
 
 # Resource creation success rate
 (
-  sum(rate(adapter_resources_created_total{status="success"}[5m]))
+  sum(rate(hyperfleet_adapter_resources_created_total{status="success"}[5m]))
   /
-  sum(rate(adapter_resources_created_total[5m]))
+  sum(rate(hyperfleet_adapter_resources_created_total[5m]))
 ) * 100
 ```
 
@@ -546,11 +547,11 @@ sum(rate(adapter_resources_created_total{status="success"}[5m])) * 60
 ```promql
 # p99 API latency by endpoint
 histogram_quantile(0.99,
-  sum by(endpoint, le) (rate(adapter_api_request_duration_seconds_bucket[5m]))
+  sum by(endpoint, le) (rate(hyperfleet_adapter_api_request_duration_seconds_bucket[5m]))
 )
 
 # API error rate by endpoint
-sum by(endpoint) (rate(adapter_api_requests_total{status_code=~"5.."}[5m]))
+sum by(endpoint) (rate(hyperfleet_adapter_api_requests_total{status_code=~"5.."}[5m]))
 ```
 
 ### Precondition Pass Rate
@@ -558,9 +559,9 @@ sum by(endpoint) (rate(adapter_api_requests_total{status_code=~"5.."}[5m]))
 ```promql
 # Precondition pass rate percentage
 (
-  sum(rate(adapter_preconditions_evaluated_total{result="pass"}[5m]))
+  sum(rate(hyperfleet_adapter_preconditions_evaluated_total{result="pass"}[5m]))
   /
-  sum(rate(adapter_preconditions_evaluated_total[5m]))
+  sum(rate(hyperfleet_adapter_preconditions_evaluated_total[5m]))
 ) * 100
 ```
 
@@ -568,10 +569,13 @@ sum by(endpoint) (rate(adapter_api_requests_total{status_code=~"5.."}[5m]))
 
 ```promql
 # Total error rate
-sum(rate(adapter_errors_total[5m]))
+sum(rate(hyperfleet_adapter_errors_total[5m]))
 
-# Error rate by component
-sum by(component) (rate(adapter_errors_total[5m]))
+# Error rate by adapter deployment (component label)
+sum by(component) (rate(hyperfleet_adapter_errors_total[5m]))
+
+# Error rate by internal error source (error_component label)
+sum by(error_component) (rate(hyperfleet_adapter_errors_total[5m]))
 ```
 
 ---
@@ -583,7 +587,7 @@ sum by(component) (rate(adapter_errors_total[5m]))
 ```yaml
 - alert: AdapterNotProcessing
   expr: |
-    (time() - adapter_last_processed_timestamp_seconds) > 300
+    (time() - hyperfleet_adapter_last_processed_timestamp_seconds) > 300
   for: 5m
   labels:
     severity: critical
@@ -598,9 +602,9 @@ sum by(component) (rate(adapter_errors_total[5m]))
 - alert: AdapterHighErrorRate
   expr: |
     (
-      sum(rate(adapter_events_processed_total{status="error"}[5m]))
+      sum(rate(hyperfleet_adapter_events_processed_total{status="error"}[5m]))
       /
-      sum(rate(adapter_events_processed_total[5m]))
+      sum(rate(hyperfleet_adapter_events_processed_total[5m]))
     ) > 0.05
   for: 5m
   labels:
@@ -616,7 +620,7 @@ sum by(component) (rate(adapter_errors_total[5m]))
 - alert: AdapterSlowEventProcessing
   expr: |
     histogram_quantile(0.95,
-      rate(adapter_event_processing_duration_seconds_bucket[5m])
+      rate(hyperfleet_adapter_event_processing_duration_seconds_bucket[5m])
     ) > 60
   for: 10m
   labels:
@@ -632,9 +636,9 @@ sum by(component) (rate(adapter_errors_total[5m]))
 - alert: AdapterHighAPIErrorRate
   expr: |
     (
-      sum(rate(adapter_api_requests_total{status_code=~"5.."}[5m]))
+      sum(rate(hyperfleet_adapter_api_requests_total{status_code=~"5.."}[5m]))
       /
-      sum(rate(adapter_api_requests_total[5m]))
+      sum(rate(hyperfleet_adapter_api_requests_total[5m]))
     ) > 0.01
   for: 5m
   labels:
@@ -713,6 +717,7 @@ For each adapter, ensure:
 
 ## References
 
+- [HyperFleet Metrics Standard](../../../standards/metrics.md) - Cross-component metrics conventions
 - [Prometheus Best Practices](https://prometheus.io/docs/practices/naming/) - Metric naming conventions
 - [Prometheus Go Client](https://github.com/prometheus/client_golang) - Go client library
 - [OpenMetrics Specification](https://github.com/OpenObservability/OpenMetrics) - Metrics format specification
