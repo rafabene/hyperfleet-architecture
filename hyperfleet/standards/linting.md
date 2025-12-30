@@ -103,7 +103,7 @@ revive:
 
 ### Generated Code
 
-Generated code MUST be excluded from linting (see [Generated Code Policy](./generated-code-policy.md)). Use the `exclude-dirs` setting:
+Generated code MUST be excluded from linting (see [Generated Code Policy](../docs/generated-code-policy.md)). Use the `exclude-dirs` setting:
 
 ```yaml
 issues:
@@ -180,7 +180,7 @@ issues:
 
 ### Makefile Target
 
-Each repository MUST provide a `make lint` target (see [Makefile Conventions](./makefile-conventions.md)):
+Each repository MUST provide a `make lint` target (see [Makefile Conventions](../docs/makefile-conventions.md)):
 
 ```makefile
 .PHONY: lint
