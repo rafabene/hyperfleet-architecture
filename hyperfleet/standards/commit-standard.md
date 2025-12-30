@@ -1,0 +1,165 @@
+# HyperFleet Commit Message Standard
+
+This guide defines the commit message format and conventions for all HyperFleet repositories.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Commit Message Format](#commit-message-format)
+3. [Commit Types](#commit-types)
+4. [Body](#body)
+5. [Footer](#footer)
+6. [Breaking Changes](#breaking-changes)
+7. [Examples](#examples)
+8. [References](#references)
+
+---
+
+## Overview
+
+This standard is based on the [Conventional Commits](https://www.conventionalcommits.org/) specification. Following these conventions ensures:
+
+- Consistent git history across all repositories
+- Automated changelog generation capability
+- Clear context for code reviewers
+- Easy navigation through commit history
+
+### Applicability
+
+This standard applies to:
+- All HyperFleet service repositories
+- All adapter repositories
+- Infrastructure and tooling repositories
+- Architecture documentation repository
+
+---
+
+## Commit Message Format
+
+Every commit message consists of a **header**, an optional **body**, and an optional **footer**:
+
+```
+HYPERFLEET-XXX - <type>: <subject>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+When there is no associated JIRA ticket:
+
+```
+<type>: <subject>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+The **header** is mandatory.
+
+**Character limit:** Keep all lines to a maximum of 72 characters.
+
+---
+
+## Commit Types
+
+Use the following types to categorize your commits:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `feat` | A new feature | Adding a new API endpoint |
+| `fix` | A bug fix | Fixing a null pointer exception |
+| `docs` | Documentation only changes | Updating README or API docs |
+| `style` | Code style changes (formatting, semicolons, etc.) | Running gofmt |
+| `refactor` | Code change that neither fixes a bug nor adds a feature | Restructuring code without changing behavior |
+| `perf` | Performance improvements | Optimizing database queries |
+| `test` | Adding or correcting tests | Adding unit tests for a function |
+| `build` | Changes to build system or dependencies | Updating Makefile or go.mod |
+| `ci` | Changes to CI configuration | Updating GitHub Actions workflow |
+| `chore` | Other changes that don't modify src or test files | Updating .gitignore |
+| `revert` | Reverting a previous commit | Reverting a problematic change |
+
+### Type Selection Guidelines
+
+- Use `feat` only for user-facing features or significant new capabilities
+- Use `fix` for bug fixes, not for fixing typos in code (use `style` or `chore`)
+- Use `refactor` when restructuring code without changing external behavior
+- Use `chore` for maintenance tasks that don't fit other categories
+
+---
+
+## Body
+
+The body is optional. Use it only when the commit message alone isn't clear enough and the JIRA ticket doesn't provide sufficient context.
+
+---
+
+## Footer
+
+The footer might be used for:
+1. **Breaking change notices**
+2. **Co-authored-by credits**
+3. **Additional references** (when commit relates to multiple tickets)
+
+### Additional Ticket References
+
+When a commit relates to multiple tickets, the primary ticket goes in the header and additional references go in the footer:
+
+```
+HYPERFLEET-123 - feat: add cluster validation
+
+Refs: HYPERFLEET-456
+```
+
+---
+
+## Breaking Changes
+
+Breaking changes must be clearly indicated in the commit message using `BREAKING CHANGE:` in the footer.
+
+The breaking change message must include:
+1. **What changed** - the specific API, field, or behavior that changed
+2. **Impact** - what will break for consumers
+3. **Migration** - what consumers need to do to adapt
+
+---
+
+## Examples
+
+```
+HYPERFLEET-249 - feat: add generation-based reconciliation trigger
+HYPERFLEET-401 - fix: handle nil pointer when cluster is deleted
+HYPERFLEET-425 - docs: add commit message standard
+HYPERFLEET-312 - refactor: extract validation logic to separate package
+HYPERFLEET-376 - ci: add golangci-lint to GitHub Actions workflow
+build: upgrade go version to 1.23
+chore: update .gitignore to exclude coverage files
+```
+
+### Breaking Change
+
+```
+HYPERFLEET-567 - feat: rename cluster phase to status
+
+BREAKING CHANGE: ClusterStatus.phase field renamed to ClusterStatus.status.
+API clients reading cluster status will receive errors on the old field.
+Update all references from .phase to .status in your code.
+```
+
+---
+
+## References
+
+### External Resources
+
+- [Conventional Commits Specification](https://www.conventionalcommits.org/)
+- [Angular Commit Message Guidelines](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit)
+- [How to Write a Git Commit Message](https://cbea.ms/git-commit/)
+
+### Related HyperFleet Standards
+
+- [Makefile Conventions](./makefile-conventions.md)
+- [Linting Standard](./linting-standard.md)
