@@ -34,6 +34,12 @@ This standard applies to:
 - Infrastructure and tooling repositories
 - Architecture documentation repository
 
+### Standard Extensions
+
+HyperFleet extends Conventional Commits with two additional types:
+- `style` - Go formatting and linting tool changes (gofmt, goimports)
+- `perf` - Performance-only improvements with no functional changes
+
 ---
 
 ## Commit Message Format
