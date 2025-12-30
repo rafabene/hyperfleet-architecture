@@ -40,7 +40,7 @@ This standard applies to:
 
 Every commit message consists of a **header**, an optional **body**, and an optional **footer**:
 
-```
+```text
 HYPERFLEET-XXX - <type>: <subject>
 
 [optional body]
@@ -50,7 +50,7 @@ HYPERFLEET-XXX - <type>: <subject>
 
 When there is no associated JIRA ticket:
 
-```
+```text
 <type>: <subject>
 
 [optional body]
@@ -108,7 +108,7 @@ The footer might be used for:
 
 When a commit relates to multiple tickets, the primary ticket goes in the header and additional references go in the footer:
 
-```
+```text
 HYPERFLEET-123 - feat: add cluster validation
 
 Refs: HYPERFLEET-456
@@ -129,7 +129,7 @@ The breaking change message must include:
 
 ## Examples
 
-```
+```text
 HYPERFLEET-249 - feat: add generation-based reconciliation trigger
 HYPERFLEET-401 - fix: handle nil pointer when cluster is deleted
 HYPERFLEET-425 - docs: add commit message standard
@@ -141,7 +141,7 @@ chore: update .gitignore to exclude coverage files
 
 ### Breaking Change
 
-```
+```text
 HYPERFLEET-567 - feat: rename cluster phase to status
 
 BREAKING CHANGE: ClusterStatus.phase field renamed to ClusterStatus.status.
