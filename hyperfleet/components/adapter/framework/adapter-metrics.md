@@ -50,7 +50,7 @@ data:
 **Port**: `9090`
 **Protocol**: HTTP
 
-For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../../docs/health-endpoints.md).
+For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../../standards/health-endpoints.md).
 
 ---
 

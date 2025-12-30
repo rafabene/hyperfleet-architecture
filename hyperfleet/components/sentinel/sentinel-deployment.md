@@ -216,4 +216,4 @@ The Sentinel service must expose the following Prometheus metrics:
 - `broker_type` label values: "pubsub", "rabbitmq"
 - Expose metrics endpoint on port 9090 at `/metrics`
 
-For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../docs/health-endpoints.md).
+For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../standards/health-endpoints.md).

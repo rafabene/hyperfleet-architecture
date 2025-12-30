@@ -6,7 +6,7 @@ This document describes how to deploy the HyperFleet Adapter Framework in Kubern
 - [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
 - [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
 - [Adapter Design Decisions](./adapter-design-decisions.md) - Architecture decisions
-- [Logging Specification](../../../docs/logging-specification.md) - Logging configuration standards
+- [Logging Specification](../../../standards/logging-specification.md) - Logging configuration standards
 
 ---
 
@@ -500,7 +500,7 @@ readinessProbe:
 - Metrics: `9090` (Prometheus scraping)
 - Health: `8080` (Liveness and readiness probes)
 
-For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../../docs/health-endpoints.md).
+For complete health and readiness endpoint standards, see [Health Endpoints Specification](../../../standards/health-endpoints.md).
 
 ---
 

@@ -84,7 +84,7 @@ GET /api/hyperfleet/v1/clusters/abc-123
 
 **Error response format:**
 
-Error responses follow [RFC 9457 Problem Details](../../docs/error-model.md) format:
+Error responses follow [RFC 9457 Problem Details](../../standards/error-model.md) format:
 
 ```http
 HTTP/1.1 404 Not Found
@@ -181,5 +181,5 @@ v2.0.0: Remove deprecated field, make "metadata" required, change "status" from 
 ## References
 
 - [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md)
-- [HyperFleet Error Model and Codes Standard](../../docs/error-model.md)
+- [HyperFleet Error Model and Codes Standard](../../standards/error-model.md)
 - [Semantic Versioning 2.0.0](https://semver.org/)
