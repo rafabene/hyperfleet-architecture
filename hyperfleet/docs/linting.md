@@ -212,6 +212,6 @@ To adopt this standard in an existing repository:
 
 1. Copy the reference [.golangci.yml](./golangci.yml) to your repository root
 2. Add any repository-specific generated code directories to `exclude-dirs`
-3. Run `golangci-lint run ./...` to identify existing issues
+3. Run `make lint` to identify existing issues
 4. Create a tracking ticket for fixing existing violations (separate from adoption)
 5. Enable linting in CI pipeline
