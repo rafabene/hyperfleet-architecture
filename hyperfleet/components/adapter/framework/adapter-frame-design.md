@@ -760,7 +760,7 @@ subscriber.Subscribe(ctx, func(ctx context.Context, msg []byte) error {
 
 **Graceful Shutdown:**
 
-> **📋 See [Graceful Shutdown Standard](../../../docs/graceful-shutdown.md) for complete shutdown specifications**
+> **📋 See [Graceful Shutdown Standard](../../../standards/graceful-shutdown.md) for complete shutdown specifications**
 
 - Listen for SIGTERM/SIGINT
 - Stop accepting new events

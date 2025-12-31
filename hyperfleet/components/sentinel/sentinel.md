@@ -755,7 +755,7 @@ message_data:
 - **Single-phase initialization**: Load configuration once during startup, fail fast if invalid
 - **Stateless polling loop**: No configuration reloading during runtime
 - **Simple service model**: No Kubernetes controller pattern, just periodic polling
-- **Graceful shutdown**: Support clean termination on SIGTERM/SIGINT (see [Graceful Shutdown Standard](../../docs/graceful-shutdown.md))
+- **Graceful shutdown**: Support clean termination on SIGTERM/SIGINT (see [Graceful Shutdown Standard](../../standards/graceful-shutdown.md))
 
 **Error Handling**:
 - On config load failure: exit with error code
@@ -913,7 +913,7 @@ The deployment documentation includes:
 - Prometheus metrics specification
 - Health probe configuration
 
-For logging configuration standards, see [Logging Specification](../../docs/logging-specification.md).
+For logging configuration standards, see [Logging Specification](../../standards/logging-specification.md).
 
 ---
 
