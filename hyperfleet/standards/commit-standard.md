@@ -13,7 +13,8 @@ This guide defines the commit message format and conventions for all HyperFleet 
 5. [Footer](#footer)
 6. [Breaking Changes](#breaking-changes)
 7. [Examples](#examples)
-8. [References](#references)
+8. [Enforcement](#enforcement)
+9. [References](#references)
 
 ---
 
@@ -154,6 +155,22 @@ BREAKING CHANGE: ClusterStatus.phase field renamed to ClusterStatus.status.
 API clients reading cluster status will receive errors on the old field.
 Update all references from .phase to .status in your code.
 ```
+
+---
+
+## Enforcement
+
+This standard will be enforced through automated tooling:
+
+### CI Validation (Planned)
+
+- **GitHub Actions** with [commitlint](https://commitlint.js.org/) to validate commit messages on pull requests
+- PR titles must also follow this format for squash merges
+- See [HYPERFLEET-432](https://issues.redhat.com/browse/HYPERFLEET-432) for implementation status
+
+### Local Development (Optional)
+
+Developers may optionally configure local commit hooks using [husky](https://typicode.github.io/husky/) for immediate feedback during development.
 
 ---
 
