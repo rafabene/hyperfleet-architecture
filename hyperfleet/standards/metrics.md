@@ -242,3 +242,4 @@ For detailed metrics definitions per component, see:
 - [OpenMetrics Specification](https://github.com/OpenObservability/OpenMetrics)
 - [HyperFleet Health Endpoints](./health-endpoints.md)
 - [HyperFleet Logging Specification](./logging-specification.md)
+- [HyperFleet Tracing Standard](./tracing.md)

@@ -1340,8 +1340,10 @@ TRACE_SAMPLE_RATE: "0.1"    # 10% sampling in production
 
 **Typical Sample Rates:**
 - Development: `1.0` (100% sampling)
-- Staging: `0.5` (50% sampling)
-- Production: `0.1` (10% sampling)
+- Staging: `0.1` (10% sampling)
+- Production: `0.01` (1% sampling)
+
+> **See:** [HyperFleet Tracing Standard](../../../standards/tracing.md) for complete tracing conventions, required spans, and configuration details.
 
 ### Health Checks
 

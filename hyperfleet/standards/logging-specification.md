@@ -273,3 +273,9 @@ To prevent truncation by log aggregators and control storage costs:
 > **Note:** Most log aggregation platforms (Cloud Logging, CloudWatch, Splunk) have limits between 64 KB and 256 KB per entry. Keeping entries under 64 KB ensures compatibility across platforms.
 
 ---
+
+## References
+
+- [HyperFleet Tracing Standard](./tracing.md)
+- [HyperFleet Metrics Standard](./metrics.md)
+- [HyperFleet Health Endpoints](./health-endpoints.md)

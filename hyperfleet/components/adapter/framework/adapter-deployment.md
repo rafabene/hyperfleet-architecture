@@ -840,6 +840,8 @@ Scale adapters based on message queue depth using KEDA (Kubernetes Event-Driven 
 - [Adapter Framework Design](./adapter-frame-design.md)
 - [Adapter Config Template MVP](./adapter-config-template-MVP.yaml)
 - [Adapter Design Decisions](./adapter-design-decisions.md)
+- [HyperFleet Tracing Standard](../../../standards/tracing.md)
+- [HyperFleet Logging Specification](../../../standards/logging-specification.md)
 - [Helm Documentation](https://helm.sh/docs/)
 - [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
 - [Prometheus Operator](https://prometheus-operator.dev/)
