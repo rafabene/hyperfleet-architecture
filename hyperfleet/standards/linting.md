@@ -26,6 +26,7 @@ The following linters are enabled in the standard configuration:
 | `unconvert` | Removes unnecessary type conversions | Simplifies code by removing redundant conversions |
 | `unparam` | Finds unused function parameters | Identifies parameters that could be removed |
 | `goconst` | Finds repeated strings that could be constants | Improves maintainability |
+| `exhaustive` | Checks exhaustiveness of enum switch statements | Ensures all enum cases are handled when adding new values |
 
 ### Code Style
 
@@ -76,6 +77,13 @@ misspell:
   locale: US  # Use US English spelling
 ```
 
+### gofmt
+
+```yaml
+gofmt:
+  simplify: true  # Apply code simplifications
+```
+
 ### lll
 
 ```yaml
@@ -99,11 +107,35 @@ revive:
       disabled: false
 ```
 
+### unused
+
+```yaml
+unused:
+  check-exported: false  # Don't flag unused exported identifiers
+```
+
+### unparam
+
+```yaml
+unparam:
+  check-exported: false  # Don't flag unused params in exported functions
+```
+
+### exhaustive
+
+```yaml
+exhaustive:
+  check-generated: false                # Skip generated code
+  default-signifies-exhaustive: true    # Allow default case to satisfy exhaustiveness
+```
+
+This linter ensures all enum values are handled in switch statements. When a new cloud provider or cluster state is added, the linter will flag any switch statements that need updating.
+
 ## Standard Exclusions
 
 ### Generated Code
 
-Generated code MUST be excluded from linting (see [Generated Code Policy](../docs/generated-code-policy.md)). Use the `exclude-dirs` setting:
+Generated code MUST be excluded from linting (see [Generated Code Policy](generated-code-policy.md)). Use the `exclude-dirs` setting:
 
 ```yaml
 issues:
@@ -180,12 +212,12 @@ issues:
 
 ### Makefile Target
 
-Each repository MUST provide a `make lint` target (see [Makefile Conventions](../docs/makefile-conventions.md)):
+Each repository MUST provide a `make lint` target (see [Makefile Conventions](makefile-conventions.md)):
 
 ```makefile
 .PHONY: lint
 lint:
-	golangci-lint run ./...
+    golangci-lint run ./...
 ```
 
 ### Pre-commit Hook (Optional)
@@ -203,15 +235,16 @@ repos:
 
 ## Version Requirements
 
-- **golangci-lint**: v2.x (configuration uses `version: 2` format)
+- **golangci-lint**: v2.x (configuration uses `version: 2` format), installed via [bingo](https://github.com/bwplotka/bingo)
 - **Go**: As specified in each repository's `go.mod`
 
 ## Adopting This Standard
 
 To adopt this standard in an existing repository:
 
-1. Copy the reference [.golangci.yml](./golangci.yml) to your repository root
-2. Add any repository-specific generated code directories to `exclude-dirs`
-3. Run `make lint` to identify existing issues
-4. Create a tracking ticket for fixing existing violations (separate from adoption)
-5. Enable linting in CI pipeline
+1. Install golangci-lint via bingo: `bingo get golangci-lint@v2`
+2. Copy the reference [.golangci.yml](./golangci.yml) to your repository root
+3. Add any repository-specific generated code directories to `exclude-dirs`
+4. Run `make lint` to identify existing issues
+5. Create a tracking ticket for fixing existing violations (separate from adoption)
+6. Enable linting in CI pipeline

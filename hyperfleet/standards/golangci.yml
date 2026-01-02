@@ -4,6 +4,7 @@
 # This is the baseline configuration for all HyperFleet Go repositories.
 # Copy this file to your repository root as .golangci.yml
 #
+# golangci-lint should be installed and versioned via bingo in each repository.
 # See linting.md for full documentation of this standard.
 
 version: "2"
@@ -52,6 +53,10 @@ linters-settings:
   unparam:
     check-exported: false
 
+  exhaustive:
+    check-generated: false
+    default-signifies-exhaustive: true
+
 linters:
   enable:
     # Code Quality
@@ -63,6 +68,7 @@ linters:
     - unconvert
     - unparam
     - goconst
+    - exhaustive
 
     # Code Style
     - gofmt
