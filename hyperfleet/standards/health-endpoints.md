@@ -21,7 +21,7 @@ All HyperFleet components MUST use the following configuration:
 | Port   | Endpoint   | Purpose                             | Probe Type       |
 | ------ | ---------- | ----------------------------------- | ---------------- |
 | `8080` | `/healthz` | Liveness - is the process alive?    | `livenessProbe`  |
-| `8080` | `/readyz`  | Readiness - can it receive traffic? | `readinessProbe` |
+| `8080` | `/readyz`  | Readiness - can it receive traffic? Can a rolling update proceed? | `readinessProbe` |
 | `9090` | `/metrics` | Prometheus metrics                  | ServiceMonitor   |
 
 ---
@@ -65,12 +65,27 @@ Or on failure:
 
 ### `/readyz` - Readiness Probe
 
-**Purpose**: Indicates whether the application is ready to receive traffic.
+**Purpose**: 
+ - Indicates whether the application is ready to receive traffic.
+ - Controls replacement and concurrency during rollout
 
 | Status                    | Meaning                  | Kubernetes Action             |
 | ------------------------- | ------------------------ | ----------------------------- |
-| `200 OK`                  | Ready to receive traffic | Add to service endpoints      |
+| `200 OK`                  | Ready to receive traffic, perform rolling update | Add to service endpoints      |
 | `503 Service Unavailable` | Not ready                | Remove from service endpoints |
+
+For services that do not serve traffic, the readyz probe does not affect the pods serving behind a service but have effect during a rolling update
+
+- A Pod that is NotReady:
+  - counts as Unavailable
+  - blocks Kubernetes from terminating old Pods (depending on maxUnavailable)
+
+- A Pod that becomes Ready:
+  - is considered a valid replacement
+  - allows Kubernetes to scale down old consumers
+
+➡️ Readiness controls when Kubernetes is allowed to reduce old consumers.
+
 
 **Response Body**:
 
