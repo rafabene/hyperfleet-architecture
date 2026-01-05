@@ -75,10 +75,36 @@ Each component MUST set `OTEL_SERVICE_NAME` to its component name:
 
 ### Resource Attributes
 
-Components SHOULD include these resource attributes via `OTEL_RESOURCE_ATTRIBUTES`:
+Components SHOULD include the following resource attributes via `OTEL_RESOURCE_ATTRIBUTES`:
+
+| Attribute | Source | Description |
+|-----------|--------|-------------|
+| `service.version` | Build process | Service version from git SHA (e.g., `a1b2c3d`) |
+| `k8s.namespace.name` | Helm/Downward API | Kubernetes namespace for environment isolation |
+
+> **Note:** The `k8s.namespace.name` attribute serves as the environment differentiator. Different namespaces (e.g., `hyperfleet-prod`, `hyperfleet-stage`, `hyperfleet-dev-rafael`) naturally isolate traces in multi-tenant deployments. The `deployment.environment` attribute is optional and can be omitted when namespace-based isolation is sufficient.
+
+#### Setting service.version from Build
+
+Use the git SHA as the version during build (as already done in hyperfleet-api):
+
+```makefile
+build_version := $(shell git rev-parse --short HEAD)$(shell git diff --quiet || echo '-dirty')
+ldflags := -X main.Version=$(build_version)
+```
+
+Then set the resource attribute at runtime:
+
+```yaml
+env:
+  - name: OTEL_RESOURCE_ATTRIBUTES
+    value: "service.version=$(VERSION),k8s.namespace.name=$(NAMESPACE)"
+```
+
+#### Example Configuration
 
 ```bash
-OTEL_RESOURCE_ATTRIBUTES="service.version=v1.2.3,deployment.environment=production,k8s.namespace.name=hyperfleet"
+OTEL_RESOURCE_ATTRIBUTES="service.version=a1b2c3d,k8s.namespace.name=hyperfleet-stage"
 ```
 
 ---
@@ -145,8 +171,11 @@ flowchart TB
         S -->|traceparent<br/>CloudEvent| PS[Pub/Sub]
         PS --> AD[Adapter]
         AD --> L4[Logs<br/>trace_id]
-        AD -->|traceparent<br/>HTTP| API3[API]
+        AD -->|GET status<br/>traceparent HTTP| API3[API]
         API3 --> L5[Logs<br/>trace_id]
+        API3 -->|response| AD
+        AD -->|PATCH status<br/>traceparent HTTP| API4[API]
+        API4 --> L6[Logs<br/>trace_id]
     end
 ```
 
@@ -197,6 +226,8 @@ Follow [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/
 | Event publish | `{destination} {operation}` | `hyperfleet-clusters publish` |
 | API call | `{method}` | `GET` |
 
+> **Note:** HTTP client span names use only the method per [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/#http-client). To differentiate calls to different APIs, use the `server.address` and `url.path` attributes (see [HTTP Spans](#http-spans) below).
+
 ### Adapters
 
 | Operation | Span Name Pattern | Example |
@@ -205,6 +236,8 @@ Follow [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/
 | Event process | `adapter.{operation}` | `adapter.process` |
 | Cloud provider call | `{method}` | `POST` |
 | Status update | `{method}` | `PATCH` |
+
+> **Note:** For cloud provider calls, use the `cloud.provider`, `cloud.service`, and `server.address` attributes to identify which service is being called (see [Cloud Provider Spans](#cloud-provider-spans) below).
 
 ---
 
@@ -240,6 +273,26 @@ Follow [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/
 | `messaging.operation.type` | string | Operation (`publish`, `receive`, `process`) |
 | `messaging.destination.name` | string | Topic or subscription name |
 | `messaging.message.id` | string | Message ID |
+
+### Cloud Provider Spans
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `cloud.provider` | string | Cloud provider (`gcp`, `aws`, `azure`) |
+| `cloud.service` | string | Cloud service name (`gke`, `storage`, `pubsub`) |
+| `server.address` | string | API endpoint hostname |
+| `cloud.resource_id` | string | Resource identifier (e.g., cluster name, bucket name) |
+
+Example for a GKE API call:
+
+```go
+span.SetAttributes(
+    attribute.String("cloud.provider", "gcp"),
+    attribute.String("cloud.service", "gke"),
+    attribute.String("server.address", "container.googleapis.com"),
+    attribute.String("cloud.resource_id", "projects/my-project/locations/us-central1/clusters/my-cluster"),
+)
+```
 
 ### HyperFleet-Specific Attributes
 
@@ -278,10 +331,19 @@ Follow [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/
 
 ### Default: Parent-Based Trace ID Ratio
 
-HyperFleet uses `parentbased_traceidratio` as the default sampler:
+HyperFleet uses `parentbased_traceidratio` as the default sampler.
 
-- If parent span exists: Follow parent's sampling decision
-- If no parent: Sample based on trace ID ratio
+**Why this sampler:**
+
+1. **Recommended by OpenTelemetry** - This is the default production sampler suggested by OTel SDKs and Collector documentation
+2. **Trace completeness** - Parent-based sampling ensures all spans in a trace are either sampled or not, avoiding broken/incomplete traces
+3. **Distributed consistency** - When Sentinel starts a trace and it propagates to Adapters via Pub/Sub, all downstream services respect the original sampling decision
+4. **Predictable costs** - The ratio-based approach provides consistent sampling rates for capacity planning
+
+**How it works:**
+
+- If parent span exists: Follow parent's sampling decision (preserves trace completeness)
+- If no parent (root span): Sample based on trace ID ratio
 
 ### Environment-Specific Sampling Rates
 
@@ -302,15 +364,17 @@ OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.01
 ```
 
-### Always Sample
+### Always Sample Specific Operations
 
-Certain operations SHOULD always be sampled regardless of the base rate:
+With head-based sampling, you can force 100% sampling for **known operations** at trace start:
 
-- Error responses (status >= 500)
-- Slow operations (duration > SLO threshold)
-- Operations on specific resources (for debugging)
+- Specific API routes (e.g., `/admin/*`, `/debug/*`)
+- Specific resource types (e.g., critical clusters)
+- Requests with debug headers
 
-Implementation using a custom sampler or head-based rules is recommended for these cases.
+This is achieved using a custom sampler that checks request attributes before the operation executes.
+
+> **Limitation:** Head-based sampling cannot sample based on **outcomes** (errors, latency) because the decision is made before the operation completes. To capture all errors or slow requests, tail-based sampling with an OpenTelemetry Collector would be required. This is a future enhancement if needed.
 
 ---
 
