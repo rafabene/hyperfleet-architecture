@@ -144,6 +144,54 @@ To find and monitor running jobs on Prow:
 
 #### Manual Trigger in Prow Dashboard
 
+If you want to trigger the job from Prow dashboard, it requires granting GitHub team permissions via **rerun_auth_configs** in the Prow configuration file.
+
+**Configuration Location:**
+The rerun authorization is configured in [_config.yaml](https://github.com/openshift/release/blob/main/core-services/prow/02_config/_config.yaml) file
+
+**Configuration Example:**
+```yaml
+- repo: openshift-hyperfleet/hyperfleet-e2e
+  rerun_auth_configs:
+    github_team_slugs:
+    - org: openshift-hyperfleet
+      slug: hyperfleet
+    - org: openshift
+      slug: test-platform
+```
+
+**Key Configuration Points:**
+
+- **github_team_slugs**: Lists GitHub teams that can rerun CI jobs
+  - **org**: The GitHub organization name
+  - **slug**: The team slug (the URL-friendly team name from GitHub)
+- **github_users**: Lists individual GitHub users who can rerun CI jobs (optional)
+  - Use this when specific users need access outside of team membership
+  - Example configuration:
+    ```yaml
+    - repo: openshift-hyperfleet/hyperfleet-e2e
+      rerun_auth_configs:
+        github_users:
+        - username1
+        - username2
+        github_team_slugs:
+        - org: openshift-hyperfleet
+          slug: hyperfleet
+    ```
+
+**Configured Teams:**
+- The `hyperfleet` team from the `openshift-hyperfleet` organization
+- The `test-platform` team from the `openshift` organization (standard for CI support)
+
+**Note:** Currently, no `github_users` section is configured for this repository, meaning only team-based permissions are used. If individual user access is needed outside of team membership, add their GitHub usernames to the `github_users` list.
+
+**How to Verify the Team Slug:**
+Visit the team page on GitHub (e.g., https://github.com/orgs/openshift-hyperfleet/teams/hyperfleet). The last part of the URL (`hyperfleet`) is the team slug.
+
+After this configuration is merged, members of these teams will be able to rerun and abort CI jobs under the `openshift-hyperfleet/hyperfleet-e2e` repository directly from the Prow dashboard
+
+#### Manual Trigger via command
+
 **Obtaining an Authentication Token**
 Each SSO user is entitled to obtain a personal authentication token. Tokens can be retrieved through the UI of the app.ci cluster at [OpenShift Console](https://console-openshift-console.apps.ci.l2s4.p1.openshiftapps.com/). 
 
