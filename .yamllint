@@ -1,0 +1,27 @@
+extends: default
+
+rules:
+  # Disable document-start requirement (---) - not all YAML files need it
+  document-start: disable
+  # Disable line length limit - YAML config templates often have long lines
+  line-length: disable
+  # Allow multiple spaces for alignment in comments
+  comments:
+    min-spaces-from-content: 1
+  # Relax indentation to allow flexible formatting
+  indentation:
+    spaces: consistent
+    indent-sequences: whatever
+  # Disable truthy check - config files may use yes/no/on/off values
+  truthy: disable
+  # Disable trailing spaces - existing config templates have trailing spaces
+  trailing-spaces: disable
+  # Allow blank lines in YAML files
+  empty-lines: disable
+  # Disable newline at end of file requirement
+  new-line-at-end-of-file: disable
+  # Disable comments indentation check
+  comments-indentation: disable
+  # Relax braces spacing
+  braces:
+    max-spaces-inside: -1
