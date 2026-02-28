@@ -323,6 +323,17 @@ All Makefiles that build container images **MUST** auto-detect whether `podman` 
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 ```
 
+Because the shell expansion returns an empty string when neither tool is found, all container targets **MUST** depend on a guard that fails fast with a clear message:
+
+```makefile
+.PHONY: ensure-container-tool
+ensure-container-tool:
+	@if [ -z "$(CONTAINER_TOOL)" ]; then \
+		echo "Error: No container runtime found. Install podman or docker."; \
+		exit 1; \
+	fi
+```
+
 This allows developers using either tool to run `make image` without additional configuration, while still permitting explicit override via `CONTAINER_TOOL=docker make image`.
 
 ---
@@ -402,7 +413,7 @@ IMAGE_NAME     ?= my-service
 IMAGE_TAG      ?= $(VERSION)
 
 .PHONY: image
-image: ## Build container image
+image: ensure-container-tool ## Build container image
 	$(CONTAINER_TOOL) build \
 		--platform $(PLATFORM) \
 		--build-arg GIT_SHA=$(GIT_SHA) \
@@ -412,7 +423,7 @@ image: ## Build container image
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
 .PHONY: image-push
-image-push: image ## Build and push container image
+image-push: ensure-container-tool image ## Build and push container image
 	$(CONTAINER_TOOL) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 ```
 
@@ -426,7 +437,7 @@ DEV_BASE_IMAGE ?= alpine:3.21
 DEV_TAG        ?= dev-$(GIT_SHA)
 
 .PHONY: image-dev
-image-dev: ## Build and push dev image (requires QUAY_USER)
+image-dev: ensure-container-tool ## Build and push dev image (requires QUAY_USER)
 ifndef QUAY_USER
 	@echo "Error: QUAY_USER is not set. Usage: QUAY_USER=myuser make image-dev"
 	@exit 1
