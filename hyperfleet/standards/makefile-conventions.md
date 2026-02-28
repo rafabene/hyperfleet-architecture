@@ -86,6 +86,7 @@ Repositories **MAY** implement these targets if applicable:
 | `image-push` | Push container image to registry | If repo publishes to container registry | `make image-push` |
 | `helm-lint` | Lint Helm charts | If repo contains Helm charts | Validate chart syntax |
 | `helm-template` | Template Helm charts | If repo contains Helm charts | Render templates locally |
+| `image-dev` | Build and push to personal registry | For fast dev iteration with lightweight base image | `QUAY_USER=me make image-dev` |
 | `deploy` | Deploy to environment | If repo has deployment logic | Deploy to dev/staging |
 | `run` | Run the application locally | For services that can run standalone | Start local server |
 
@@ -269,9 +270,16 @@ All Makefiles **SHOULD** support these environment variables:
 | `VERBOSE` | `0` | Enable verbose output (1=enabled, 0=disabled) | `make build VERBOSE=1` |
 | `IMAGE_TAG` | `latest` | Container image tag | `make image IMAGE_TAG=v1.0.0` |
 | `IMAGE_REGISTRY` | (repo-specific) | Container registry URL | `make image IMAGE_REGISTRY=quay.io/hyperfleet` |
+| `IMAGE_NAME` | (repo-specific) | Container image name | `make image IMAGE_NAME=my-service` |
 | `GOOS` | (host OS) | Target operating system for build | `make build GOOS=linux` |
 | `GOARCH` | (host arch) | Target architecture for build | `make build GOARCH=amd64` |
 | `CGO_ENABLED` | `0` | Enable/disable CGO | `make build CGO_ENABLED=1` |
+| `PLATFORM` | `linux/amd64` | Target platform for container builds | `make image PLATFORM=linux/arm64` |
+| `CONTAINER_TOOL` | (auto-detected) | Container tool (`podman` or `docker`) | `make image CONTAINER_TOOL=docker` |
+| `GIT_SHA` | (auto-detected) | Short git commit hash | — |
+| `GIT_DIRTY` | (auto-detected) | `-modified` suffix if working tree is dirty | — |
+| `BUILD_DATE` | (auto-detected) | ISO 8601 UTC build timestamp | — |
+| `VERSION` | `$(GIT_SHA)$(GIT_DIRTY)` | Image/binary version string | `make image VERSION=v1.2.3` |
 
 ### Boolean Flag Convention
 
@@ -307,7 +315,141 @@ IMAGE_TAG = latest
 
 ---
 
+## Container Tool Auto-Detection
+
+All Makefiles that build container images **MUST** auto-detect whether `podman` or `docker` is available, preferring `podman`:
+
+```makefile
+CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+```
+
+This allows developers using either tool to run `make image` without additional configuration, while still permitting explicit override via `CONTAINER_TOOL=docker make image`.
+
+---
+
+## Version Information and Git Dirty Detection
+
+### Git Dirty Detection
+
+All Makefiles **MUST** use `git status --porcelain` for dirty detection. Do **not** use `git diff --quiet`, which can miss untracked files:
+
+```makefile
+# Correct — detects both staged/unstaged changes and untracked files
+GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
+
+# Incorrect — misses untracked files
+# GIT_DIRTY ?= $(shell git diff --quiet 2>/dev/null || echo "-modified")
+```
+
+### Standard Version Variables
+
+All service Makefiles **MUST** define these version variables:
+
+```makefile
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+GIT_SHA    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY  ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
+VERSION    ?= $(GIT_SHA)$(GIT_DIRTY)
+```
+
+These values are embedded into binaries via `-ldflags` and passed as `--build-arg` to container builds so that every artifact is traceable back to its source commit.
+
+---
+
+## Go Build Flags
+
+All service Makefiles **MUST** define standard Go build flags for reproducible, traceable builds:
+
+```makefile
+GOFLAGS ?= -trimpath
+LDFLAGS := -s -w \
+           -X main.version=$(VERSION) \
+           -X main.commit=$(GIT_SHA) \
+           -X main.date=$(BUILD_DATE)
+```
+
+| Flag | Purpose |
+|------|---------|
+| `-trimpath` | Remove local filesystem paths from the binary for reproducibility |
+| `-s -w` | Strip debug info and symbol tables to reduce binary size |
+| `-X main.version=...` | Embed version string at compile time |
+| `-X main.commit=...` | Embed git commit hash at compile time |
+| `-X main.date=...` | Embed build date at compile time |
+
+### Example build target
+
+```makefile
+BIN_DIR := bin
+BINARY_NAME := $(BIN_DIR)/my-service
+
+build:
+	@mkdir -p $(BIN_DIR)
+	$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/my-service
+```
+
+---
+
+## Container Image Targets
+
+### Required: `image` and `image-push`
+
+Repositories that produce container images **MUST** pass version build args and specify the target platform:
+
+```makefile
+PLATFORM       ?= linux/amd64
+IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
+IMAGE_NAME     ?= my-service
+IMAGE_TAG      ?= $(VERSION)
+
+.PHONY: image
+image: ## Build container image
+	$(CONTAINER_TOOL) build \
+		--platform $(PLATFORM) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+
+.PHONY: image-push
+image-push: image ## Build and push container image
+	$(CONTAINER_TOOL) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+```
+
+### Optional: `image-dev`
+
+Repositories **MAY** provide an `image-dev` target that builds with a lightweight base image and pushes to a personal registry for development:
+
+```makefile
+QUAY_USER      ?=
+DEV_BASE_IMAGE ?= alpine:3.21
+DEV_TAG        ?= dev-$(GIT_SHA)
+
+.PHONY: image-dev
+image-dev: ## Build and push dev image (requires QUAY_USER)
+ifndef QUAY_USER
+	@echo "Error: QUAY_USER is not set. Usage: QUAY_USER=myuser make image-dev"
+	@exit 1
+endif
+	$(CONTAINER_TOOL) build \
+		--platform $(PLATFORM) \
+		--build-arg BASE_IMAGE=$(DEV_BASE_IMAGE) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg VERSION=$(VERSION) \
+		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
+```
+
+---
+
 ## References
+
+### Related Documents
+
+- [Container Image Standard](container-image-standard.md) - Dockerfile conventions, base images, and labels
+- [Directory Structure Standard](directory-structure.md) - Standard repository layout
 
 ### External Resources
 
