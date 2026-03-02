@@ -11,7 +11,8 @@
 5. [Database Schema](#5-database-schema)
 6. [Security Architecture](#6-security-architecture)
 7. [Scalability](#7-scalability)
-8. [Rollout Plan](#8-rollout-plan)
+8. [Observability](#8-observability)
+9. [Rollout Plan](#9-rollout-plan)
 
 ---
 
@@ -34,7 +35,7 @@ graph TB
     subgraph "External Registry Systems"
         Quay[Quay.io API]
         RHIT[Red Hat Registry<br/>RHIT API]
-        Private[Private/Customer Registries<br/>Harbor, Nexus, ACR, ECR, etc.]
+        Private[Private/Customer Registries<br/>Harbor, Nexus, etc.]
     end
 
     Adapter -->|Generate Pull Secret| Service
@@ -50,7 +51,7 @@ graph TB
     style Private fill:#fff9c4,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
-> **Note**: The dotted line to Private/Customer Registries highlights a new capability in this design **Principle 5 (Extensible Registry Support),** enabling integration with any container registry via the `RegistryClient` interface (e.g., Harbor, Nexus, ACR, ECR, GCR, or custom implementations).
+> **Note**: The dotted line to Private/Customer Registries highlights a new capability in this design **Principle 5 (Extensible Registry Support),** enabling integration with any container registry via the `RegistryClient` interface (e.g., Harbor, Nexus, or custom implementations).
 
 ### 1.3 Design Principles
 
@@ -70,7 +71,7 @@ mindmap
         Failure isolation
         Regional independence
       Global Shared Option
-        Cost efficiency
+        Resource efficiency
         Centralized management
     Security First
       Encrypted storage
@@ -78,7 +79,7 @@ mindmap
       Least privilege
     Extensible Registry Support
       Interface-based design
-      Quay Nexus Harbor ACR ECR
+      Quay Nexus Harbor
       Customer-specific registries
       Zero vendor lock-in
     Dedicated Partner Code
@@ -126,17 +127,20 @@ graph LR
     Patterns --> Pattern2[Data Model<br/>RegistryCredential]
     Patterns --> Pattern3[Advisory Locks<br/>Concurrency control]
     Patterns --> Pattern4[Rotation Logic<br/>Dual credentials]
+    Patterns --> Pattern5[All-or-Nothing<br/>Error handling]
 
     Pattern1 -->|Section2| HF1[HyperFleet<br/>AccessTokenService]
     Pattern2 -->|Section4| HF2[HyperFleet<br/>registry_credentials table]
     Pattern3 -->|Section2| HF3[HyperFleet<br/>AcquireAdvisoryLock]
     Pattern4 -->|Section2| HF4[HyperFleet<br/>RotationReconciler]
+    Pattern5 -->|Section3| HF5[HyperFleet<br/>GeneratePullSecret]
 
     style AMS fill:#bbdefb,stroke:#1976d2,stroke-width:3px
     style HF1 fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style HF2 fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style HF3 fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style HF4 fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style HF5 fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
 ```
 
 **Concrete Examples:**
@@ -200,6 +204,159 @@ CREATE TABLE registry_credentials (
 **Why**: Field name `account_id` kept in code for compatibility, but semantically stores `cluster_id`. Minimizes code changes during lift-and-shift.
 
 **Benefit**: 6 months of development time saved by not redesigning schema.
+
+</details>
+
+<details>
+<summary><b>Example 3: All-or-Nothing Error Handling (Section3 API)</b></summary>
+
+**Core Pattern**: When creating credentials for multiple registries (Quay + RHIT), AMS fails the entire operation if ANY registry fails, rather than returning partial success.
+
+**AMS Pattern:**
+```go
+// uhc-account-manager/pkg/services/access_token.go
+func (s *AccessTokenService) Create(ctx context.Context, username string, externalResourceId string) (*AccessTokenCfg, *errors.ServiceError) {
+    for _, registry := range *registries {
+        credential, err = s.registryCredentialService.FindByAccountAndExternalResourceIDAndRegistry(ctx, account.ID, registry.ID, externalResourceId)
+
+        if credential == nil {
+            credential, err = s.registryCredentialService.Create(ctx, credential)
+            if err != nil {
+                // ❌ FAIL ENTIRE OPERATION - no partial success
+                return nil, handleCreateError(fmt.Sprintf("RegistryCredential for registry %s", registry.Name), err)
+            }
+        }
+    }
+    // Only returns if ALL credentials succeeded
+    return &AccessTokenCfg{Auths: auths}, nil
+}
+```
+
+**HyperFleet Adoption (identical behavior):**
+```go
+// hyperfleet/pull-secret-service/pkg/services/access_token.go
+func (s *PullSecretService) GeneratePullSecret(ctx context.Context, clusterID string) (*PullSecret, error) {
+    credentials := []Credential{}
+
+    for _, registryConfig := range s.config.Registries {
+        // Check if credential already exists (idempotency)
+        existingCred, _ := s.dao.GetCredentialByClusterAndRegistry(clusterID, registryConfig.ID)
+        if existingCred != nil {
+            credentials = append(credentials, *existingCred)
+            continue
+        }
+
+        // Create new credential
+        cred, err := client.CreateCredential(ctx, clusterID)
+        if err != nil {
+            s.logger.Errorf("Failed to create credential for registry %s: %v", registryConfig.ID, err)
+            // ❌ FAIL ENTIRE OPERATION (AMS pattern)
+            return nil, fmt.Errorf("failed to create credential for registry %s: %w", registryConfig.ID, err)
+        }
+
+        s.dao.InsertCredential(ctx, cred)
+        credentials = append(credentials, *cred)
+    }
+
+    // Only returns if ALL credentials were created successfully
+    return s.generateDockerConfigJSON(credentials), nil
+}
+```
+
+**Why All-or-Nothing?**
+- ✅ **Clear semantics**: Client gets either complete pull secret or error - no ambiguity
+- ✅ **Prevents silent failures**: Partial pull secret would fail at runtime when pulling from missing registry
+- ✅ **Idempotent retries**: Client can safely retry, existing credentials are reused
+
+**Partial Failure Scenario (Quay ✅, RHIT ❌):**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Service
+    participant QuayAPI
+    participant RHITAPI
+    participant DB
+
+    Client->>Service: POST /pull-secrets
+
+    Service->>QuayAPI: Create robot account
+    QuayAPI-->>Service: ✅ {name, token}
+    Service->>DB: INSERT quay credential
+
+    Note over Service,DB: ⚠️ Partial state:<br/>Quay exists, RHIT missing
+
+    Service->>RHITAPI: Create service account
+    RHITAPI-->>Service: ❌ 500 Error
+
+    Service->>Client: ❌ 500 Internal Error
+
+    Note over DB: 💀 Orphaned Quay credential
+
+    Client->>Service: Retry [after 2s]
+    Service->>DB: Check Quay credential
+    DB-->>Service: ✅ Found (reuse)
+    Service->>RHITAPI: Create service account
+    RHITAPI-->>Service: ✅ {username, password}
+    Service->>DB: INSERT rhit credential
+    Service->>Client: ✅ 200 OK (complete pull secret)
+```
+
+**Recovery Mechanisms:**
+
+1. **Idempotency** (automatic via retry):
+   - Service checks database before creating external credentials
+   - Existing credentials are reused, avoiding duplicate API calls
+   - Retries eventually converge to success
+
+2. **Orphaned Credential Cleanup** (proactive):
+   ```go
+   // Reconciliation job runs daily
+   func (j *OrphanedCredentialsCleanup) Run(ctx context.Context) error {
+       // Find incomplete credential sets (e.g., only Quay, missing RHIT)
+       orphaned := j.dao.FindOrphanedCredentials(ctx)
+
+       for _, cred := range orphaned {
+           // Only clean credentials older than 24h
+           if time.Since(cred.CreatedAt) < 24*time.Hour {
+               continue
+           }
+
+           // Delete from external registry API
+           j.deleteExternalCredential(ctx, cred)
+
+           // Delete from database
+           j.dao.Delete(ctx, cred.ID)
+       }
+   }
+   ```
+
+3. **Advisory Locking** (prevention):
+   - Prevents concurrent requests from creating duplicate credentials
+   - Lock scope: `account_id + external_resource_id`
+
+**Observability:**
+```go
+// Metrics for monitoring partial failures
+registry_credential_failures_total{registry="quay"}     // Track per-registry failures
+registry_credential_failures_total{registry="rhit"}
+orphaned_credentials_detected_total                      // Track orphaned state
+pull_secret_retry_success_total                          // Track recovery via retry
+```
+
+**Client Retry Guidance:**
+| Error Code | Retry? | Strategy | Reason |
+|------------|--------|----------|--------|
+| 500 Internal Error | ✅ Yes | Exponential backoff (2s, 4s, 8s) | Partial failure or temporary API issue |
+| 503 Service Unavailable | ✅ Yes | Exponential backoff + jitter | Service temporarily down |
+| 400 Bad Request | ❌ No | N/A | Invalid request, won't succeed on retry |
+| 409 Conflict | ✅ Yes | Linear backoff (5s) | Rotation in progress |
+
+**Trade-off**: Orphaned credentials exist temporarily (until retry or cleanup job), but this is acceptable because:
+- Idempotent retries automatically resolve partial state
+- Cleanup job removes truly orphaned credentials (> 24h old)
+- Clear error semantics prevent silent runtime failures
+
 
 </details>
 
@@ -358,7 +515,7 @@ graph LR
     OptionA --> UseA3[Data residency<br/>requirements]
 
     OptionB --> UseB1[Single datacenter<br/>deployment]
-    OptionB --> UseB2[Cost optimization<br/>priority]
+    OptionB --> UseB2[Resource efficiency<br/>priority]
     OptionB --> UseB3[Centralized<br/>operations]
 
     style OptionA fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
@@ -418,7 +575,7 @@ spec:
 - ✅ In-cluster networking only (simple)
 - ✅ Data stays in region (GDPR compliant)
 
-**Cost**: $680/month (3 regions)
+**Resources**: 3× independent service instances (higher infrastructure footprint)
 
 </details>
 
@@ -466,10 +623,9 @@ spec:
 
 **Benefits**:
 - ✅ Single deployment to manage
-- ✅ Shared credential pool (cost efficient)
+- ✅ Shared credential pool (resource efficient)
 - ✅ Centralized audit trail
-
-**Cost**: $490/month (~28% cheaper)
+- ✅ Lower operational overhead (one instance vs. N instances)
 
 </details>
 
@@ -478,7 +634,7 @@ spec:
 | Question | If YES → | If NO → |
 |----------|----------|---------|
 | Do you have multiple geographic regions? | **Option A** | **Option B** |
-| Is failure isolation more important than cost? | **Option A** | **Option B** |
+| Is failure isolation more important than resource efficiency? | **Option A** | **Option B** |
 | Do you have data residency requirements (GDPR, etc.)? | **Option A** | **Option B** |
 | Is this a single datacenter deployment? | **Option B** | **Option A** |
 | Is centralized operations a priority? | **Option B** | **Option A** |
@@ -487,7 +643,7 @@ spec:
 
 | Aspect | Option A (Per-Instance) | Option B (Global Shared) |
 |--------|------------------------|--------------------------|
-| **Cost** | ⚠️ Higher ($680/month) | ✅ Lower ($490/month) |
+| **Resource Efficiency** | ⚠️ Higher resource usage (N × infrastructure) | ✅ Lower resource usage (shared infrastructure) |
 | **Failure Isolation** | ✅ Regional blast radius | ⚠️ Global blast radius |
 | **Operational Complexity** | ⚠️ Manage N instances | ✅ Single instance |
 | **Latency** | ✅ <10ms in-cluster | ⚠️ 50-200ms cross-region |
@@ -504,7 +660,7 @@ graph TB
     subgraph "Security Layers"
         L1[Layer 1:<br/>Authentication<br/>K8s ServiceAccount tokens]
         L2[Layer 2:<br/>Authorization<br/>RBAC permissions]
-        L3[Layer 3:<br/>Encryption at Rest<br/>pgcrypto AES-256-GCM]
+        L3[Layer 3:<br/>Encryption at Rest<br/>Application-level AES-256-GCM]
         L4[Layer 4:<br/>Encryption in Transit<br/>TLS/mTLS]
         L5[Layer 5:<br/>Audit Logging<br/>credential_audit_log]
     end
@@ -545,11 +701,14 @@ Security is not an afterthought—it's the foundation of the architecture. Every
 
 **Layer 3: Encryption at Rest** - *Data protected in storage*
 - **Purpose**: Encrypt tokens/passwords before saving to database
-- **Implementation**: PostgreSQL `pgcrypto` extension with AES-256-GCM encryption
+- **Implementation**: Application-level encryption using Go's `crypto/aes` with AES-256-GCM mode
+  - Encryption happens in application code **before** database insert
+  - Keeps encryption key out of SQL queries (prevents log exposure)
+  - Provides authenticated encryption (integrity + confidentiality)
 - **Example**:
   - Original token: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
   - Stored in DB: `\xc30d04070302f8a3e1b2c4d5e6f7...` (encrypted blob)
-- **Protection**: Database backups are useless without the encryption key (stored separately in Kubernetes Secret, rotated every 90 days)
+- **Protection**: Database backups are useless without the encryption key (stored separately in Kubernetes Secret, rotated every 90 days with re-encryption)
 - **Compliance**: Required by SOC 2, ISO 27001, GDPR for credential storage
 
 **Layer 4: Encryption in Transit** - *Data protected during transmission*
@@ -581,116 +740,6 @@ The layered approach ensures that **even if one layer is compromised, the others
 - If Layer 3 fails (database leaked): Tokens are encrypted and useless without the key
 - If Layer 4 fails (network compromised): Tokens in the database remain encrypted
 
-**Real-World Breach Scenario:**
-
-Attacker steals PostgreSQL database backup:
-1. ❌ Tokens are encrypted → Attacker sees `\xc30d04...` (useless blob)
-2. ❌ Encryption key is in Kubernetes Secret → Not in the backup
-3. ❌ Key rotates every 90 days → Old backups become worthless
-4. ✅ **Result**: Credentials remain secure despite database breach
-
-**Concrete Examples:**
-
-<details>
-<summary><b>Example 1: Token Encryption at Rest (Section6 Security)</b></summary>
-
-**Database encryption with pgcrypto:**
-```go
-// INSERT: Encrypt token before storing
-func (d *DAO) InsertCredential(cred *Credential) error {
-    encryptionKey := os.Getenv("DB_ENCRYPTION_KEY")  // From K8s Secret
-
-    query := `
-        INSERT INTO registry_credentials (id, username, token, cluster_id, registry_id)
-        VALUES ($1, $2, pgp_sym_encrypt($3, $4), $5, $6)
-    `
-    //                    ↑ Encrypt with AES-256-GCM
-
-    return d.db.Exec(query, cred.ID, cred.Username, cred.Token, encryptionKey, cred.ClusterID, cred.RegistryID).Error
-}
-
-// SELECT: Decrypt token when reading
-func (d *DAO) GetCredential(credID string) (*Credential, error) {
-    encryptionKey := os.Getenv("DB_ENCRYPTION_KEY")
-
-    query := `
-        SELECT id, username,
-               pgp_sym_decrypt(token::bytea, $2) AS token,
-               cluster_id, registry_id
-        FROM registry_credentials WHERE id = $1
-    `
-    //     ↑ Decrypt on read
-
-    var cred Credential
-    d.db.Raw(query, credID, encryptionKey).Scan(&cred)
-    return &cred, nil
-}
-```
-
-**Database raw storage (encrypted):**
-```
-hyperfleet=# SELECT username, token FROM registry_credentials LIMIT 1;
-username                                        | token
------------------------------------------------ | -------------------------------------------------------
-redhat-openshift+hyperfleet_gcp_useast1_abc123 | \xc30d04070302f8a3e1b2c4d5e6f7...  ← Encrypted blob
-```
-
-**Why**: If database backup is stolen, tokens are useless without encryption key (stored separately in K8s Secret, rotated every 90 days).
-
-**Compliance**: SOC 2, ISO 27001, GDPR require encryption at rest for credentials.
-
-</details>
-
-<details>
-<summary><b>Example 2: Audit Logging (Section6 Security)</b></summary>
-
-**Audit log on every credential operation:**
-```go
-func (s *RegistryCredentialService) Create(ctx context.Context, cred *Credential) error {
-    // 1. Create credential
-    err := s.dao.InsertCredential(cred)
-    if err != nil {
-        return err
-    }
-
-    // 2. Log audit event (ALWAYS, even on failure)
-    auditLog := &AuditLog{
-        ClusterID:     cred.ClusterID,
-        CredentialID:  cred.ID,
-        Action:        "create",
-        Actor:         GetActorFromContext(ctx),  // "system:serviceaccount:hyperfleet-system:gcp-adapter"
-        Reason:        "cluster_provisioning",
-        TraceID:       GetTraceIDFromContext(ctx),
-        Metadata: map[string]interface{}{
-            "registry_id": cred.RegistryID,
-            "username":    cred.Username,
-        },
-    }
-    s.auditDAO.Insert(auditLog)
-
-    return nil
-}
-```
-
-**Audit log query example:**
-```sql
--- Who created credentials for cluster cls-abc-123?
-SELECT action, actor, reason, created_at
-FROM credential_audit_log
-WHERE cluster_id = 'cls-abc-123'
-ORDER BY created_at DESC;
-
--- Result:
--- action  | actor                                    | reason                | created_at
--- ------- | ---------------------------------------- | --------------------- | -------------------
--- create  | system:serviceaccount:...:gcp-adapter    | cluster_provisioning  | 2025-10-01 10:00:00
--- rotate  | system:serviceaccount:...:gcp-adapter    | scheduled_rotation    | 2025-12-30 14:30:00
--- delete  | user:john.doe@redhat.com                 | cluster_deprovisioning| 2026-01-15 09:00:00
-```
-
-**Why**: Audit trail required for compliance (SOC 2, ISO 27001). Can trace every credential operation to specific actor and timestamp.
-
-</details>
 
 **Trade-offs Accepted:**
 - ✅ **Defense in depth**: Multiple layers of security (not relying on single control)
@@ -735,12 +784,6 @@ graph TB
 
         Nexus["NexusClient<br/>━━━━━━━━━━━━<br/>Registry: nexus.customer.com<br/>Auth: User Tokens<br/>API: /service/rest/v1<br/>Repositories: Docker hosted<br/>Use Case: Enterprise artifact manager"]
 
-        ACR["ACRClient<br/>━━━━━━━━━━━━<br/>Registry: customer.azurecr.io<br/>Auth: Service Principal<br/>Format: SP credentials<br/>API: Azure Container Registry REST<br/>Integration: Azure AD<br/>Use Case: Azure-native deployments"]
-
-        ECR["ECRClient<br/>━━━━━━━━━━━━<br/>Registry: account.dkr.ecr.region<br/>Auth: IAM Roles<br/>Format: AWS credentials<br/>Token Expiry: 12 hours<br/>Use Case: AWS-native deployments"]
-
-        GCR["GCRClient<br/>━━━━━━━━━━━━<br/>Registry: gcr.io/project<br/>Auth: Service Account<br/>Format: _json_key<br/>API: GCR/Artifact Registry<br/>Use Case: GCP-native deployments"]
-
         Custom["CustomClient<br/>━━━━━━━━━━━━<br/>Registry: Any OCI-compliant<br/>Auth: Configurable<br/>Implementation: Customer-provided<br/>Examples: GitLab, GitHub Packages,<br/>JFrog Artifactory, etc.<br/>Use Case: Unique requirements"]
     end
 
@@ -748,7 +791,7 @@ graph TB
         QuayAPI[Quay.io API<br/>quay.io/api/v1]
         RHITAPI[Red Hat Registry API<br/>api.access.redhat.com]
         HarborAPI[Harbor API<br/>harbor.customer.com/api]
-        OtherAPIs[Other Registry APIs<br/>Nexus, ACR, ECR, GCR, etc.]
+        OtherAPIs[Other Registry APIs<br/>Nexus, etc.]
     end
 
     PSS -->|Uses polymorphically| Factory
@@ -758,18 +801,12 @@ graph TB
     IFace -.->|implements| RHIT
     IFace -.->|implements| Harbor
     IFace -.->|implements| Nexus
-    IFace -.->|implements| ACR
-    IFace -.->|implements| ECR
-    IFace -.->|implements| GCR
     IFace -.->|implements| Custom
 
     Quay -->|HTTP/REST| QuayAPI
     RHIT -->|mTLS/REST| RHITAPI
     Harbor -->|HTTP/REST| HarborAPI
     Nexus -->|HTTP/REST| OtherAPIs
-    ACR -->|HTTP/REST| OtherAPIs
-    ECR -->|HTTP/REST| OtherAPIs
-    GCR -->|HTTP/REST| OtherAPIs
     Custom -->|HTTP/REST| OtherAPIs
 
     style PSS fill:#e1f5ff,stroke:#01579b,stroke-width:4px
@@ -785,9 +822,6 @@ graph TB
 
     style Harbor fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5
     style Nexus fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5
-    style ACR fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5
-    style ECR fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5
-    style GCR fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5
     style Custom fill:#ffccbc,stroke:#d84315,stroke-width:2px,stroke-dasharray: 5 5
 
     style QuayAPI fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
@@ -801,7 +835,7 @@ graph TB
 | Element | Description |
 |---------|-------------|
 | **Solid Border** | Built-in, production-ready implementations (Quay, RHIT) |
-| **Dashed Border** | Extensible, optional implementations (Harbor, Nexus, ACR, ECR, GCR, Custom) |
+| **Dashed Border** | Extensible, optional implementations (Harbor, Nexus, Custom) |
 | **Interface Box** | Contract that all clients must implement (4 methods) |
 | **Factory Pattern** | `RegistryClientFactory` returns appropriate client based on `registry_id` |
 | **Polymorphic Usage** | `PullSecretService` uses `RegistryClient` interface, not concrete types |
@@ -814,9 +848,6 @@ graph TB
 | **Red Hat Registry** | 49 chars | ✅ | ❌ | OpenShift certified images |
 | **Harbor** | Varies | ✅ | ✅ (Projects) | On-prem private registry |
 | **Nexus** | Varies | ❌ | ✅ (Repositories) | Enterprise artifact management |
-| **ACR** | 50 chars | ❌ | ✅ (Repositories) | Azure-native deployments |
-| **ECR** | 256 chars | ❌ | ✅ (Repositories) | AWS-native deployments |
-| **GCR** | Varies | ❌ | ✅ (Projects) | GCP-native deployments |
 
 **Benefits of This Architecture:**
 
@@ -824,7 +855,6 @@ graph TB
 - ✅ **Customer Flexibility**: Enterprise customers can integrate their own private registries
 - ✅ **Testability**: Mock implementations for unit tests (just implement 4 methods)
 - ✅ **Incremental Adoption**: Add registry support without touching existing code
-- ✅ **Cloud Portability**: Native registry for each cloud provider (ACR, ECR, GCR)
 
 ---
 
@@ -852,7 +882,7 @@ type RegistryClient interface {
 
 // Common credential structure
 type Credential struct {
-    RegistryID string    // "quay", "rhit", "harbor", "acr", etc.
+    RegistryID string    // "quay", "rhit", "harbor", etc.
     Username   string    // Registry-specific format
     Token      string    // API token, JWT, or password
     ExpiresAt  *time.Time
@@ -962,13 +992,6 @@ registries:
       base_url: https://harbor.customer-a.com
       project: hyperfleet
       credentials_secret: harbor-customer-a-admin  # K8s secret with admin creds
-
-  - id: acr-customer-b
-    type: acr
-    enabled: true
-    config:
-      registry_name: customerbregistry.azurecr.io
-      service_principal_secret: acr-customer-b-sp
 ```
 
 **Why**: Customer can add their own private Harbor instance without modifying service code. Just add configuration and deploy HarborClient implementation.
@@ -1002,12 +1025,15 @@ func (s *PullSecretService) GeneratePullSecret(ctx context.Context, clusterID st
         // Create new credential
         cred, err := client.CreateCredential(ctx, clusterID)
         if err != nil {
-            s.logger.Warnf("Failed to create credential for registry %s: %v", registryConfig.ID, err)
-            continue  // Skip failed registries, don't fail entire operation
+            s.logger.Errorf("Failed to create credential for registry %s: %v", registryConfig.ID, err)
+            // All-or-Nothing: fail entire operation if ANY registry fails
+            return nil, fmt.Errorf("failed to create credential for registry %s: %w", registryConfig.ID, err)
         }
 
         // Save to database
-        s.dao.InsertCredential(cred)
+        if err := s.dao.InsertCredential(ctx, cred); err != nil {
+            return nil, fmt.Errorf("failed to save credential: %w", err)
+        }
         credentials = append(credentials, *cred)
     }
 
@@ -1028,9 +1054,6 @@ func (s *PullSecretService) GeneratePullSecret(ctx context.Context, clusterID st
     },
     "harbor.customer-a.com": {
       "auth": "base64(robot$hyperfleet-cls-abc:harbor_token)"
-    },
-    "customerbregistry.azurecr.io": {
-      "auth": "base64(hyperfleet-sp:acr_token)"
     }
   }
 }
@@ -1573,7 +1596,7 @@ This pattern is also known as:
 > **🔗 Design Principles Applied:**
 > - **Principle 1 (Lift and Shift)**: Service layer mirrors AMS structure (`AccessTokenService`, `RegistryCredentialService`)
 > - **Principle 2 (Cloud Agnostic)**: External clients abstracted (QuayClient, RHITClient) - no cloud-specific logic
-> - **Principle 5 (Extensible Registries)**: `CustomRegistryClient` implements `RegistryClient` interface, enabling support for Harbor, Nexus, ACR, ECR, GCR, and any custom registry
+> - **Principle 5 (Extensible Registries)**: `CustomRegistryClient` implements `RegistryClient` interface, enabling support for Harbor, Nexus, and any custom registry
 > - **Principle 6 (Dedicated Partner)**: `RHITClient` uses dedicated partner code `hyperfleet` (not `ocm-service`), with independent namespace `/partners/hyperfleet/` and separate mTLS certificates
 
 ### 2.1 Component Architecture
@@ -1663,7 +1686,7 @@ graph LR
 ### 2.3 Support for Private/Customer-Specific Registries
 
 > **🔗 Design Principle 5 (Extensible Registries) in Action:**
-> This section demonstrates how interface-based design enables zero vendor lock-in. Service code uses `RegistryClient` interface, allowing seamless addition of Harbor, Nexus, ACR, ECR, GCR, or any custom registry without modifying core logic.
+> This section demonstrates how interface-based design enables zero vendor lock-in. Service code uses `RegistryClient` interface, allowing seamless addition of Harbor, Nexus, or any custom registry without modifying core logic.
 
 The Pull Secret Service architecture is designed to be **extensible** and supports adding custom registry integrations beyond the default Quay.io and Red Hat Registry.
 
@@ -1708,9 +1731,6 @@ graph LR
     subgraph "Custom Implementations Extensible"
         Harbor[HarborClient<br/>Harbor robot accounts]
         Nexus[NexusClient<br/>Nexus Docker repositories]
-        ACR[ACRClient<br/>Azure Container Registry]
-        ECR[ECRClient<br/>AWS Elastic Container Registry]
-        GCR[GCRClient<br/>Google Container Registry]
         Custom[CustomClient<br/>Any Docker-compatible registry]
     end
 
@@ -1718,9 +1738,6 @@ graph LR
     Interface -.-> RHIT
     Interface -.->|Implement interface| Harbor
     Interface -.->|Implement interface| Nexus
-    Interface -.->|Implement interface| ACR
-    Interface -.->|Implement interface| ECR
-    Interface -.->|Implement interface| GCR
     Interface -.->|Implement interface| Custom
 
     style Interface fill:#bbdefb,stroke:#1976d2,stroke-width:3px
@@ -1728,9 +1745,6 @@ graph LR
     style RHIT fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
     style Harbor fill:#fff9c4,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5
     style Nexus fill:#fff9c4,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5
-    style ACR fill:#fff9c4,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5
-    style ECR fill:#fff9c4,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5
-    style GCR fill:#fff9c4,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5
     style Custom fill:#fff9c4,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
@@ -1931,9 +1945,12 @@ registries:
     org_name: "redhat-openshift"
     team_name: "hyperfleet-installers"
 
-  redhat:
+  rhit:
     enabled: true
-    partner_code: "ocm-service"
+    base_url: "https://registry.access.redhat.com/api/v1"
+    partner_code: "hyperfleet"  # NOT "ocm-service" - see Principle 6
+    cert_secret: "rhit-client-cert"
+
 
   # Custom registry configuration
   harbor:
@@ -1950,7 +1967,6 @@ registries:
 | Benefit | Description |
 |---------|-------------|
 | **Flexibility** | Support customer-specific private registries (Harbor, Nexus, JFrog Artifactory) |
-| **Multi-Cloud** | Integrate with cloud-native registries (ACR, ECR, GCR) without vendor lock-in |
 | **Compliance** | Enable air-gapped deployments with on-premises registries |
 | **Migration** | Gradual migration from one registry to another (dual-registry period) |
 | **Testing** | Use test registries in staging environments |
@@ -2008,12 +2024,14 @@ graph LR
         EP4[POST /v1/clusters/ID/pull-secrets/rotations<br/>Trigger rotation]
         EP5[GET /v1/clusters/ID/pull-secrets/rotations<br/>List rotations]
         EP6[GET /v1/clusters/ID/pull-secrets/rotations/ID<br/>Get rotation status]
-        EP7[GET /v1/health<br/>Health check]
-        EP8[GET /v1/metrics<br/>Prometheus metrics]
+        EP7[GET /healthz<br/>Liveness probe]
+        EP8[GET /readyz<br/>Readiness probe]
+        EP9[GET /metrics:9090<br/>Prometheus metrics]
     end
 
     subgraph "Request Flow"
         Client[API Client<br/>Pull Secret Adapter]
+        K8s[Kubernetes<br/>Liveness/Readiness Probes]
         Auth[Authentication<br/>K8s ServiceAccount]
         Service[Pull Secret Service<br/>Business Logic]
     end
@@ -2024,6 +2042,9 @@ graph LR
     Client --> EP4
     Client --> EP5
     Client --> EP6
+
+    K8s --> EP7
+    K8s --> EP8
 
     EP1 --> Auth
     EP2 --> Auth
@@ -2038,6 +2059,7 @@ graph LR
     style EP4 fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
     style EP7 fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     style EP8 fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    style EP9 fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 ```
 
 ### 3.2 Core Endpoints
@@ -2057,7 +2079,7 @@ Content-Type: application/json
 **Request Body**:
 ```json
 {
-  "cluster_external_id": "cls-abc123def456",
+  "cluster_id": "cls-abc123def456",
   "cloud_provider": "gcp",
   "region": "us-east1",
   "registries": ["quay", "rhit"]
@@ -2100,30 +2122,46 @@ Content-Type: application/json
 ```
 
 **Response 400 Bad Request**:
+```http
+Content-Type: application/problem+json
+```
 ```json
 {
-  "error": {
-    "code": "INVALID_REQUEST",
-    "message": "Invalid cloud provider: invalidprovider",
-    "details": {
+  "type": "https://api.hyperfleet.io/errors/validation-error",
+  "title": "Validation Error",
+  "status": 400,
+  "detail": "Invalid cloud provider: invalidprovider",
+  "code": "HYPERFLEET-VAL-001",
+  "timestamp": "2026-02-26T10:30:00.123Z",
+  "trace_id": "a1b2c3d4-e5f6-7890",
+  "instance": "/v1/clusters/cls-abc123/pull-secrets",
+  "errors": [
+    {
       "field": "cloud_provider",
-      "valid_values": ["gcp", "aws", "azure"]
+      "value": "invalidprovider",
+      "constraint": "enum",
+      "message": "Must be one of: gcp, aws, azure"
     }
-  }
+  ]
 }
 ```
 
 **Response 409 Conflict**:
+```http
+Content-Type: application/problem+json
+```
 ```json
 {
-  "error": {
-    "code": "ROTATION_IN_PROGRESS",
-    "message": "Cannot generate pull secret while rotation is in progress",
-    "details": {
-      "rotation_id": "rot-xyz789",
-      "status": "in_progress"
-    }
-  }
+  "type": "https://api.hyperfleet.io/errors/resource-conflict",
+  "title": "Resource Conflict",
+  "status": 409,
+  "detail": "Cannot generate pull secret while rotation is in progress for cluster cls-abc123def456",
+  "code": "HYPERFLEET-CNF-001",
+  "timestamp": "2026-02-26T10:30:00.123Z",
+  "trace_id": "a1b2c3d4-e5f6-7890",
+  "instance": "/v1/clusters/cls-abc123def456/pull-secrets",
+  "rotation_id": "rot-xyz789",
+  "rotation_status": "in_progress"
 }
 ```
 
@@ -2163,12 +2201,20 @@ Authorization: Bearer <k8s_serviceaccount_token>
 ```
 
 **Response 404 Not Found**:
+```http
+Content-Type: application/problem+json
+```
 ```json
 {
-  "error": {
-    "code": "NOT_FOUND",
-    "message": "Pull secret not found for cluster cls-abc123def456"
-  }
+  "type": "https://api.hyperfleet.io/errors/resource-not-found",
+  "title": "Resource Not Found",
+  "status": 404,
+  "detail": "Pull secret not found for cluster cls-abc123def456",
+  "code": "HYPERFLEET-NTF-001",
+  "timestamp": "2026-02-26T10:30:00.123Z",
+  "trace_id": "a1b2c3d4-e5f6-7890",
+  "instance": "/v1/clusters/cls-abc123def456/pull-secrets",
+  "cluster_id": "cls-abc123def456"
 }
 ```
 
@@ -2207,19 +2253,450 @@ Authorization: Bearer <k8s_serviceaccount_token>
 ```
 
 **Response 409 Conflict**:
+```http
+Content-Type: application/problem+json
+```
 ```json
 {
-  "error": {
-    "code": "ROTATION_ALREADY_IN_PROGRESS",
-    "message": "Rotation already in progress for cluster cls-abc123def456",
-    "details": {
-      "rotation_id": "rot-abc123",
-      "status": "in_progress",
-      "started_at": "2026-02-07T10:00:00Z"
-    }
-  }
+  "type": "https://api.hyperfleet.io/errors/resource-conflict",
+  "title": "Resource Conflict",
+  "status": 409,
+  "detail": "Rotation already in progress for cluster cls-abc123def456",
+  "code": "HYPERFLEET-CNF-002",
+  "timestamp": "2026-02-26T10:30:00.123Z",
+  "trace_id": "a1b2c3d4-e5f6-7890",
+  "instance": "/v1/clusters/cls-abc123def456/pull-secrets/rotations",
+  "rotation_id": "rot-abc123",
+  "rotation_status": "in_progress",
+  "started_at": "2026-02-07T10:00:00Z"
 }
 ```
+
+**Credential Rotation Lifecycle Details**
+
+The credential rotation process follows the **AMS (Account Management Service) pattern** inherited via Lift & Shift (Principle 1).
+
+
+**What is the Dual Credential Period?**
+
+The **dual credential period** is the overlap window where **both old and new credentials are simultaneously valid**. This ensures clusters can continue pulling images during the transition.
+
+**Timeline**:
+```
+T0: Old credential only (ACTIVE)
+T1: Rotation triggered → Old credentials marked as "rotating"
+T2: New credentials created
+T3: Adapter retrieves new credentials → writes to cluster
+T4: Cluster confirms readiness → Old credentials deleted
+```
+
+**Duration**: Variable - depends on cluster confirmation, not a fixed timeout.
+
+**How Long Are Both Credentials Valid?**
+
+| Phase | Old Credential | New Credential | Timing |
+|-------|----------------|----------------|--------|
+| Pre-Rotation | ✅ Active | ❌ Not created | Indefinite |
+| **Dual Period** | ✅ Active (marked "rotating") | ✅ Active | **Until cluster confirms readiness** |
+| Post-Rotation | ❌ Deleted | ✅ Active | Indefinite |
+
+
+**How Does the Service Know New Credentials Are Being Used?**
+
+The service uses a **passive, telemetry-based detection mechanism** inherited from AMS. The system does **NOT** poll clusters or perform active health checks. Instead, it relies on **cluster-initiated telemetry** to confirm that new credentials are in use.
+
+---
+
+#### AMS Pattern: Telemetry-Driven Confirmation
+
+The AMS (uhc-account-manager) uses an elegant approach where **cluster telemetry serves as proof** that new credentials are active.
+
+**Key Insight**: When a cluster sends metrics using the new pull secret, we know it's safe to delete the old one.
+
+**Components**:
+
+| Component | Role | Frequency |
+|-----------|------|-----------|
+| **PullSecretRotation** | Tracks rotation lifecycle (pending → completed) | Created once per rotation request |
+| **ClusterTransfer** | Tracks per-cluster credential adoption | One per cluster, status: pending → accepted → completed |
+| **Reconciler Job** | Creates new credentials, accepts ClusterTransfers | Runs periodically (configurable) |
+| **Telemetry** | Cluster sends metrics with auth header | Every ~6 hours |
+| **Cluster Registration** | Decodes auth token, completes ClusterTransfer if using new credential | On every telemetry call |
+
+---
+
+#### Complete Rotation Flow
+
+**Phase 1: User Initiates Rotation**
+
+```http
+POST /api/accounts_mgmt/v1/accounts/{account_id}/pull_secret_rotation
+```
+
+**What Happens** (`pull_secret_rotation.go:45-117`):
+```go
+// 1. Create PullSecretRotation record
+rotation := &api.PullSecretRotation{
+    AccountID: accountID,
+    Status:    string(api.RotationPending),
+}
+
+// 2. For each active cluster, create ClusterTransfer
+for _, subscription := range activeSubscriptions {
+    clusterTransfer := api.ClusterTransfer{
+        ClusterUUID:          subscription.ExternalClusterID,
+        Owner:                account.Username,
+        Recipient:            account.Username,  // Same user for rotation
+        Status:               api.Pending,
+        PullSecretRotationID: &rotation.ID,
+    }
+    clusterTransferService.CreateClusterTransfer(ctx, &clusterTransfer)
+}
+```
+
+**Database State**:
+```sql
+-- pull_secret_rotations table
+INSERT INTO pull_secret_rotations (id, account_id, status)
+VALUES ('rot-789', 'acc-123', 'pending');
+
+-- cluster_transfers table
+INSERT INTO cluster_transfers (id, cluster_uuid, owner, recipient, status, pull_secret_rotation_id)
+VALUES ('ct-001', 'cls-abc123', 'user@example.com', 'user@example.com', 'pending', 'rot-789');
+```
+
+---
+
+**Phase 2: Reconciler Creates New Credentials**
+
+**Job**: `pull_secret_rotations_reconciler.go`
+**Trigger**: Periodic execution (configurable interval)
+
+```go
+// 1. Find all pending rotations
+var rotations []api.PullSecretRotation
+db.Where("status = ?", "pending").Find(&rotations)
+
+for _, rotation := range rotations {
+    // 2. Mark OLD credentials with external_resource_id = "rotating"
+    oldCreds := findCredentials(rotation.AccountID, externalResourceID="")
+    for _, cred := range oldCreds {
+        cred.ExternalResourceId = "rotating"
+        registryCredentialService.Update(ctx, cred)
+    }
+
+    // 3. Create NEW credentials (external_resource_id = "")
+    for _, registry := range registries {
+        newCred := &api.RegistryCredential{
+            AccountID:          &rotation.AccountID,
+            RegistryID:         registry.ID,
+            ExternalResourceId: "",  // Active credential marker
+        }
+        registryCredentialService.Create(ctx, newCred)
+    }
+
+    // 4. Auto-accept ClusterTransfers
+    clusterTransfers := findClusterTransfers(rotation.ID)
+    for _, ct := range clusterTransfers {
+        if ct.Status == api.Pending {
+            ct.Status = api.Accepted
+            clusterTransferService.Update(ctx, &ct)
+        }
+    }
+}
+```
+
+**Database State After Reconciler**:
+```sql
+-- registry_credentials table
+-- OLD credentials (marked for deletion)
+UPDATE registry_credentials
+SET external_resource_id = 'rotating'
+WHERE account_id = 'acc-123' AND external_resource_id = '';
+
+-- NEW credentials (active)
+INSERT INTO registry_credentials (id, account_id, registry_id, external_resource_id, username, token)
+VALUES
+  ('uuid-3', 'acc-123', 'quay', '', 'robot$new-def', 'new_token'),
+  ('uuid-4', 'acc-123', 'rhit', '', '|uhc-new-123', 'new_jwt');
+
+-- cluster_transfers table
+UPDATE cluster_transfers
+SET status = 'accepted'
+WHERE pull_secret_rotation_id = 'rot-789';
+```
+
+---
+
+**Phase 3: Cluster Updates Pull Secret**
+
+**In-Cluster Components**:
+
+1. **Insights Operator** (runs every ~12 hours):
+   - Detects global pull secret changed
+   - Updates local cluster pull secret
+
+2. **Telemeter** (runs every ~6 hours):
+   - Sends metrics to OCM
+   - **Uses NEW credential in Authorization header**
+   - Calls: `POST /api/clusters_mgmt/v1/register_cluster`
+
+---
+
+**Phase 4: Cluster Registration Detects New Credential**
+
+**Code**: `cluster_registration.go:70-131`
+
+```go
+func (s *clusterRegistrationService) Register(ctx context.Context,
+    authToken, externalClusterID string) (accountID string, ...) {
+
+    // 1. Decode Authorization header to get credential
+    registryCredential, err := s.registryCredentialService.FindByEncodedToken(ctx, authToken)
+    if err != nil {
+        return errors.NotFound("Unable to find credential with specified authorization token")
+    }
+
+    // 2. Get account that owns the credential (pullSecretOwner)
+    pullSecretOwner, err := s.accountService.Get(ctx, *registryCredential.AccountID, ...)
+
+    // 3. Find subscription for cluster
+    subscription, _ := s.subscriptionService.FindByExternalClusterID(ctx, externalClusterID)
+
+    // 4. Attempt to complete ClusterTransfer if one exists
+    err = s.clusterTransferService.Transfer(ctx, subscription.ExternalClusterID,
+        subscription, pullSecretOwner)
+
+    return pullSecretOwner.ID, true, expiresAt, nil
+}
+```
+
+---
+
+**Phase 5: Transfer Completion Check**
+
+**Code**: `cluster_transfer.go:459-610`
+
+```go
+func (s *sqlClusterTransferService) Transfer(ctx context.Context, clusterUUID string,
+    subscription *api.Subscription, pullSecretOwner *api.Account) *errors.ServiceError {
+
+    // 1. Get ClusterTransfer with status "accepted"
+    clusterTransfer, err := s.clusterTransferDao.GetOneBy(ctx, &dao.ClusterTransferDaoParams{
+        ClusterUUID: &clusterUUID,
+        Status:      util.ToPtr(string(api.Accepted)),
+    })
+
+    if err != nil {
+        return nil  // No accepted transfer found, nothing to do
+    }
+
+    // 2. Get recipient account (same as owner for rotation)
+    recipientAccount, _ := s.accountService.FindByUsername(ctx, clusterTransfer.Recipient)
+
+    // 3. ⭐ CRITICAL CHECK ⭐
+    // Compare credential owner (pullSecretOwner) with expected recipient
+    if pullSecretOwner.ID != recipientAccount.ID {
+        // ❌ Cluster still using OLD credential
+        ulog.Warning("Unable to complete pending cluster transfer. " +
+            "Cluster registration will succeed when the cluster's global pull secret " +
+            "has been updated with the recipient account's pull secret",
+            "pullsecret_owner", pullSecretOwner.ID,
+            "recipient_account", recipientAccount.ID,
+            "cluster_uuid", clusterTransfer.ClusterUUID)
+        return nil  // Wait for next telemetry attempt
+    }
+
+    // ✅ Cluster IS using NEW credential!
+
+    // 4. Mark ClusterTransfer as completed
+    _, err = s.clusterTransferDao.Update(ctx, clusterTransfer, "status",
+        util.ToPtr(string(api.Completed)))
+
+    ulog.Info("Cluster transfer completed successfully",
+        "cluster_uuid", clusterUUID,
+        "transfer_id", clusterTransfer.ID)
+
+    return nil
+}
+```
+
+**Key Lines** (`cluster_transfer.go:493-504`):
+```go
+// Confirm recipient account matches with the account passed in to cluster_registration
+// There can be scenarios where cluster_registration is called from the current owner's
+// pull secret, which means the pull secret is not yet rotated.
+// In this case, log a warning message and skip the cluster transfer. We don't want the
+// cluster to stop reporting metrics.
+// Once the pull secret is updated with the recipient's pull secret, cluster_registration
+// will be called via the recipient's account. CT can be completed then.
+// Also, warning message is expected to be logged no more than 2 times since telemetry
+// calls cluster_registration every 6 hours and Insights Operator rotates the pull secret
+// every 12 hours.
+```
+
+---
+
+**Phase 6: Reconciler Deletes Old Credentials**
+
+**Trigger**: Reconciler job runs again, checks if all ClusterTransfers are completed
+
+```go
+// Find all ClusterTransfers for this rotation
+var cts []api.ClusterTransfer
+db.Where("pull_secret_rotation_id = ?", rotation.ID).Find(&cts)
+
+// Check if ALL are completed
+ctsCompleted := true
+for _, ct := range cts {
+    if ct.Status == api.Expired {
+        continue  // Ignore expired transfers
+    }
+    if ct.Status != api.Completed {
+        ctsCompleted = false
+        break
+    }
+}
+
+// ✅ Only delete if ALL clusters confirmed new credential
+if len(cts) > 0 && ctsCompleted {
+    // 1. Delete OLD credentials from external APIs
+    for _, registry := range registries {
+        oldCred := findCredential(accountID, registry.ID, externalResourceID="rotating")
+        if oldCred != nil {
+            // Delete from Quay/RHIT API
+            registryCredentialService.DeleteExternalAccount(ctx, account, &registry, "rotating")
+
+            // Delete from database
+            registryCredentialService.Delete(ctx, oldCred.ID)
+        }
+    }
+
+    // 2. Mark rotation as completed
+    rotation.Status = string(api.RotationCompleted)
+    pullSecretRotationService.Update(ctx, rotation, rotation.ID)
+}
+```
+
+---
+
+#### Complete Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant AMS as Pull Secret Service
+    participant Reconciler as Reconciler Job
+    participant Cluster
+    participant Telemetry as Cluster Telemetry
+    participant ClusterReg as Cluster Registration
+    participant Registry as Quay/RHIT API
+
+    User->>AMS: POST /pull_secret_rotation
+    AMS->>AMS: Create PullSecretRotation (status=pending)
+    AMS->>AMS: Create ClusterTransfer (status=pending)
+    AMS-->>User: 201 Created
+
+    Note over Reconciler: Job runs periodically
+
+    Reconciler->>AMS: Query: PullSecretRotation (status=pending)
+    Reconciler->>AMS: Mark old credentials (external_resource_id="rotating")
+    Reconciler->>Registry: Create NEW Quay robot account
+    Registry-->>Reconciler: ✅ {name, token}
+    Reconciler->>Registry: Create NEW RHIT service account
+    Registry-->>Reconciler: ✅ {username, password}
+    Reconciler->>AMS: Save NEW credentials (external_resource_id="")
+    Reconciler->>AMS: Update ClusterTransfer (status=accepted)
+
+    Note over Cluster: Insights Operator runs (~12h)
+
+    Cluster->>Cluster: Detect pull secret changed
+    Cluster->>Cluster: Update local pull secret
+
+    Note over Telemetry: Telemeter runs (~6h)
+
+    Telemetry->>ClusterReg: POST /register_cluster<br/>Authorization: Bearer NEW_CREDENTIAL
+
+    ClusterReg->>ClusterReg: Decode token → pullSecretOwner
+    ClusterReg->>ClusterReg: Find ClusterTransfer (status=accepted)
+    ClusterReg->>ClusterReg: Check: pullSecretOwner == recipient?
+
+    alt Cluster using NEW credential
+        ClusterReg->>AMS: Update ClusterTransfer (status=completed)
+        ClusterReg-->>Telemetry: ✅ 200 OK
+        Note over AMS: Rotation ready for cleanup
+    else Cluster still using OLD credential
+        ClusterReg-->>Telemetry: ⚠️ 200 OK (metrics accepted)
+        Note over ClusterReg: Log warning, wait for next attempt
+    end
+
+    Note over Reconciler: Job runs again
+
+    Reconciler->>AMS: Query: ClusterTransfers for rotation
+    Reconciler->>Reconciler: Check if ALL status=completed
+
+    alt All clusters using NEW credential
+        Reconciler->>Registry: Delete OLD Quay robot account
+        Reconciler->>Registry: Delete OLD RHIT service account
+        Reconciler->>AMS: Delete OLD credentials from DB
+        Reconciler->>AMS: Update PullSecretRotation (status=completed)
+        Note over AMS: ✅ Rotation complete
+    else Some clusters still pending
+        Note over Reconciler: Wait for next run
+    end
+```
+
+---
+
+#### Key Detection Mechanism
+
+The system know new credentials are in use by comparing the credential used in telemetry with the expected recipient:
+
+```go
+// cluster_transfer.go:499
+if pullSecretOwner.ID != recipientAccount.ID {
+    // Cluster still using OLD credential (from previous owner)
+    // Log warning and wait for next attempt
+    return nil
+}
+
+// Cluster IS using NEW credential!
+// Safe to mark ClusterTransfer as completed
+```
+
+**Source of Truth**: `Authorization` header in cluster telemetry requests
+
+**Validation**: `pullSecretOwner` (decoded from auth token) == `recipient` (from ClusterTransfer)
+
+---
+
+#### Advantages of This Approach
+
+| Advantage | Description |
+|-----------|-------------|
+| **Non-invasive** | No special agent needed in cluster |
+| **Passive Detection** | No polling or active health checks |
+| **Resilient** | Temporary telemetry failures don't break rotation |
+| **Safe** | Old credentials only deleted after positive confirmation |
+| **Automatic** | Zero manual intervention after initiation |
+| **Observable** | Clear state transitions (pending → accepted → completed) |
+| **Multiple Clusters** | Waits for ALL clusters before cleanup |
+
+---
+
+#### HyperFleet Adaptation
+
+For HyperFleet Pull Secret Service, adopt the same pattern with minor adjustments:
+
+**Components Mapping**:
+
+| AMS Component | HyperFleet Equivalent | Notes |
+|---------------|----------------------|-------|
+| `PullSecretRotation` | Same model | Track rotation lifecycle |
+| `ClusterTransfer` | Same model | One per cluster, tracks credential adoption |
+| `cluster_registration` | Cluster heartbeat/telemetry endpoint | Verify credential in use |
+| Reconciler job | Same pattern | Create credentials, check completions, cleanup |
+
 
 ---
 
@@ -2256,40 +2733,195 @@ Authorization: Bearer <k8s_serviceaccount_token>
 
 ---
 
+#### 3.2.5 List Rotations
+
+**Endpoint**: `GET /v1/clusters/{cluster_id}/pull-secrets/rotations`
+
+**Purpose**: Retrieve paginated list of credential rotations for a cluster.
+
+**Query Parameters**:
+- `status` (optional): Filter by rotation status (`pending`, `in_progress`, `completed`, `failed`)
+- `limit` (optional): Number of results per page (default: 50, max: 100)
+- `cursor` (optional): Pagination cursor from previous response (cursor-based pagination for consistent results during concurrent writes)
+- `since` (optional): RFC3339 timestamp - only return rotations created after this time
+
+**Request Example**:
+```http
+GET /v1/clusters/cls-abc123/pull-secrets/rotations?status=in_progress&limit=20
+Authorization: Bearer <k8s_serviceaccount_token>
+```
+
+**Response 200 OK**:
+```json
+{
+  "rotations": [
+    {
+      "rotation_id": "rot-xyz789",
+      "cluster_id": "cls-abc123",
+      "status": "in_progress",
+      "reason": "scheduled",
+      "created_at": "2026-02-20T14:00:00Z",
+      "started_at": "2026-02-20T14:05:00Z",
+      "estimated_completion": "2026-02-27T14:00:00Z"
+    },
+    {
+      "rotation_id": "rot-abc456",
+      "cluster_id": "cls-abc123",
+      "status": "completed",
+      "reason": "manual",
+      "created_at": "2026-01-15T10:00:00Z",
+      "started_at": "2026-01-15T10:02:00Z",
+      "completed_at": "2026-01-22T10:00:00Z"
+    }
+  ],
+  "pagination": {
+    "next_cursor": "eyJjcmVhdGVkX2F0IjoiMjAyNi0wMS0xNVQxMDowMDowMFoiLCJpZCI6InJvdC1hYmM0NTYifQ==",
+    "has_more": true,
+    "total_count": 47
+  }
+}
+```
+
+**Pagination Strategy**: Cursor-based pagination (not offset-based)
+- **Why cursor-based**: Prevents missing/duplicate results when new rotations are created during pagination
+- **Cursor format**: Base64-encoded JSON with `{created_at, id}` for stable ordering
+- **Sort order**: Descending by `created_at` (newest first), with `rotation_id` as tiebreaker
+
+**Empty Result (no rotations)**:
+```json
+{
+  "rotations": [],
+  "pagination": {
+    "next_cursor": null,
+    "has_more": false,
+    "total_count": 0
+  }
+}
+```
+
+**Error Responses**:
+- **404 Not Found**: Cluster does not exist
+- **400 Bad Request**: Invalid query parameters (e.g., `limit > 100`, invalid cursor, malformed `since` timestamp)
+
+**Retention Policy**: Returns rotations from the last 90 days. Historical rotations older than 90 days are archived and not returned by this endpoint.
+
+---
+
+#### 3.2.6 Delete Pull Secret
+
+**Endpoint**: `DELETE /v1/clusters/{cluster_id}/pull-secrets`
+
+**Purpose**: Delete all credentials for a cluster and revoke access at registry level. Used during cluster deprovisioning.
+
+**Behavior**: **Hard delete with cascade**
+- Immediately revokes credentials at registry APIs (Quay robot account deletion, RHIT service account removal)
+- Deletes all credential records from database
+- Cancels any pending rotations (rotations in `pending` or `in_progress` status are marked as `cancelled`)
+- Preserves audit log entries for compliance (records in `credential_audit_log` are **NOT** deleted)
+
+**Request Example**:
+```http
+DELETE /v1/clusters/cls-abc123/pull-secrets
+Authorization: Bearer <k8s_serviceaccount_token>
+```
+
+**Response 204 No Content**: Successful deletion (no response body)
+
+**Idempotency**: Deleting non-existent credentials returns `204 No Content` (safe to retry)
+
+**Error Responses**:
+
+**409 Conflict** - Rotation in progress, cannot delete immediately:
+```json
+{
+  "type": "https://api.hyperfleet.io/errors/resource-conflict",
+  "title": "Resource Conflict",
+  "status": 409,
+  "detail": "Cannot delete credentials while rotation rot-xyz789 is in progress",
+  "code": "HYPERFLEET-CNF-002",
+  "timestamp": "2026-02-26T10:30:00.123Z",
+  "trace_id": "a1b2c3d4-e5f6-7890",
+  "instance": "/v1/clusters/cls-abc123/pull-secrets",
+  "rotation_id": "rot-xyz789",
+  "rotation_status": "in_progress",
+  "retry_after_seconds": 300
+}
+```
+
+**Conflict Resolution Strategy**:
+1. **Automatic cancellation (default)**: Service automatically cancels the rotation and proceeds with deletion (dual-credential period is terminated, old credentials remain active)
+2. **Wait for completion (alternative)**: Client waits for rotation to complete, then retries delete
+
+**500 Internal Server Error** - Partial registry revocation failure:
+```json
+{
+  "type": "https://api.hyperfleet.io/errors/internal-error",
+  "title": "Internal Server Error",
+  "status": 500,
+  "detail": "Failed to revoke credentials at RHIT API",
+  "code": "HYPERFLEET-INT-003",
+  "timestamp": "2026-02-26T10:30:00.123Z",
+  "trace_id": "a1b2c3d4-e5f6-7890",
+  "instance": "/v1/clusters/cls-abc123/pull-secrets",
+  "registries": {
+    "quay": "revoked",
+    "rhit": "failed"
+  },
+  "database_state": "credentials_marked_for_deletion",
+  "retryable": true
+}
+```
+
+**Partial Failure Behavior**:
+- If Quay revocation succeeds but RHIT fails → Database marks credentials as `pending_deletion`, returns `500` with retry guidance
+- Background cleanup job retries registry revocation every 5 minutes
+- Client can safely retry DELETE (idempotent - checks `pending_deletion` state)
+
+**Audit Trail**: Every deletion is logged in `credential_audit_log`:
+```sql
+INSERT INTO credential_audit_log (
+    credential_id, action, actor, reason, timestamp
+) VALUES (
+    'cred-abc123', 'delete', 'system:serviceaccount:hyperfleet-system:cluster-controller',
+    'cluster_deprovisioned', '2026-02-26 10:30:00'
+);
+```
+
+**RBAC Requirement**: Requires `clusters/pull-secrets/delete` permission (typically only granted to cluster-controller ServiceAccount)
+
+---
+
 ### 3.3 Error Handling
 
-All error responses follow RFC 7807 (Problem Details for HTTP APIs):
+All error responses follow **RFC 9457** (Problem Details for HTTP APIs) with HyperFleet extensions.
 
 ```json
 {
-  "type": "https://docs.hyperfleet.io/errors/rotation-in-progress",
-  "title": "Rotation In Progress",
+  "type": "https://api.hyperfleet.io/errors/resource-conflict",
+  "title": "Resource Conflict",
   "status": 409,
   "detail": "Cannot generate pull secret while rotation rot-xyz789 is in progress",
-  "instance": "/v1/clusters/cls-abc123/pull-secrets",
+  "code": "HYPERFLEET-CNF-001",
+  "timestamp": "2026-02-26T10:30:00.123Z",
   "trace_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "errors": [
-    {
-      "field": "cluster_id",
-      "code": "ROTATION_IN_PROGRESS",
-      "message": "Rotation rot-xyz789 is in progress"
-    }
-  }
+  "instance": "/v1/clusters/cls-abc123/pull-secrets",
+  "rotation_id": "rot-xyz789",
+  "rotation_status": "in_progress"
 }
 ```
 
 **Standard Error Codes**:
 
-| HTTP Status | Error Code | Description | Retry? |
-|-------------|------------|-------------|--------|
-| 400 | `INVALID_REQUEST` | Malformed request body or parameters | No |
-| 401 | `UNAUTHORIZED` | Missing or invalid authentication token | No |
-| 403 | `FORBIDDEN` | Insufficient permissions (RBAC) | No |
-| 404 | `NOT_FOUND` | Resource not found | No |
-| 409 | `CONFLICT` | Resource state conflict (rotation in progress) | Yes, later |
-| 429 | `RATE_LIMIT_EXCEEDED` | Too many requests | Yes, with backoff |
-| 500 | `INTERNAL_ERROR` | Unexpected server error | Yes |
-| 503 | `SERVICE_UNAVAILABLE` | Service temporarily unavailable | Yes |
+| HTTP Status | Error Code | Description | Retry? | Notes |
+|-------------|------------|-------------|--------|-------|
+| 400 | `INVALID_REQUEST` | Malformed request body or parameters | No | Fix request and retry |
+| 401 | `UNAUTHORIZED` | Missing or invalid authentication token | No | Check token validity |
+| 403 | `FORBIDDEN` | Insufficient permissions (RBAC) | No | Check RBAC configuration |
+| 404 | `NOT_FOUND` | Resource not found | No | Verify cluster exists |
+| 409 | `CONFLICT` | Resource state conflict (rotation in progress) | Yes, later | Wait for rotation to complete |
+| 429 | `RATE_LIMIT_EXCEEDED` | Too many requests | Yes, with backoff | Honor Retry-After header |
+| 500 | `INTERNAL_ERROR` | Unexpected server error or partial registry failure | Yes | May indicate Quay/RHIT API issue; retry enables idempotent recovery |
+| 503 | `SERVICE_UNAVAILABLE` | Service temporarily unavailable | Yes | Service restarting or overloaded |
 
 **Retry Logic**:
 ```go
@@ -2320,6 +2952,176 @@ func retryWithBackoff(request *http.Request) (*http.Response, error) {
     return nil, fmt.Errorf("max retries exceeded")
 }
 ```
+
+---
+
+#### 3.3.1 Partial Failure Handling
+
+**Strategy**: All-or-Nothing (inherited from AMS pattern - see Principle 1)
+
+When generating pull secrets for multiple registries (Quay + RHIT), the service follows an **all-or-nothing** approach: if ANY registry credential creation fails, the entire operation fails and returns HTTP 500.
+
+**Behavior Summary**:
+
+| Scenario | Quay | RHIT | Response | Database State |
+|----------|------|------|----------|----------------|
+| **Complete Success** | ✅ Created | ✅ Created | 200 OK with pull secret | Both credentials stored |
+| **Partial Failure** | ✅ Created | ❌ Failed | 500 Internal Error | Quay credential orphaned |
+| **Complete Failure** | ❌ Failed | N/A | 500 Internal Error | No credentials |
+| **Retry After Partial** | ✅ Reused | ✅ Created | 200 OK with pull secret | Both credentials stored |
+
+**Why All-or-Nothing?**
+
+- **Clear Semantics**: Client receives either a complete pull secret or an error - no ambiguity
+- **Prevents Silent Failures**: Returning a partial pull secret would cause runtime failures when pulling images from the missing registry
+- **Idempotent Recovery**: Clients can safely retry; existing credentials are automatically reused
+
+**Partial Failure Example (Quay succeeds, RHIT fails)**:
+
+```json
+// Request
+POST /v1/clusters/cls-abc123/pull-secrets
+
+// Response: 500 Internal Server Error
+{
+  "type": "https://docs.hyperfleet.io/errors/credential-creation-failed",
+  "title": "Credential Creation Failed",
+  "status": 500,
+  "detail": "Failed to create credential for registry rhit",
+  "instance": "/v1/clusters/cls-abc123/pull-secrets",
+  "trace_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "errors": [
+    {
+      "field": "registry",
+      "code": "EXTERNAL_API_ERROR",
+      "message": "RHIT API returned 500: Service temporarily unavailable"
+    }
+  ]
+}
+```
+
+**Internal State After Partial Failure**:
+
+```sql
+-- Database state (orphaned Quay credential)
+SELECT * FROM registry_credentials WHERE cluster_id = 'cls-abc123';
+
+-- Result:
+-- id         | registry_id | username              | token      | cluster_id  | created_at
+-- uuid-1     | quay        | robot$hyperfleet-... | quay_token | cls-abc123  | 2026-02-22 10:00:00
+-- (RHIT credential missing - orphaned state)
+```
+
+**Recovery Mechanisms**:
+
+1. **Idempotent Retry (Automatic Recovery)**
+
+   When the client retries the same request:
+   - Service checks database for existing credentials
+   - Quay credential found → reused (no duplicate creation)
+   - RHIT credential missing → attempts creation again
+   - If RHIT succeeds → returns complete pull secret
+
+   ```go
+   // Service implementation (idempotency check)
+   existingCred, _ := s.dao.GetCredentialByClusterAndRegistry(clusterID, "quay")
+   if existingCred != nil {
+       // Reuse existing credential, skip external API call
+       credentials = append(credentials, *existingCred)
+       continue
+   }
+   ```
+
+2. **Orphaned Credentials Cleanup (Proactive)**
+
+   A reconciliation job runs daily to clean credentials that were never completed:
+
+   ```go
+   // Detect clusters with incomplete credential sets
+   SELECT cluster_id, COUNT(*) as cred_count
+   FROM registry_credentials
+   WHERE cluster_id IS NOT NULL
+   GROUP BY cluster_id
+   HAVING COUNT(*) < 2  -- Expected: 2 (Quay + RHIT)
+     AND MAX(created_at) < NOW() - INTERVAL '24 hours';
+   ```
+
+   For each orphaned credential:
+   - Delete from external registry API (Quay/RHIT)
+   - Delete from database
+   - Log cleanup event
+
+   **Scheduling**: CronJob runs daily at 2 AM, cleans credentials older than 24 hours
+
+3. **Advisory Locking (Prevention)**
+
+   Prevents concurrent requests from creating duplicate credentials:
+   ```go
+   lockID := fmt.Sprintf("pull-secret-%s", clusterID)
+   lock, _ := db.AcquireAdvisoryLock(ctx, lockID)
+   defer lock.Release()
+   ```
+
+**Observability**:
+
+Track partial failures with Prometheus metrics:
+
+```prometheus
+# Registry-specific failure rate
+registry_credential_failures_total{registry="quay"}
+registry_credential_failures_total{registry="rhit"}
+
+# Orphaned credentials detected
+orphaned_credentials_detected_total
+
+# Successful recoveries via retry
+pull_secret_retry_success_total
+```
+
+**Alert Conditions**:
+- Any registry with > 5% failure rate over 5 minutes
+- Orphaned credentials accumulating (> 100 unreconciled)
+- Complete registry outage (100% failure rate for 10+ minutes)
+
+**Client Retry Recommendations**:
+
+```go
+// Client should implement exponential backoff retry
+func GeneratePullSecretWithRetry(client *Client, clusterID string) (*PullSecret, error) {
+    maxRetries := 3
+    baseDelay := 2 * time.Second
+
+    for attempt := 0; attempt <= maxRetries; attempt++ {
+        pullSecret, err := client.GeneratePullSecret(clusterID)
+        if err == nil {
+            return pullSecret, nil
+        }
+
+        // Only retry on 500 errors (partial failure or external API issues)
+        if !isRetryable(err) {
+            return nil, err
+        }
+
+        if attempt < maxRetries {
+            delay := baseDelay * time.Duration(math.Pow(2, float64(attempt)))
+            time.Sleep(delay)
+        }
+    }
+
+    return nil, errors.New("max retries exceeded")
+}
+```
+
+**Trade-offs**:
+
+| Trade-off | Impact | Mitigation |
+|-----------|--------|------------|
+| **Orphaned Resources** | Temporary waste of quota in external registries | Reconciliation job cleans up after 24h |
+| **Higher Initial Latency** | Retry required for transient failures | Idempotent design enables safe retries |
+| **No Partial Success** | Client can't use Quay-only credential | Clear error semantics prevent silent runtime failures |
+
+**See Also**:
+- [Principle 1: Lift and Shift from AMS](#principle-1-lift-and-shift-from-ams) - Example 3: All-or-Nothing pattern
 
 ---
 
@@ -2388,17 +3190,26 @@ Retry-After: 60
 ```
 
 **Response 429 Too Many Requests**:
+```http
+Content-Type: application/problem+json
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1708948920
+Retry-After: 42
+```
 ```json
 {
-  "error": {
-    "code": "RATE_LIMIT_EXCEEDED",
-    "message": "Rate limit exceeded: 100 requests per minute",
-    "details": {
-      "limit": 100,
-      "window": "1m",
-      "retry_after": 42
-    }
-  }
+  "type": "https://api.hyperfleet.io/errors/rate-limit-exceeded",
+  "title": "Rate Limit Exceeded",
+  "status": 429,
+  "detail": "Rate limit exceeded: 100 requests per minute",
+  "code": "HYPERFLEET-LMT-001",
+  "timestamp": "2026-02-26T10:30:00.123Z",
+  "trace_id": "a1b2c3d4-e5f6-7890",
+  "instance": "/v1/clusters/cls-abc123def456/pull-secrets",
+  "limit": 100,
+  "window": "1m",
+  "retry_after_seconds": 42
 }
 ```
 
@@ -2463,16 +3274,12 @@ components:
     GeneratePullSecretRequest:
       type: object
       required:
-        - cluster_external_id
-        - cloud_provider
+        - cluster_id
         - region
       properties:
-        cluster_external_id:
+        cluster_id:
           type: string
           example: cls-abc123def456
-        cloud_provider:
-          type: string
-          enum: [gcp, aws, azure]
         region:
           type: string
           example: us-east1
@@ -2511,7 +3318,7 @@ curl -X POST https://pull-secret-service.hyperfleet-system.svc.cluster.local/v1/
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "cluster_external_id": "cls-abc123def456",
+    "cluster_id": "cls-abc123def456",
     "cloud_provider": "gcp",
     "region": "us-east1",
     "registries": ["quay", "rhit"]
@@ -2593,14 +3400,14 @@ Choose the deployment model based on your operational context:
 | **Failure Isolation** | ✅ **Excellent**: Regional blast radius | ⚠️ **Limited**: Global blast radius |
 | **Operational Complexity** | ⚠️ **Higher**: N instances to manage | ✅ **Lower**: Single deployment |
 | **Network Requirements** | ✅ **Simple**: In-cluster only | ⚠️ **Complex**: Cross-cluster networking |
-| **Cost Efficiency** | ⚠️ **Higher**: Duplicated infrastructure | ✅ **Lower**: Shared resources |
+| **Resource Efficiency** | ⚠️ **Lower**: Duplicated infrastructure | ✅ **Higher**: Shared resources |
 | **Latency** | ✅ **Low**: Co-located with clusters | ⚠️ **Variable**: Cross-region calls (50-200ms) |
 | **Data Residency** | ✅ **Compliant**: Data stays in region | ⚠️ **Complex**: May cross boundaries |
 | **Use Cases** | HyperFleet managed service across GCP/AWS/Azure | OCP self-managed in single datacenter/VPC |
 
 **Recommendation**:
 - **Choose Option A (Per-Instance)** if you have multiple regions and prioritize failure isolation
-- **Choose Option B (Global Shared)** if you have a single datacenter or prioritize cost/simplicity
+- **Choose Option B (Global Shared)** if you have a single datacenter or prioritize operational simplicity
 
 > **🔗 Design Principles Applied:**
 > - **Principle 3 (Flexible Deployment)**: Two deployment models for different use cases (per-instance vs global shared)
@@ -2672,15 +3479,16 @@ graph TB
 - ✅ **Standard Kubernetes Pattern**: Deployments, Services, ConfigMaps - standard DevOps playbook
 
 **Cons**:
-- ❌ **Duplicated Infrastructure**: N databases, N deployments (higher cost)
+- ❌ **Duplicated Infrastructure**: N databases, N deployments (higher resource usage)
 - ❌ **Credential Sprawl**: Harder to track which robot accounts belong to which instance
 - ❌ **Pool Inefficiency**: Total pool size = N × high_water_mark (over-provisioning)
 - ❌ **Operational Overhead**: Must manage N instances (upgrades, monitoring, backups)
 
-**Cost Estimate (3 HyperFleet instances)**:
-- Compute: 3 instances × 3 replicas × 2 vCPU × $0.05/hr = ~$650/month
-- Storage: 3 databases × 100 GB × $0.10/GB = ~$30/month
-- **Total**: ~$680/month
+**Resource Requirements (Example: 3 HyperFleet instances)**:
+- **Compute**: 3 independent service deployments × 3 replicas each
+- **Storage**: 3 separate PostgreSQL databases (100 GB each)
+- **Network**: In-cluster communication only (minimal cross-region traffic)
+- **Operations**: 3× deployment pipelines, 3× monitoring dashboards, 3× backup jobs
 
 **Use Cases**:
 - ✅ **HyperFleet SaaS**: Multi-region managed service across GCP/AWS/Azure
@@ -2801,16 +3609,17 @@ graph TB
 - ❌ **Data Residency Concerns**: Credentials may cross regional boundaries (GDPR/compliance)
 - ❌ **Difficult Rollout**: Canary deployments affect all regions simultaneously
 
-**Cost Estimate**:
-- Compute: 1 instance × 5 replicas × 2 vCPU × $0.05/hr = ~$360/month
-- Storage: 1 global DB × 100 GB × $0.30/GB (replicated) = ~$30/month
-- Networking: Global load balancer + egress = ~$100/month
-- **Total**: ~$490/month (~28% cheaper than Option A)
+**Resource Requirements**:
+- **Compute**: Single service deployment with higher replica count (5 replicas) for global coverage
+- **Storage**: 1 global PostgreSQL database with multi-region replication
+- **Network**: Global load balancer + cross-region traffic (higher network overhead)
+- **Operations**: Single deployment pipeline, unified monitoring, single backup strategy
+- **Trade-off**: Lower total infrastructure vs. increased network complexity
 
 **Use Cases**:
 - ✅ **OCP Self-Managed**: Single datacenter or VPC deployment
 - ✅ **Private Cloud**: On-premises OpenShift with centralized management
-- ✅ **Cost Optimization**: When operational cost is primary concern
+- ✅ **Resource Efficiency**: When minimizing infrastructure footprint is a priority
 - ✅ **Low Latency Tolerance**: Acceptable cross-region latency (50-200ms)
 - ✅ **Centralized Governance**: Single audit trail, single compliance boundary
 
@@ -2851,6 +3660,11 @@ graph LR
 ---
 
 ### 4.4 Kubernetes Deployment Topology (Both Options)
+
+The following Kubernetes deployment topology applies to both options:
+- **Option A**: Deployed once per HyperFleet instance
+- **Option B**: Deployed once globally with multi-region replicas
+
 
 ```mermaid
 graph TB
@@ -2894,22 +3708,17 @@ graph TB
     style RHIT fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
 ```
 
-### 4.4 Kubernetes Deployment Topology (Both Options)
-
-The following Kubernetes deployment topology applies to both options:
-- **Option A**: Deployed once per HyperFleet instance
-- **Option B**: Deployed once globally with multi-region replicas
 
 ```mermaid
 graph TB
     subgraph "Kubernetes Cluster - hyperfleet-system namespace"
         subgraph "Deployment: pull-secret-service<br/>Replicas: 3"
-            Pod1[Pod 1<br/>API :8080<br/>Metrics :8081]
-            Pod2[Pod 2<br/>API :8080<br/>Metrics :8081]
-            Pod3[Pod 3<br/>API :8080<br/>Metrics :8081]
+            Pod1[Pod 1<br/>API :8080<br/>Metrics :9090]
+            Pod2[Pod 2<br/>API :8080<br/>Metrics :9090]
+            Pod3[Pod 3<br/>API :8080<br/>Metrics :9090]
         end
 
-        Service[Service: pull-secret-service<br/>Type: ClusterIP<br/>Ports: 80 API, 8081 Metrics]
+        Service[Service: pull-secret-service<br/>Type: ClusterIP<br/>Ports: 80 API, 9090 Metrics]
 
         CronRC[CronJob: rotation-reconciler<br/>Schedule: */5 * * * *]
         CronCL[CronJob: credential-cleanup<br/>Schedule: 0 2 * * *]
@@ -3054,7 +3863,7 @@ flowchart TB
 
 | Aspect | Option A: Per-Instance | Option B: Global Shared | Winner |
 |--------|------------------------|-------------------------|--------|
-| **Cost** | $680/month (3 instances) | $490/month | 🏆 **Option B** (-28%) |
+| **Resource Efficiency** | Higher usage (N × infrastructure) | Lower usage (shared infrastructure) | 🏆 **Option B** |
 | **Failure Isolation** | Regional blast radius only | Global blast radius | 🏆 **Option A** |
 | **Latency** | <10ms (in-cluster) | 50-200ms (cross-region) | 🏆 **Option A** |
 | **Operational Complexity** | Manage N instances | Single instance | 🏆 **Option B** |
@@ -3074,7 +3883,7 @@ graph LR
     UseCase -->|Multi-region<br/>managed service| OptA[✅ Choose<br/>Option A]
     UseCase -->|Single datacenter<br/>self-managed| OptB[✅ Choose<br/>Option B]
     UseCase -->|Compliance<br/>data residency| OptA
-    UseCase -->|Cost optimization<br/>primary concern| OptB
+    UseCase -->|Resource efficiency<br/>primary concern| OptB
     UseCase -->|High availability<br/>regional isolation| OptA
     UseCase -->|Centralized<br/>governance| OptB
 
@@ -3178,7 +3987,7 @@ graph LR
 
 > **🔗 Design Principles Applied:**
 > - **Principle 4 (Security First)**: Multi-layer security (authentication, encryption, audit)
-> - **Principle 1 (Lift and Shift)**: pgcrypto encryption pattern from AMS
+> - **Principle 4 (Security First)**: Application-level AES-256-GCM encryption (keeps keys out of SQL queries)
 > - **Principle 6 (Dedicated Partner)**: Independent mTLS certificates for RHIT API (`CN=hyperfleet`), rotated independently from AMS
 
 ### 6.1 Authentication Flow
@@ -3249,10 +4058,10 @@ graph TB
 
 ```mermaid
 graph TB
-    subgraph "Encryption At Rest - PostgreSQL"
-        Token[Token Column<br/>TEXT type]
-        Encrypt[pgcrypto Extension<br/>Algorithm: AES-256-GCM]
-        Key[Encryption Key<br/>Stored in K8s Secret<br/>Rotated every 90 days]
+    subgraph "Encryption At Rest - Application Level"
+        Token[Token Plaintext<br/>In-memory only]
+        Encrypt[crypto/aes Package<br/>Algorithm: AES-256-GCM<br/>12-byte nonce + ciphertext + auth tag]
+        Key[Encryption Key<br/>32-byte key from K8s Secret<br/>Rotated every 90 days]
         KMS[Cloud KMS<br/>GCP KMS / AWS KMS<br/>Key Management]
 
         Token --> Encrypt
@@ -3267,16 +4076,18 @@ graph TB
         TLS4[Adapter ↔ Service<br/>HTTPS in-cluster optional]
     end
 
-    Insert[INSERT Credential] --> EncryptOp[pgp_sym_encrypt<br/>token, encryption_key]
-    EncryptOp --> DB[(PostgreSQL)]
+    Insert[INSERT Credential] --> AppEncrypt[Application Encrypts<br/>AES-256-GCM in Go<br/>Key never in SQL]
+    AppEncrypt --> DB[(PostgreSQL<br/>Stores encrypted blob)]
 
-    Query[SELECT Credential] --> DecryptOp[pgp_sym_decrypt<br/>token::bytea, encryption_key]
-    DB --> DecryptOp
+    Query[SELECT Credential] --> DBFetch[Fetch Encrypted Blob<br/>From database]
+    DBFetch --> AppDecrypt[Application Decrypts<br/>AES-256-GCM in Go<br/>Key never in SQL]
 
     style Encrypt fill:#ffccbc,stroke:#d84315,stroke-width:2px
     style KMS fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
     style TLS1 fill:#bbdefb,stroke:#1976d2,stroke-width:2px
     style TLS3 fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px
+    style AppEncrypt fill:#ffccbc,stroke:#d84315,stroke-width:2px
+    style AppDecrypt fill:#ffccbc,stroke:#d84315,stroke-width:2px
 ```
 
 ### 6.4 Secrets Management
@@ -3328,6 +4139,109 @@ graph LR
     style S2 fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
     style S3 fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px
 ```
+
+### 6.5 Encryption Key Rotation Strategy
+
+**Rotation Schedule**: 90-day automatic rotation via External Secrets Operator
+
+**Re-encryption Process**:
+
+When a new encryption key is rotated into the Kubernetes Secret, existing credentials encrypted with the old key must be re-encrypted to prevent requiring dual-key support indefinitely.
+
+```mermaid
+sequenceDiagram
+    participant ESO as External Secrets<br/>Operator
+    participant K8s as Kubernetes<br/>Secret
+    participant Job as Key Rotation<br/>Job
+    participant DB as PostgreSQL
+
+    Note over ESO,K8s: Day 0: Old key (key_v1) in use
+
+    ESO->>K8s: Update Secret with new key (key_v2)<br/>old_key: key_v1<br/>current_key: key_v2
+    Note over K8s: Both keys present during rotation
+
+    K8s->>Job: CronJob triggered on Secret update
+    activate Job
+
+    Job->>DB: SELECT id, token FROM credentials<br/>LIMIT 1000
+    DB-->>Job: Encrypted tokens (key_v1)
+
+    loop For each credential
+        Job->>Job: Decrypt with old_key (key_v1)
+        Job->>Job: Encrypt with current_key (key_v2)
+        Job->>DB: UPDATE credentials SET token = $1<br/>WHERE id = $2
+    end
+
+    Job->>Job: Track progress: 45000/50000 credentials<br/>Store cursor for resume on failure
+
+    Job-->>K8s: Report completion metrics
+    deactivate Job
+
+    Note over ESO,K8s: Day 7: Remove old_key from Secret<br/>Only current_key remains
+```
+
+**Implementation Details**:
+
+```go
+// KeyRotationJob runs daily after ESO updates the Secret
+func (j *KeyRotationJob) Run(ctx context.Context) error {
+    oldKey := j.loadKey("old_key")        // key_v1 from K8s Secret
+    newKey := j.loadKey("current_key")    // key_v2 from K8s Secret
+
+    if oldKey == nil {
+        // No rotation in progress
+        return nil
+    }
+
+    // Process in batches of 1000 (avoid locking entire table)
+    for {
+        creds, err := j.dao.FetchCredentialsForRotation(1000)
+        if err != nil || len(creds) == 0 {
+            break
+        }
+
+        for _, cred := range creds {
+            // Decrypt with old key
+            plaintext, err := j.decryptWithKey(cred.EncryptedToken, oldKey)
+            if err != nil {
+                // Already encrypted with new key, skip
+                continue
+            }
+
+            // Re-encrypt with new key
+            newCiphertext, err := j.encryptWithKey(plaintext, newKey)
+            if err != nil {
+                return err
+            }
+
+            // Update database
+            err = j.dao.UpdateCredentialToken(cred.ID, newCiphertext)
+            if err != nil {
+                return err
+            }
+        }
+
+        // Store progress for resume on failure
+        j.dao.SaveRotationProgress(ctx, len(creds))
+    }
+
+    return nil
+}
+```
+
+**Key Security Properties**:
+
+1. **No downtime**: Service continues operating during rotation with dual-key support
+2. **No key in logs**: Encryption/decryption happens in application, not SQL queries
+3. **Gradual migration**: Batched re-encryption (1000 rows at a time) prevents database locks
+4. **Resume on failure**: Cursor-based progress tracking allows job to resume
+5. **Key cleanup**: Old key removed from Secret after 7-day grace period (ensures all rows re-encrypted)
+
+**Metrics**:
+
+- `encryption_key_rotation_progress{key_version="v2"}` - Number of credentials re-encrypted
+- `encryption_key_rotation_failures{key_version="v2"}` - Re-encryption failures (alerts if > 0)
+- `encryption_key_age_days` - Days since current key was rotated (alerts if > 95 days)
 
 ---
 
@@ -3396,7 +4310,549 @@ graph TB
 
 ---
 
-## 8. Rollout Plan
+## 8. Observability
+
+The Pull Secret Service follows **HyperFleet observability standards** for health checks, metrics, logging, and alerting. This ensures consistent operational excellence across all HyperFleet components.
+
+### 8.1 HyperFleet Health Check Standards
+
+Following HyperFleet standards, the Pull Secret Service exposes two standard health check endpoints for Kubernetes probes.
+
+#### 8.1.1 `/healthz` - Liveness Probe
+
+**Endpoint**: `GET /healthz`
+
+**Purpose**: Determines if the service process is **alive** and should be restarted if failing.
+
+**Response 200 OK**:
+```json
+{
+  "status": "ok"
+}
+```
+
+**Response 503 Service Unavailable** (triggers pod restart):
+```json
+{
+  "status": "error",
+  "message": "Service is not healthy"
+}
+```
+
+**What `/healthz` Checks** (Liveness):
+
+| Check | Purpose | Restart if Failed? |
+|-------|---------|-------------------|
+| **Process alive** | Go process is running and responsive | ✅ Yes |
+| **HTTP server responsive** | Server can accept requests | ✅ Yes |
+| **No deadlocks** | Request handler is not blocked | ✅ Yes |
+
+**What `/healthz` Does NOT Check**:
+- ❌ Database connectivity
+- ❌ External API availability (Quay, RHIT)
+- ❌ Disk space or memory limits
+
+**Rationale**: Liveness probes detect **unrecoverable** errors (deadlocks, panics). Checking external dependencies would cause unnecessary restarts during transient failures.
+
+**Kubernetes Configuration**:
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3  # Restart after 3 consecutive failures (30s)
+```
+
+---
+
+#### 8.1.2 `/readyz` - Readiness Probe
+
+**Endpoint**: `GET /readyz`
+
+**Purpose**: Determines if the service is **ready** to accept traffic. Failed readiness removes the pod from load balancer rotation **without** restarting it.
+
+**Response 200 OK** (ready to receive traffic):
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database": "ok",
+    "quay_api": "ok",
+    "rhit_api": "ok"
+  }
+}
+```
+
+**Response 503 Service Unavailable** (not ready, remove from load balancer):
+```json
+{
+  "status": "not_ready",
+  "checks": {
+    "database": "error",
+    "quay_api": "ok",
+    "rhit_api": "ok"
+  },
+  "message": "Database connection failed"
+}
+```
+
+**What `/readyz` Checks** (Readiness):
+
+| Check | Purpose | Remove from LB? |
+|-------|---------|-----------------|
+| **Database connectivity** | PostgreSQL connection pool has active connections | ✅ Yes |
+| **Database writeable** | Can execute `SELECT 1` query | ✅ Yes |
+| **Quay API reachable** | Quay.io API responds to health check | ⚠️ Optional |
+| **RHIT API reachable** | Red Hat Registry API responds | ⚠️ Optional |
+
+**Rationale**: If the service cannot connect to its database or registries, it should not receive traffic. However, it should **not** be restarted, as the issue is likely transient (network partition, database maintenance).
+
+**Kubernetes Configuration**:
+```yaml
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 2  # Remove from LB after 2 consecutive failures (10s)
+  successThreshold: 1  # Add back to LB after 1 success
+```
+
+---
+
+#### 8.1.3 Liveness vs Readiness: Key Differences
+
+| Aspect | `/healthz` (Liveness) | `/readyz` (Readiness) |
+|--------|----------------------|----------------------|
+| **Question** | Is the service **alive**? | Is the service **ready** to serve traffic? |
+| **Failure Action** | **Restart pod** | **Remove from load balancer** (no restart) |
+| **Checks** | Process health, deadlocks | Database, external APIs |
+| **Failure Tolerance** | Low (restart quickly) | High (wait for recovery) |
+| **Use Case** | Detect unrecoverable errors | Detect transient issues |
+
+**Example Scenarios**:
+
+1. **Database Connection Lost**:
+   - `/healthz` → 200 OK (process is alive)
+   - `/readyz` → 503 Not Ready (cannot serve traffic)
+   - **Action**: Remove from load balancer, wait for DB to recover
+
+2. **Service Deadlock**:
+   - `/healthz` → Timeout (no response)
+   - `/readyz` → Timeout (no response)
+   - **Action**: Kubernetes restarts pod
+
+3. **Quay API Down**:
+   - `/healthz` → 200 OK (process alive)
+   - `/readyz` → 200 OK (database works, Quay marked as "degraded")
+   - **Action**: Continue serving traffic, log warnings
+
+---
+
+### 8.2 Prometheus Metrics
+
+The service follows the [HyperFleet Metrics Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/metrics.md) for consistent naming and labeling conventions.
+
+**Metrics Endpoint**: `GET /metrics` (port 9090)
+
+#### Naming Convention
+
+All metrics follow the HyperFleet standard format:
+
+```
+hyperfleet_<component>_<metric_name>_<unit>
+```
+
+Where:
+- `hyperfleet_` - Global prefix (required)
+- `<component>` - Component name: `pull_secret_service`
+- `<metric_name>` - Descriptive name in snake_case
+- `<unit>` - Unit suffix: `_total`, `_seconds`, `_bytes`
+
+#### Required Labels
+
+All metrics MUST include these standard labels:
+
+| Label | Description | Example |
+|-------|-------------|---------|
+| `component` | Component name | `pull-secret-service` |
+| `version` | Component version | `v1.2.3` |
+
+---
+
+#### Metrics vs. SLIs
+
+**Base Metrics** (8.2.1-8.2.5): Raw instrumentation (counters, gauges, histograms)
+**SLIs** (8.2.7-8.2.8): Calculated indicators measuring service quality
+**Relationship**: `Base Metrics → SLIs → SLOs`
+
+Example: `http_requests_total{status="200"}` (metric) → `99.5% availability` (SLI) → `≥ 99.5% target` (SLO)
+
+---
+
+### Base Metrics
+
+Key metrics for SLI calculations:
+
+#### 8.2.1 Standard Metrics
+- `hyperfleet_pull_secret_service_build_info` - Component build information
+- `hyperfleet_pull_secret_service_up` - Health status (1 = healthy, 0 = unhealthy)
+- Go runtime metrics (automatic): `go_goroutines`, `go_memstats_alloc_bytes`, `process_cpu_seconds_total`
+
+#### 8.2.2 HTTP Request Metrics
+- `hyperfleet_pull_secret_service_http_requests_total{method, path, status_code}` - Request count (Counter)
+- `hyperfleet_pull_secret_service_http_request_duration_seconds{method, path, status_code}` - Request latency (Histogram)
+- `hyperfleet_pull_secret_service_http_requests_in_flight{method, path}` - Active requests (Gauge)
+
+#### 8.2.3 Credential Operation Metrics
+- `hyperfleet_pull_secret_service_credential_operations_total{registry, operation, status}` - Operations (Counter)
+  - operation: create, retrieve, rotate, delete
+  - status: success, failure
+- `hyperfleet_pull_secret_service_rotation_duration_seconds{status}` - Rotation duration (Histogram)
+- `hyperfleet_pull_secret_service_rotation_pending_count` - Pending rotations (Gauge)
+
+#### 8.2.4 Database Metrics
+- `hyperfleet_pull_secret_service_db_connections{state}` - Connection pool (Gauge)
+  - state: idle, in_use, max
+- `hyperfleet_pull_secret_service_db_query_duration_seconds{operation}` - Query latency (Histogram)
+- `hyperfleet_pull_secret_service_db_errors_total{operation, error_type}` - Query errors (Counter)
+
+#### 8.2.5 External API Metrics
+- `hyperfleet_pull_secret_service_quay_api_calls_total{operation, status}` - Quay API calls (Counter)
+- `hyperfleet_pull_secret_service_quay_api_duration_seconds{operation}` - Quay API latency (Histogram)
+- `hyperfleet_pull_secret_service_rhit_api_calls_total{operation, status}` - RHIT API calls (Counter)
+- `hyperfleet_pull_secret_service_rhit_api_duration_seconds{operation}` - RHIT API latency (Histogram)
+
+---
+
+### Service Level Indicators (SLIs) and Objectives (SLOs)
+
+This section defines the **calculated SLIs** derived from the base metrics (sections 8.2.1-8.2.5) and their corresponding SLO targets.
+
+> **Note**: SLIs are **not raw metrics** - they are aggregations, ratios, or percentiles computed from the base metrics to measure service quality.
+
+---
+
+#### 8.2.7 Pull Secret Availability SLI/SLO
+
+Following the AMS Lift-and-Shift principle, the HyperFleet pull secret operation maintains the following SLI and SLO:
+
+**SLI Definition**:
+- **Name**: PullSecretAvailability
+- **Calculation**: `(successful_requests / total_requests) * 100`
+- **Source Metrics**:
+  - `hyperfleet_pull_secret_service_http_requests_total{status_code=~"2..|3.."}`  ← Success
+  - `hyperfleet_pull_secret_service_http_requests_total`  ← Total
+
+**SLO Target**:
+- **Target Value**: 99.5% availability
+- **Measurement Window**: 28-day rolling window
+- **Upstream Service**: UHC Account Manager (`uhc-account-manager`)
+- **Scope**: `/api/accounts_mgmt/v1/access_token` and `/api/accounts_mgmt/v1/pull_secrets`
+- **Success Criteria**: Non-5xx HTTP response codes
+
+
+**Multi-Burn-Rate Alerting**:
+
+| Alert Window | Error Rate Threshold | Severity | Impact |
+|--------------|---------------------|----------|--------|
+| 5m & 1h | > 6.72% | Critical | Immediate degradation of pull secret retrieval |
+| 30m & 6h | > 2.8% | Critical | Sustained impact on cluster operations |
+| 2h & 1d | > 1.4% | Medium | Progressive error budget consumption |
+| 6h & 3d | > 0.467% | Medium | Long-term trend monitoring |
+
+**HyperFleet-Specific Metrics**:
+
+```promql
+# Track calls to upstream UHC Account Manager API
+pull_secret_uhc_api_requests_total{endpoint="/pull_secrets|/access_token", status}
+pull_secret_uhc_api_duration_seconds{endpoint}
+
+# Monitor registry credential pool status (from uhc-account-manager)
+# See Appendix B for detailed explanation of the credential pool
+reg_cred_pool_size{registry="quay|redhat"}
+
+# Correlation with rotation operations
+pull_secret_rotation_duration_seconds * on() pull_secret_uhc_api_requests_total
+```
+
+**Impact on HyperFleet Operations**:
+
+| UHC SLO Status | HyperFleet Impact |
+|----------------|-------------------|
+| ✅ Healthy (< 0.5% error rate) | Normal operations |
+| ⚠️ Degraded (0.5-2% error rate) | Retry logic active, potential delays |
+| ❌ Failing (> 2% error rate) | Cluster provisioning blocked, rotation failures |
+
+---
+
+#### 8.2.8 Calculating SLIs from Base Metrics
+
+SLIs are **calculated** from base metrics using aggregation functions:
+
+| SLI | Source Metric (Section) | Calculation | Example Result |
+|-----|------------------------|-------------|----------------|
+| **HTTP Availability** | `http_requests_total{status_code}` (8.2.2) | `sum(rate(...{status_code=~"[2-4].."}[28d])) / sum(rate(...[28d]))` | 99.5% |
+| **P95 Latency** | `http_request_duration_seconds_bucket` (8.2.2) | `histogram_quantile(0.95, sum(rate(...[5m])) by (le))` | 245ms |
+| **Credential Success Rate** | `credential_operations_total{status}` (8.2.3) | `sum(rate(...{status="success"}[7d])) / sum(rate(...[7d]))` | 99.8% |
+| **DB Pool Utilization** | `db_connections{state}` (8.2.4) | `db_connections{state="in_use"} / db_connections{state="max"}` | 60% |
+| **Quay API Error Rate** | `quay_api_calls_total{status}` (8.2.5) | `sum(rate(...{status="failure"}[5m])) / sum(rate(...[5m]))` | 0.2% |
+
+> **Key**: SLIs are computed values derived from raw metrics through aggregation functions (sum, rate, histogram_quantile, ratios) to measure service quality against SLO targets.
+
+---
+
+### 8.3 Logging
+
+The service follows the [HyperFleet Logging Specification](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/logging-specification.md) using **structured logging** with JSON format for production.
+
+#### Configuration
+
+All logging configuration supports **command-line flags** and **environment variables**:
+
+| Option | Flag | Environment Variable | Default | Description |
+|--------|------|---------------------|---------|-------------|
+| Log Level | `--log-level` | `HYPERFLEET_LOG_LEVEL` | `info` | Minimum level: `debug`, `info`, `warn`, `error` |
+| Log Format | `--log-format` | `HYPERFLEET_LOG_FORMAT` | `json` | Output format: `text` or `json` |
+| Log Output | `--log-output` | `HYPERFLEET_LOG_OUTPUT` | `stdout` | Destination: `stdout` or `stderr` |
+
+**Precedence**: flags → environment variables → config file → defaults
+
+**Production**: Use `HYPERFLEET_LOG_FORMAT=json` for log aggregation systems.
+
+#### Log Levels
+
+Ordered by severity (lowest to highest):
+
+| Level | Description | Examples |
+|-------|-------------|----------|
+| `debug` | Detailed debugging | Variable values, credential creation payloads (sanitized) |
+| `info` | Operational information | Credential created, rotation started, successful operations |
+| `warn` | Warning conditions | Retry attempts, slow Quay/RHIT API responses |
+| `error` | Error conditions | API failures, database connection failures, rotation failures |
+
+#### Required Fields
+
+All log entries MUST include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | RFC3339 | When created (UTC) |
+| `level` | string | Log level (`debug`, `info`, `warn`, `error`) |
+| `message` | string | Human-readable message |
+| `component` | string | Component name: `pull-secret-service` |
+| `version` | string | Service version (e.g., `v1.2.3`) |
+| `hostname` | string | Pod name or hostname |
+
+#### API-Specific Fields
+
+Pull Secret Service is a REST API and includes:
+
+| Field | Description |
+|-------|-------------|
+| `method` | HTTP method (`GET`, `POST`, `DELETE`) |
+| `path` | Request path (e.g., `/v1/clusters/{cluster_id}/pull-secrets`) |
+| `status_code` | HTTP response status (e.g., `200`, `500`) |
+| `duration_ms` | Request duration in milliseconds |
+| `user_agent` | Client user agent |
+
+#### Resource Fields
+
+When the log entry relates to HyperFleet resources:
+
+| Field | Description |
+|-------|-------------|
+| `cluster_id` | Cluster identifier (e.g., `cls-abc123`) |
+| `registry` | Registry name (`quay`, `rhit`, `harbor`) |
+| `operation` | Operation type (`create_credential`, `rotate_credential`, `delete_credential`) |
+| `rotation_id` | Rotation identifier (when applicable) |
+
+#### Correlation Fields
+
+For distributed tracing:
+
+| Field | Scope | Description |
+|-------|-------|-------------|
+| `trace_id` | Distributed | OpenTelemetry trace ID (propagated across services) |
+| `span_id` | Distributed | Current span identifier |
+| `request_id` | Single service | HTTP request identifier |
+
+#### Error Fields
+
+When logging errors, include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `error` | string | Error message |
+| `stack_trace` | array | Stack trace (only for unexpected errors or debug level) |
+| `request_context` | object | Relevant request/payload data for debugging (sensitive data MUST be masked) |
+
+#### Log Format Examples
+
+**Successful API Request (info level)**:
+```json
+{
+  "timestamp": "2026-02-27T14:30:00.123Z",
+  "level": "info",
+  "message": "Created Quay robot account",
+  "component": "pull-secret-service",
+  "version": "v1.2.3",
+  "hostname": "pull-secret-service-7d4b8c6f5",
+  "method": "POST",
+  "path": "/v1/clusters/cls-abc123/pull-secrets",
+  "status_code": 200,
+  "duration_ms": 245,
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
+  "request_id": "req-xyz789",
+  "cluster_id": "cls-abc123",
+  "registry": "quay",
+  "operation": "create_credential"
+}
+```
+
+**Rotation Started (info level)**:
+```json
+{
+  "timestamp": "2026-02-27T14:30:00.123Z",
+  "level": "info",
+  "message": "Started credential rotation",
+  "component": "pull-secret-service",
+  "version": "v1.2.3",
+  "hostname": "pull-secret-service-7d4b8c6f5",
+  "method": "POST",
+  "path": "/v1/clusters/cls-abc123/pull-secrets/rotations",
+  "status_code": 202,
+  "duration_ms": 89,
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "req-abc456",
+  "cluster_id": "cls-abc123",
+  "rotation_id": "rot-xyz789",
+  "operation": "rotate_credential"
+}
+```
+
+**External API Failure (warn level)**:
+```json
+{
+  "timestamp": "2026-02-27T14:30:05.456Z",
+  "level": "warn",
+  "message": "Quay API call failed, retrying",
+  "component": "pull-secret-service",
+  "version": "v1.2.3",
+  "hostname": "pull-secret-service-7d4b8c6f5",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "cluster_id": "cls-abc123",
+  "registry": "quay",
+  "operation": "create_credential",
+  "error": "HTTP 500: Internal Server Error",
+  "retry_attempt": 1,
+  "retry_after_seconds": 5
+}
+```
+
+**Database Connection Failure (error level with stack trace)**:
+```json
+{
+  "timestamp": "2026-02-27T14:30:10.789Z",
+  "level": "error",
+  "message": "Database connection pool exhausted",
+  "component": "pull-secret-service",
+  "version": "v1.2.3",
+  "hostname": "pull-secret-service-7d4b8c6f5",
+  "method": "POST",
+  "path": "/v1/clusters/cls-abc123/pull-secrets",
+  "status_code": 500,
+  "duration_ms": 5023,
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "req-def789",
+  "cluster_id": "cls-abc123",
+  "operation": "create_credential",
+  "error": "connection pool exhausted: max_connections=50",
+  "stack_trace": [
+    "pkg/dao/credential.go:89 (*DAO).InsertCredential",
+    "pkg/services/credential_service.go:145 (*CredentialService).CreateCredential",
+    "pkg/handlers/pull_secret_handler.go:67 (*Handler).GeneratePullSecret"
+  ],
+  "request_context": {
+    "active_connections": 50,
+    "max_connections": 50,
+    "pool_wait_timeout_ms": 5000
+  }
+}
+```
+
+#### Sensitive Data Redaction
+
+The following MUST be redacted or omitted from logs:
+
+- ❌ Quay API tokens (`quay_api_token`)
+- ❌ RHIT mTLS certificates and private keys
+- ❌ Database encryption keys (`DB_ENCRYPTION_KEY`)
+- ❌ Credential tokens (encrypted or plaintext)
+- ❌ Robot account passwords
+- ❌ ServiceAccount tokens (from Authorization header)
+
+**Example - Sanitized Debug Log**:
+```json
+{
+  "timestamp": "2026-02-27T14:30:00.123Z",
+  "level": "debug",
+  "message": "Creating Quay robot account",
+  "component": "pull-secret-service",
+  "version": "v1.2.3",
+  "hostname": "pull-secret-service-7d4b8c6f5",
+  "cluster_id": "cls-abc123",
+  "registry": "quay",
+  "request_payload": {
+    "name": "redhat-openshift+hyperfleet_gcp_useast1_abc123",
+    "description": "Pull secret for cluster cls-abc123",
+    "token": "[REDACTED]"
+  }
+}
+```
+
+#### Distributed Tracing Integration
+
+The service propagates OpenTelemetry trace context:
+
+1. **Incoming**: Extract `trace_id`/`span_id` from W3C headers (`traceparent`)
+2. **Outgoing**: Inject trace headers when calling Quay/RHIT APIs
+3. **Logs**: Always include `trace_id` and `span_id` when available
+
+This enables log correlation across: Adapter → Pull Secret Service → Quay/RHIT APIs
+
+#### Log Size Guidelines
+
+To prevent truncation by log aggregators:
+
+| Element | Recommendation |
+|---------|----------------|
+| Message | Keep under 1 KB |
+| Stack trace | Limit to 10-15 frames |
+| Total entry | Keep under 64 KB |
+
+**Best practices**:
+- Log resource IDs (`cluster_id`), not full payloads
+- Truncate long strings with `...` indicator
+- Log full payloads at `debug` level only (with sensitive data redacted)
+- Avoid logging large binary data or base64-encoded credentials
+
+#### Log Aggregation
+
+- **Tool**: Loki (HyperFleet standard)
+- **Retention**: 30 days
+- **Indexing**: By `cluster_id`, `registry`, `operation`, `status_code`, `level`
+- **Queries**: Filter by `component='pull-secret-service'` for all service logs
+
+---
+
+## 9. Rollout Plan
 
 This section provides a simplified rollout strategy showing total timeline and key milestones for each deployment scenario.
 
@@ -3411,10 +4867,10 @@ gantt
     Infrastructure & Development (28d)  :s1-1, 2024-01-01, 28d
     Cloud Deployment (35d)              :s1-2, after s1-1, 35d
     Production Ready                    :milestone, s1-m, after s1-2, 0d
-    section Scenario 2: Global Shared - 112 days total
+    section Scenario 2: Global Shared - 84 days total
     Infrastructure & Development (28d)  :s2-1, 2024-01-01, 28d
     Cloud Deployment (35d)              :s2-2, after s2-1, 35d
-    Global Migration (49d)              :s2-3, after s2-2, 49d
+    Global Shared Setup (21d)           :s2-3, after s2-2, 21d
     Production Ready                    :milestone, s2-m, after s2-3, 0d
     section Scenario 3: Extended Registries - 105 days total
     Infrastructure & Development (28d)  :s3-1, 2024-01-01, 28d
@@ -3494,9 +4950,9 @@ This foundational phase includes both **software development** and **infrastruct
 
 ---
 
-#### Scenario 2: Global Shared (Cost-Optimized)
+#### Scenario 2: Global Shared (Resource-Optimized)
 
-**Total Duration**: 16 weeks (112 days)
+**Total Duration**: 12 weeks (84 days)
 **Deployment Model**: Global Shared (single instance serves all cloud providers)
 **Registries**: Quay.io + Red Hat Registry
 
@@ -3505,22 +4961,44 @@ This foundational phase includes both **software development** and **infrastruct
 | Week | Milestone | Deliverable |
 |------|-----------|-------------|
 | **Week 1-4** | Infrastructure & Development | Complete development + infrastructure setup |
-| **Week 5-9** | Cloud Deployment | First cloud provider production rollout (same as Scenario 1) |
-| **Week 10-16** | Global Migration | Migrate to global shared instance (multi-region database replication, load balancer, progressive rollout) |
+| **Week 5-9** | Cloud Deployment | Initial production rollout (single region) |
+| **Week 10-12** | Global Shared Setup | Multi-region database replication, global load balancer configuration, cross-region failover testing |
 
-**Cost Comparison**:
-- Per-Instance: $15,000/month (3× databases, 9× pods)
-- Global Shared: $6,000/month (1× database, 6× pods)
-- **Savings**: $9,000/month (60% reduction)
+**Week 10-12: Global Shared Setup Details**
+
+> **Note**: This phase is **NOT** a migration from legacy systems. Clients already exist in the global shared deployment. This phase focuses on configuring the global infrastructure to serve all regions from a single instance.
+
+| Task | Week | Deliverable |
+|------|------|-------------|
+| **Multi-Region Database Setup** | Week 10 | PostgreSQL read replicas in us-east-1, eu-west-1, ap-southeast-1; replication lag < 100ms |
+| **Global Load Balancer** | Week 10-11 | Geographic routing via Cloud Load Balancer (directs clients to nearest region); health checks configured |
+| **Cross-Region DNS** | Week 11 | `pull-secret-service.hyperfleet.io` resolves to nearest region; automatic failover DNS |
+| **Database Failover Testing** | Week 11 | Simulate primary region failure; validate automatic promotion of read replica to primary |
+| **Performance Validation** | Week 12 | p99 latency < 800ms across all regions; validate no timeouts during cross-region queries |
+| **Monitoring & Alerts** | Week 12 | Grafana dashboards for multi-region metrics; PagerDuty alerts for replication lag > 200ms |
+
+**Infrastructure Components Added**:
+- Geographic load balancer (Cloud Load Balancer or similar)
+- PostgreSQL read replicas in 2+ additional regions
+- Cross-region VPC peering (or equivalent connectivity)
+- Regional health check endpoints for failover
+
+**Resource Comparison**:
+- **Per-Instance**: 3× databases, 9× pods (3 instances × 3 replicas each)
+- **Global Shared**: 1× database (replicated), 6× pods (higher replica count per instance)
+- **Efficiency Gain**: ~60% reduction in total infrastructure footprint
 
 **Trade-offs**:
 - ⚠️ Higher latency: p99 < 800ms (vs. 500ms per-instance)
 - ⚠️ Single point of failure (mitigated by multi-region HA)
+- ✅ Reduced operational overhead (single deployment to manage)
 
 **Success Criteria**:
-- ✅ All clusters migrated to global instance
-- ✅ Cost reduction achieved (> 40%)
-- ✅ p99 latency < 800ms (acceptable for global deployment)
+- ✅ Global load balancer routing traffic to all regions
+- ✅ Multi-region database replication operational (lag < 100ms)
+- ✅ Automatic failover tested and validated
+- ✅ p99 latency < 800ms across all regions (acceptable for global deployment)
+- ✅ Infrastructure consolidation achieved (target: > 50% reduction vs. per-instance)
 
 ---
 
@@ -3550,11 +5028,11 @@ This foundational phase includes both **software development** and **infrastruct
 
 Choose your rollout scenario based on requirements:
 
-| Scenario | Duration | Best For | Cost/Month | Complexity |
-|----------|----------|----------|------------|------------|
-| **1: Single Cloud** | 9 weeks | Fastest path to production, single cloud provider | $5,000 | Low |
-| **2: Global Shared** | 16 weeks | Cost optimization, centralized management | $6,000 | High |
-| **3: Extended Registries** | 15 weeks | Enterprise customers with private registries | $15,000+ | Medium-High |
+| Scenario | Duration | Best For | Resource Footprint | Complexity |
+|----------|----------|----------|-------------------|------------|
+| **1: Single Cloud** | 9 weeks | Fastest path to production, single cloud provider | Low (single instance) | Low |
+| **2: Global Shared** | 12 weeks | Resource optimization, centralized management, multi-region deployment | Medium (shared infrastructure) | High |
+| **3: Extended Registries** | 15 weeks | Enterprise customers with private registries | High (additional registry integrations) | Medium-High |
 
 ---
 
@@ -3565,15 +5043,102 @@ Choose your rollout scenario based on requirements:
 
 | Term | Definition |
 |------|------------|
-| **Robot Account** | Quay.io service account for programmatic registry access |
-| **Partner Service Account** | Red Hat Registry service account for partner integrations |
-| **Pull Secret** | Docker auth config JSON containing registry credentials |
-| **Dual Credential Period** | Rotation phase where both old and new credentials are valid |
 | **Advisory Lock** | PostgreSQL session-level lock for concurrency control |
 | **CloudAlias** | Registry that reuses credentials from another registry |
+| **Credential Pool** | Pre-allocated inventory of registry credentials maintained by UHC Account Manager for fast provisioning (see Appendix B) |
+| **Dual Credential Period** | Rotation phase where both old and new credentials are valid |
 | **Lift-and-Shift** | Reusing code/patterns from existing system (AMS) with minimal changes |
+| **Partner Service Account** | Red Hat Registry service account for partner integrations |
+| **Pull Secret** | Docker auth config JSON containing registry credentials |
+| **Robot Account** | Quay.io service account for programmatic registry access |
+| **SLI (Service Level Indicator)** | Quantitative measurement of a specific aspect of service quality (e.g., request success rate, latency percentile). SLIs are the metrics used to evaluate whether SLOs are being met |
+| **SLO (Service Level Objective)** | Target value or range for an SLI that defines acceptable service performance (e.g., 99.5% availability over 28 days). SLOs represent the commitment to maintain service quality within defined thresholds |
 
-### B. References
+---
+
+### B. Registry Credential Pool
+
+This appendix provides a detailed explanation of the **Registry Credential Pool** maintained by **UHC Account Manager**, which HyperFleet depends on for fast pull secret provisioning.
+
+#### B.1 What is the Credential Pool?
+
+The **Registry Credential Pool** is a pre-allocated inventory of container registry credentials (Quay robot accounts and RHIT partner service accounts) that are created in advance and stored in an unassigned state, ready to be allocated to clusters on-demand.
+
+**Purpose**: Enable sub-100ms pull secret delivery by eliminating synchronous external API calls during cluster provisioning.
+
+#### B.2 Why Credential Pools Exist
+
+| Challenge | Impact Without Pool | Solution With Pool |
+|-----------|--------------------|--------------------|
+| **Latency** | Quay/RHIT API calls take 2-5 seconds | Credentials served from database in < 100ms |
+| **Rate Limits** | Quay API: 60 requests/minute<br/>RHIT API: 120 requests/minute | Pool pre-creates credentials during off-peak |
+| **API Failures** | Registry downtime blocks cluster creation | Pool provides resilience buffer |
+| **Burst Traffic** | Cold-start delays during traffic spikes | Pool absorbs burst demand |
+| **Consistency** | Every request hits external API | Predictable performance, reduced dependencies |
+
+#### B.3 How the Pool Works
+
+```mermaid
+sequenceDiagram
+    participant Loader as Pool Loader Job<br/>(uhc-account-manager)
+    participant DB as PostgreSQL Database
+    participant Quay as Quay.io API
+    participant RHIT as Red Hat Registry API
+    participant HF as HyperFleet<br/>Pull Secret Service
+
+    Note over Loader,RHIT: Background: Pool Replenishment (every 10 minutes)
+
+    Loader->>DB: SELECT COUNT(*) WHERE cluster_id IS NULL
+    DB-->>Loader: Pool size: 45 (below threshold of 50)
+
+    Loader->>Quay: POST /api/v1/organization/hyperfleet/robots (batch of 20)
+    Quay-->>Loader: ✅ {robot_name, token} × 20
+
+    Loader->>RHIT: POST /partners/hyperfleet/service_accounts (batch of 20)
+    RHIT-->>Loader: ✅ {username, password} × 20
+
+    Loader->>DB: INSERT registry_credentials (Quay)
+    Note right of DB: cluster_id = NULL, registry_id = 'quay'
+    Loader->>DB: INSERT registry_credentials (RHIT)
+    Note right of DB: cluster_id = NULL, registry_id = 'redhat'
+
+    Note over Loader,HF: Runtime: HyperFleet Requests Pull Secret
+
+    HF->>DB: POST /api/accounts_mgmt/v1/pull_secrets
+    Note right of HF: external_resource_id: cls-abc123
+
+    DB->>DB: BEGIN TRANSACTION
+    Note right of DB: SELECT FROM credentials WHERE cluster_id IS NULL
+
+    DB->>DB: UPDATE SET cluster_id = cls-abc123
+
+    DB->>DB: COMMIT
+
+    DB-->>HF: 200 OK dockerconfigjson (~50ms)
+```
+
+---
+
+### C. Pull Secret Rotation Requirements
+
+In general, pull secret rotation is required in the following scenarios:
+
+- The current pull secret is no longer valid or is not functioning correctly.  
+- A new pull secret is required due to security policies or incident response.
+
+**Pull Secret Rotation Policy (based on industry best practices):**
+
+- **90 days** – Industry standard  
+- **60 days** – Enhanced security for regulated environments (e.g., financial or healthcare sectors)
+
+
+---
+
+### D. References
 
 - [AMS (uhc-account-manager) Repository](https://gitlab.cee.redhat.com/service/uhc-account-manager)
+- [HyperFleet Error Model and Codes Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/error-model.md)
+- [HyperFleet Health and Readiness Endpoint Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/health-endpoints.md)
+- [HyperFleet Logging Specification](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/logging-specification.md)
+- [HyperFleet Metrics Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/metrics.md)
 - [Quay.io API Documentation](https://docs.quay.io/api/)
