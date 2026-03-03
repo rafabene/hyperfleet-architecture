@@ -20,22 +20,13 @@ This document defines the standard conventions for Dockerfiles, base images, and
 
 ## Overview
 
-### Problem Statement
-
-HyperFleet repositories currently have inconsistent Dockerfile conventions:
-- Different base images are used across services (Debian, Alpine, UBI)
-- Some images run as root, others don't
-- Build flags and version embedding vary
-- Container labels are inconsistent or missing
-- Some repositories are missing `.dockerignore`, causing build issues with `-buildvcs`
-
 ### Goals
 
-1. **Consistent base images** - All services use the same approved builder and runtime images
-2. **Security by default** - Non-root users in all stages
-3. **Reproducible builds** - Standard version embedding and build flags
-4. **Compliance-ready** - FIPS considerations documented and supported
-5. **Efficient builds** - Layer caching and minimal build context
+1. **Consistent base images** - All services use the same approved Red Hat UBI builder and runtime images, eliminating variation across Debian, Alpine, and other base images
+2. **Security by default** - Non-root users in all stages, enforced consistently across all repositories
+3. **Reproducible builds** - Standard version embedding and build flags across all services
+4. **Konflux / Enterprise Contract compliance** - All base images must come from allowed registry prefixes (`registry.access.redhat.com/`, `registry.redhat.io/`) to pass `EnterpriseContractPolicy` checks enforced by Konflux pipelines via [Conforma](https://github.com/conforma/cli) (formerly Enterprise Contract). FIPS considerations documented and supported
+5. **Efficient builds** - Multi-stage builds with layer caching, proper `.dockerignore`, and minimal build context
 
 ### Scope
 
@@ -63,10 +54,10 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 
 ### Production Runtime
 
-The default production runtime image **MUST** be a minimal, distroless image:
+The default production runtime image **MUST** be Red Hat UBI9 Micro:
 
 ```dockerfile
-ARG BASE_IMAGE=gcr.io/distroless/static-debian12:nonroot
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9-micro:latest
 FROM ${BASE_IMAGE}
 ```
 
@@ -74,9 +65,9 @@ Using `ARG BASE_IMAGE` makes the runtime configurable for different build scenar
 
 | Scenario | Base Image | Notes |
 |----------|-----------|-------|
-| Standard (static binary, `CGO_ENABLED=0`) | `gcr.io/distroless/static-debian12:nonroot` | Default. No libc, smallest footprint |
-| FIPS-compliant (`CGO_ENABLED=1`) | `registry.access.redhat.com/ubi9-micro` | Requires glibc for boringcrypto |
-| Development / debugging | `alpine:3.21` | Includes shell for troubleshooting |
+| Standard production | `registry.access.redhat.com/ubi9-micro:latest` | Default. Minimal UBI with glibc, Red Hat supported |
+| FIPS-compliant (`CGO_ENABLED=1`) | `registry.access.redhat.com/ubi9-micro:latest` | Same image; includes glibc required for boringcrypto |
+| Development / debugging | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Includes shell and microdnf for troubleshooting |
 
 ---
 
@@ -85,7 +76,7 @@ Using `ARG BASE_IMAGE` makes the runtime configurable for different build scenar
 All service Dockerfiles **MUST** use multi-stage builds with the following structure:
 
 ```dockerfile
-ARG BASE_IMAGE=gcr.io/distroless/static-debian12:nonroot
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9-micro:latest
 
 # ── Builder stage ──
 FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
@@ -156,7 +147,7 @@ USER 1001
 
 ### Runtime Stage
 
-Use the standard nonroot user `65532:65532` (matches distroless `nonroot` user):
+Use the standard nonroot user `65532:65532`:
 
 ```dockerfile
 USER 65532:65532
@@ -170,15 +161,15 @@ USER 65532:65532
 
 | Value | When to Use | Runtime Image |
 |-------|-------------|---------------|
-| `0` (default) | Standard builds producing static binaries | `distroless/static` (no libc needed) |
-| `1` | FIPS-compliant builds with `GOEXPERIMENT=boringcrypto` | `ubi9-micro` or similar (requires glibc) |
+| `0` (default) | Standard builds producing static binaries | `ubi9-micro` (default) |
+| `1` | FIPS-compliant builds with `GOEXPERIMENT=boringcrypto` | `ubi9-micro` (includes glibc required for boringcrypto) |
 
 Document this decision in your Dockerfile:
 
 ```dockerfile
-# CGO_ENABLED=0 produces a static binary required for distroless runtime.
-# For FIPS-compliant builds (CGO_ENABLED=1 + GOEXPERIMENT=boringcrypto), use a
-# runtime image with glibc (e.g. ubi9-micro) instead of distroless.
+# CGO_ENABLED=0 produces a static binary. The default ubi9-micro runtime
+# supports both static and dynamically linked binaries.
+# For FIPS-compliant builds, use CGO_ENABLED=1 + GOEXPERIMENT=boringcrypto.
 ```
 
 ### Build Flags
@@ -241,79 +232,16 @@ LABEL name="<service-name>" \
 
 ## .dockerignore
 
-All repositories producing container images **MUST** include a `.dockerignore` file at the repository root. The following is the standard `.dockerignore` shared across all HyperFleet service repositories. Services **MAY** add additional service-specific entries (e.g. generated code directories):
+All repositories producing container images **MUST** include a `.dockerignore` file at the repository root.
 
-```dockerignore
-# Build artifacts
-bin/
-*.exe
-*.dll
-*.so
-*.dylib
+The reference `.dockerignore` is maintained as a standalone file: [`.dockerignore`](.dockerignore). Copy it into your repository root:
 
-# IDE and editor files
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Git
-.git/
-.gitignore
-.github/
-
-# Environment files
-.env
-.env.*
-
-# Local config files
-*.local.yaml
-
-# CI/CD files (not needed in container)
-.gitlab-ci.yml
-.travis.yml
-Jenkinsfile
-
-# Kubernetes and deployment files
-chart/
-charts/
-deployments/
-
-# License and owners
-LICENSE
-OWNERS
-CONTRIBUTING.md
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-
-# Log files
-*.log
-
-# Test and coverage files
-coverage/
-*.out
-*.test
-*.prof
-
-# Linter config (not needed for build)
-.golangci.yml
-
-# AI assistant config
-.claude/
-
-# Dockerfile itself
-Dockerfile
-
-# Documentation (not needed in container)
-*.md
-!README.md
-docs/
+```bash
+curl -sSL -o .dockerignore \
+  https://raw.githubusercontent.com/openshift-hyperfleet/architecture/main/hyperfleet/standards/.dockerignore
 ```
+
+Services **MAY** append additional service-specific entries (e.g. generated code directories) after copying.
 
 ### Why?
 
@@ -328,7 +256,7 @@ docs/
 A complete reference Dockerfile incorporating all standards above. Replace `<service-name>` with the actual service binary name:
 
 ```dockerfile
-ARG BASE_IMAGE=gcr.io/distroless/static-debian12:nonroot
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9-micro:latest
 
 FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 
@@ -352,9 +280,9 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
 
 COPY --chown=1001:0 . .
 
-# CGO_ENABLED=0 produces a static binary required for distroless runtime.
-# For FIPS-compliant builds (CGO_ENABLED=1 + GOEXPERIMENT=boringcrypto), use a
-# runtime image with glibc (e.g. ubi9-micro) instead of distroless.
+# CGO_ENABLED=0 produces a static binary. The default ubi9-micro runtime
+# supports both static and dynamically linked binaries.
+# For FIPS-compliant builds, use CGO_ENABLED=1 + GOEXPERIMENT=boringcrypto.
 RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     --mount=type=cache,target=/opt/app-root/src/.cache/go-build,uid=1001 \
     CGO_ENABLED=0 GOOS=linux \
@@ -391,6 +319,6 @@ LABEL name="<service-name>" \
 ### External Resources
 
 - [Red Hat UBI9 Go Toolset](https://catalog.redhat.com/software/containers/ubi9/go-toolset)
-- [Google Distroless Images](https://github.com/GoogleContainerTools/distroless)
+- [Red Hat UBI9 Micro](https://catalog.redhat.com/software/containers/ubi9-micro)
 - [OCI Image Spec - Annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 - [Dockerfile Best Practices](https://docs.docker.com/build/building/best-practices/)
