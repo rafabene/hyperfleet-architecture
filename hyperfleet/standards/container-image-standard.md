@@ -241,20 +241,78 @@ LABEL name="<service-name>" \
 
 ## .dockerignore
 
-All repositories producing container images **MUST** include a `.dockerignore` file at the repository root. At minimum, it **MUST** exclude the `.git/` directory:
+All repositories producing container images **MUST** include a `.dockerignore` file at the repository root. The following is the standard `.dockerignore` shared across all HyperFleet service repositories. Services **MAY** add additional service-specific entries (e.g. generated code directories):
 
 ```dockerignore
-.git/
+# Build artifacts
 bin/
-build/
-coverage.out
-coverage.txt
-coverage.html
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Environment files
+.env
+.env.*
+
+# Local config files
+*.local.yaml
+
+# CI/CD files (not needed in container)
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Kubernetes and deployment files
+chart/
+charts/
+deployments/
+
+# License and owners
+LICENSE
+OWNERS
+CONTRIBUTING.md
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Log files
+*.log
+
+# Test and coverage files
+coverage/
+*.out
+*.test
+*.prof
+
+# Linter config (not needed for build)
+.golangci.yml
+
+# AI assistant config
+.claude/
+
+# Dockerfile itself
+Dockerfile
+
+# Documentation (not needed in container)
 *.md
 !README.md
-LICENSE
-.vscode/
-.idea/
+docs/
 ```
 
 ### Why?
