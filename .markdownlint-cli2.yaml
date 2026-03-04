@@ -60,3 +60,5 @@ config:
   MD014: false
   # Disable heading style consistency
   MD003: false
+  # Disable table column style check - existing docs use standard pipe format
+  MD060: false
