@@ -107,7 +107,8 @@ repo-root/
 ├── .github/                # GitHub configuration
 │   └── workflows/          # GitHub Actions
 ├── Makefile                # Standard Makefile (see makefile-conventions.md)
-├── Dockerfile              # Container definition
+├── Dockerfile              # Container definition (see container-image-standard.md)
+├── .dockerignore           # Docker build context exclusions (must exclude .git/)
 ├── .gitignore              # Git ignore rules
 ├── go.mod                  # Go module definition (for Go projects)
 ├── go.sum                  # Go module checksums
@@ -127,6 +128,7 @@ repo-root/
 | `pkg/` | Shared libraries | Yes | Code designed for reuse across HyperFleet services (logger, errors, utils) |
 | `internal/` | Private application code | Yes | Service-specific implementation (handlers, services, models, config). Go compiler prevents external imports. |
 | `Makefile` | Build automation | Yes | See [makefile-conventions.md](makefile-conventions.md) |
+| `.dockerignore` | Docker build context exclusions | Yes (if `Dockerfile` exists) | Must exclude `.git/` at minimum. See [container-image-standard.md](container-image-standard.md) |
 | `README.md` | Project documentation | Yes | Clear overview and setup instructions |
 
 ### Optional Directories
@@ -213,6 +215,7 @@ vendor/
 
 ### Related Documents
 - [Makefile Conventions](makefile-conventions.md) - Standard Makefile targets
+- [Container Image Standard](container-image-standard.md) - Dockerfile conventions, base images, and labels
 
 ### External Resources
 - [Go Project Layout](https://github.com/golang-standards/project-layout)
