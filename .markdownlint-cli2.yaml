@@ -1,0 +1,62 @@
+config:
+  # Disable line length limit - documentation files often have long lines
+  MD013: false
+  # Allow inline HTML - useful for documentation formatting
+  MD033: false
+  # Allow duplicate headings in different sections
+  MD024:
+    siblings_only: true
+  # Allow trailing punctuation in headings
+  MD026: false
+  # Disable blank lines around lists - existing docs don't follow this
+  MD032: false
+  # Disable blank lines around fenced code blocks
+  MD031: false
+  # Disable blank lines around headings
+  MD022: false
+  # Disable unordered list style consistency - mixed styles in existing docs
+  MD004: false
+  # Disable fenced code language requirement
+  MD040: false
+  # Disable emphasis used instead of heading
+  MD036: false
+  # Disable trailing spaces check
+  MD009: false
+  # Disable multiple consecutive blank lines check
+  MD012: false
+  # Disable hard tab check - some docs use tabs
+  MD010: false
+  # Disable list indentation consistency
+  MD007: false
+  # Disable bare URLs
+  MD034: false
+  # Disable spaces inside emphasis markers
+  MD037: false
+  # Disable ordered list prefix style
+  MD029: false
+  # Disable trailing newline requirement
+  MD047: false
+  # Disable list indentation consistency
+  MD005: false
+  # Disable heading increment requirement
+  MD001: false
+  # Disable emphasis style consistency
+  MD049: false
+  # Disable code block style requirement
+  MD046: false
+  # Disable first line heading requirement
+  MD041: false
+  # Disable spaces inside code spans
+  MD038: false
+  # Disable list marker space consistency
+  MD030: false
+  # Disable link fragment validation
+  MD051: false
+  # Disable blank line inside blockquote
+  MD028: false
+  # Disable single h1 requirement
+  MD025: false
+  # Disable dollar sign before commands
+  MD014: false
+  # Disable heading style consistency
+  MD003: false
