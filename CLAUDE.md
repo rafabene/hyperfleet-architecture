@@ -9,7 +9,6 @@ All documents are **living documents** that evolve with design and implementatio
 ## Repository Structure
 
 ```
-architecture/
 ├── README.md                      # Main guide - required reading
 ├── hyperfleet/
 │   ├── architecture/              # System-level docs (30,000 feet view)
@@ -17,10 +16,14 @@ architecture/
 │   │   ├── adapter/               # Adapter architecture
 │   │   ├── api-service/           # API service design
 │   │   ├── broker/                # Message broker design
+│   │   ├── claude-code-plugin/    # Claude Code plugin
 │   │   └── sentinel/              # Sentinel service design
 │   ├── docs/                      # Implementation guides
 │   ├── mvp/                       # MVP-specific decisions
 │   └── standards/                 # Prescriptive standards (must follow)
+├── deployment/                    # Deployment configurations
+├── e2e-testing/                   # End-to-end testing
+└── test-release/                  # Test release configurations
 ```
 
 ## Document Status Values

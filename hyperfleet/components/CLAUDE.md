@@ -117,14 +117,14 @@ When updating component docs:
   - **Status**: Resolved in #123
 ```
 
-## Example: Complete Component Document
+## Example: Component Document
 
-See `sentinel/sentinel.md` for a complete example with:
+See `sentinel/sentinel.md` for an example with:
 - Clear What & Why section
 - Detailed How section with diagrams
-- Comprehensive Trade-offs
-- Alternatives Considered
-- Technical debt documented
+- Test scenarios documented
+
+**Note**: sentinel.md predates these guidelines and does not yet include Trade-offs or Alternatives Considered sections.
 
 ## Common Mistakes to Avoid
 
@@ -133,4 +133,4 @@ See `sentinel/sentinel.md` for a complete example with:
 3. **Vague benefits** - Quantify or explain specifically
 4. **Missing diagrams** - All components need at least one Mermaid diagram
 5. **Forgetting dependencies** - Document what the component relies on
-6. **No configuration section** - Document how to configure the component
+6. **Missing configuration** - Consider documenting how to configure the component (if applicable)

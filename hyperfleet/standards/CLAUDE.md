@@ -16,7 +16,7 @@ Every standard follows this structure:
 
 ## Existing Standards
 
-Reference these when working with standards:
+Reference these when working with standards (non-exhaustive - see `hyperfleet/standards/` for full list):
 
 | Standard | Purpose |
 |----------|---------|
