@@ -89,11 +89,10 @@ repo-root/
 │   │   ├── staging/
 │   │   └── prod/
 │   └── crds/               # Custom Resource Definitions (if applicable)
-├── helm/                   # Helm charts (if applicable)
-│   └── chart-name/         # Helm chart directory
-│       ├── Chart.yaml
-│       ├── values.yaml
-│       └── templates/
+├── charts/                 # Helm charts (if applicable)
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
 ├── docs/                   # Documentation
 │   ├── architecture.md
 │   ├── api.md
@@ -139,7 +138,7 @@ repo-root/
 | `configs/` | Configuration file templates | If repo requires default configs or examples | Example configs, defaults. Committed to Git |
 | `openapi/` | OpenAPI/Swagger specifications | If repo defines APIs via OpenAPI specs | YAML/JSON files, committed to Git |
 | `kustomize/` | Kustomize manifests | If repo uses Kustomize for deployment | Base + overlays structure |
-| `helm/` | Helm charts | If repo uses Helm for deployment | One chart per directory |
+| `charts/` | Helm charts | If repo uses Helm for deployment | Follows Helm community convention |
 | `docs/` | Additional documentation | If README.md is not sufficient | Markdown files |
 | `scripts/` | Helper scripts | If repo has automation scripts | Shell, Python, etc. |
 | `test/` | Integration/E2E tests | If unit tests are in `*_test.go` files | Separate from unit tests |
