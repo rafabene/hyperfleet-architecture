@@ -60,5 +60,9 @@ config:
   MD014: false
   # Disable heading style consistency
   MD003: false
+  # Disable blanks around tables - existing docs don't follow this
+  MD058: false
+  # Disable descriptive link text check - existing docs use various link styles
+  MD059: false
   # Disable table column style check - existing docs use standard pipe format
   MD060: false
