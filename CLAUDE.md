@@ -18,12 +18,12 @@ All documents are **living documents** that evolve with design and implementatio
 │   │   ├── broker/                # Message broker design
 │   │   ├── claude-code-plugin/    # Claude Code plugin
 │   │   └── sentinel/              # Sentinel service design
+│   ├── deployment/                # Deployment configurations
 │   ├── docs/                      # Implementation guides
+│   ├── e2e-testing/               # End-to-end testing
 │   ├── mvp/                       # MVP-specific decisions
-│   └── standards/                 # Prescriptive standards (must follow)
-├── deployment/                    # Deployment configurations
-├── e2e-testing/                   # End-to-end testing
-└── test-release/                  # Test release configurations
+│   ├── standards/                 # Prescriptive standards (must follow)
+│   └── test-release/              # Test release configurations
 ```
 
 ## Document Status Values
