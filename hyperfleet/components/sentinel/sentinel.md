@@ -565,18 +565,48 @@ data:
 
 ### 2. Resource Watcher
 
-**Responsibility**: Fetch resources from HyperFleet API with resource selector filtering
+**Responsibility**: Fetch resources from HyperFleet API with selective querying based on condition status and staleness
 
 **Key Functions**:
-- `FetchResources(ctx, resourceType, selector)` - Fetch resources matching label selector
+- `FetchResources(ctx, resourceType, selector)` - Fetch resources matching label selector and condition criteria
+
+**Selective Querying Strategy**:
+
+Instead of fetching ALL resources on every poll cycle, the Resource Watcher makes two targeted API calls to fetch only resources that need attention:
+
+1. **Not-ready resources** (need frequent polling):
+
+```text
+GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='False'
+```
+
+2. **Stale ready resources** (ready but haven't been refreshed within the max age interval):
+
+```text
+GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '<cutoff_timestamp>'
+```
+
+Where `<cutoff_timestamp>` is `now - max_age_ready` (e.g., 30 minutes ago).
+
+This approach reduces API load significantly at scale since most resources will be in a `Ready=True` state and only a small subset will be stale at any given poll cycle.
+
+**Supported API Search Fields for Conditions**:
+
+- `status.conditions.<Type>` - Condition status (`True`, `False`). Examples:
+  - `status.conditions.Ready='True'`
+  - `status.conditions.Available='False'`
+- `status.conditions.<Type>.<Subfield>` - Condition subfield values with comparison operators (`=`, `!=`, `<`, `<=`, `>`, `>=`):
+  - `status.conditions.Ready.last_updated_time < '<timestamp>'` - Filter by last update time
+  - `status.conditions.Ready.last_transition_time > '<timestamp>'` - Filter by last transition time
+  - `status.conditions.Ready.observed_generation < 5` - Filter by observed generation
 
 **Implementation Requirements**:
-- Call HyperFleet API: `GET /api/hyperfleet/v1/{resourceType}?labels=<selector>`
-- Encode label selector as query parameter
-- Handle empty selector (fetch all resources)
-- Return list of resource objects with status fields (phase, last_transition_time, last_updated_time)
+- Use the HyperFleet API `search` query parameter with condition-based queries
+- Combine label selectors with condition queries using `AND` when both are specified
+- Handle empty result sets gracefully (no resources need attention)
+- Return list of resource objects with status conditions (Ready, Available, with timestamps)
 - Handle API errors and timeouts gracefully
-- Parse status information including `status.last_updated_time` from adapter updates
+- Parse status conditions including `last_updated_time` from adapter status reports
 
 ### 3. Decision Engine
 
@@ -592,13 +622,13 @@ data:
      - Return: `{ShouldPublish: true, Reason: "generation changed - new spec to reconcile"}`
      - This ensures immediate reconciliation when users change the spec
 
-2. **Check resource.status.phase** (fallback to max age intervals):
-   - Select appropriate max age interval:
-     - If phase == "Ready" → use `max_age_ready` (30 minutes)
-     - If phase != "Ready" → use `max_age_not_ready` (10 seconds)
+2. **Check resource status conditions** (fallback to max age intervals):
+   - Select appropriate max age interval based on the `Ready` condition:
+     - If `status.conditions.Ready='True'` → use `max_age_ready` (30 minutes)
+     - If `status.conditions.Ready='False'` → use `max_age_not_ready` (10 seconds)
 
 3. **Check if max age expired**:
-   - Get `resource.status.last_updated_time` (updated by adapters every time they check the resource)
+   - Get `status.conditions.Ready.last_updated_time` (updated by adapters every time they report status)
    - Calculate `nextEventTime = last_updated_time + max_age`
    - If `now >= nextEventTime` → publish event
    - Otherwise → skip (max age not expired)
@@ -607,9 +637,11 @@ data:
 
 **Implementation Requirements**:
 - Priority-based decision logic: generation check first, then max age
-- Use `resource.generation` and `resource.status.observed_generation` for spec change detection
-- Use `status.last_updated_time` from adapter status updates (NOT `last_transition_time`) for max age calculations
+- Use `resource.generation` and `resource.status.conditions.Ready.observed_generation` for spec change detection
+- Use `status.conditions.Ready.last_updated_time` from adapter status updates (NOT `last_transition_time`) for max age calculations
 - Clear logging of decision reasoning (which condition triggered the event)
+
+> **Note**: With selective querying (see Resource Watcher above), the Decision Engine only receives resources that already need attention — not-ready resources and stale ready resources. This shifts the primary filtering responsibility to the API query layer, making the Decision Engine's per-resource evaluation more efficient.
 
 ### 4. Message Publisher
 

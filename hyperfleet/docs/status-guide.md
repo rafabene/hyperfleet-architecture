@@ -12,7 +12,7 @@ HyperFleet uses a **condition-based status reporting contract** where adapters r
 2. **The Adapter → API Contract** - Required payload structure for status updates
 3. **The Three Required Conditions** - Available, Applied, Health
 4. **How to Read Cluster Status** - Interpreting aggregated cluster state
-5. **Common Patterns** - Polling, error handling, progress tracking
+5. **Common Patterns** - Polling, error handling, progress tracking, and condition-based queries
 
 ---
 
@@ -2447,10 +2447,35 @@ To poll until an adapter completes:
 
 To verify cluster is fully provisioned:
 1. Fetch cluster: `GET /v1/clusters/{clusterId}`
-2. Check `status.phase === "Ready"`
+2. Check the `Ready` condition in `status.conditions`:
+   - `status.conditions[type=Ready].status === "True"` — cluster is ready
 3. Optionally verify each adapter in `status.adapters`:
    - All have `observed_generation === cluster.generation`
    - All have `available === "True"`
+
+### 2a. Query Ready/Not-Ready Clusters via API Search
+
+The API supports querying clusters by condition status and condition subfields using the `search` parameter:
+
+```bash
+# Find all not-ready clusters
+GET /v1/clusters?search=status.conditions.Ready='False'
+
+# Find all available clusters
+GET /v1/clusters?search=status.conditions.Available='True'
+
+# Find ready clusters that haven't been updated in the last 30 minutes (stale)
+GET /v1/clusters?search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '2026-03-06T14:00:00Z'
+
+# Combine condition queries with label filters
+GET /v1/clusters?search=status.conditions.Ready='False' AND labels.region='us-east'
+```
+
+**Supported condition subfields** for comparison operators (`=`, `!=`, `<`, `<=`, `>`, `>=`):
+
+- `last_updated_time` — When the adapter last reported status (TIMESTAMPTZ)
+- `last_transition_time` — When the condition status last changed (TIMESTAMPTZ)
+- `observed_generation` — Last generation processed by the adapter (INTEGER)
 
 ### 3. Get Failed Adapters
 
