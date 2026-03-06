@@ -2448,7 +2448,7 @@ To poll until an adapter completes:
 To verify cluster is fully provisioned:
 1. Fetch cluster: `GET /v1/clusters/{clusterId}`
 2. Check the `Ready` condition in `status.conditions`:
-   - `status.conditions[type=Ready].status === "True"` — cluster is ready
+   - `status.conditions.Ready === "True"` — cluster is ready
 3. Optionally verify each adapter in `status.adapters`:
    - All have `observed_generation === cluster.generation`
    - All have `available === "True"`
@@ -2473,9 +2473,9 @@ GET /v1/clusters?search=status.conditions.Ready='False' AND labels.region='us-ea
 
 **Supported condition subfields** for comparison operators (`=`, `!=`, `<`, `<=`, `>`, `>=`):
 
-- `last_updated_time` — When the adapter last reported status (TIMESTAMPTZ)
-- `last_transition_time` — When the condition status last changed (TIMESTAMPTZ)
-- `observed_generation` — Last generation processed by the adapter (INTEGER)
+- `last_updated_time` — When this condition was last observed on the resource (TIMESTAMPTZ)
+- `last_transition_time` — When this condition's status (`True`/`False`/`Unknown`) last changed on the resource (TIMESTAMPTZ)
+- `observed_generation` — The resource generation that this condition reflects (INTEGER)
 
 ### 3. Get Failed Adapters
 

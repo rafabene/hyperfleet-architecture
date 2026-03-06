@@ -572,7 +572,7 @@ data:
 
 **Selective Querying Strategy**:
 
-Instead of fetching ALL resources on every poll cycle, the Resource Watcher makes two targeted API calls to fetch only resources that need attention:
+Instead of fetching ALL resources on every poll cycle, the Resource Watcher makes targeted API calls to fetch only resources that need attention:
 
 1. **Not-ready resources** (need frequent polling):
 
@@ -587,6 +587,14 @@ GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND 
 ```
 
 Where `<cutoff_timestamp>` is `now - max_age_ready` (e.g., 30 minutes ago).
+
+3. **Missing Ready condition** (bootstrap/migration edge case):
+
+```text
+GET /api/hyperfleet/v1/{resourceType}?search=NOT EXISTS(status.conditions.Ready)
+```
+
+Catches newly created resources that have not yet received any adapter status report, or resources migrated from an older schema that lack a `Ready` condition entirely.
 
 This approach reduces API load significantly at scale since most resources will be in a `Ready=True` state and only a small subset will be stale at any given poll cycle.
 
@@ -642,6 +650,10 @@ This approach reduces API load significantly at scale since most resources will 
 - Clear logging of decision reasoning (which condition triggered the event)
 
 > **Note**: With selective querying (see Resource Watcher above), the Decision Engine only receives resources that already need attention — not-ready resources and stale ready resources. This shifts the primary filtering responsibility to the API query layer, making the Decision Engine's per-resource evaluation more efficient.
+>
+> **API Invariant for Generation-First Correctness**: For selective querying to work correctly with the Decision Engine's generation-mismatch check, the API **must atomically set `Ready=False`** when a user updates the resource spec (which increments `generation`). This ensures the resource appears in the "Not-ready resources" query on the next Sentinel poll, so the Decision Engine observes the new generation and publishes a reconciliation event immediately. Without this atomic flip, a resource with a recent `last_updated_time` and `Ready=True` would not be returned by either selective query, causing a delayed generation-mismatch detection.
+>
+> As a defense-in-depth measure, implementations may also add a **periodic full-scan fallback** (e.g., once every N poll cycles) that fetches all resources regardless of condition status, to catch any generation-mismatch cases that selective querying might miss — for example, due to race conditions or API bugs that fail to flip `Ready=False`.
 
 ### 4. Message Publisher
 
