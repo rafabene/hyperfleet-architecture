@@ -36,7 +36,7 @@ Sentinel will publish messages whenever:
 
 ### Selective Querying (Implemented)
 
-To avoid fetching ALL resources every poll cycle, the API supports condition-based search queries that allow Sentinel to make two targeted API calls:
+To avoid fetching ALL resources every poll cycle, the API supports condition-based search queries that allow Sentinel to make three targeted API calls:
 
 1. **Not-ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='False'`
 2. **Stale ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '<cutoff>'`

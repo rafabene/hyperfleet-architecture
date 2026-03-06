@@ -625,8 +625,8 @@ This approach reduces API load significantly at scale since most resources will 
 
 **Decision Logic** (evaluated in priority order):
 1. **Check for generation mismatch** (HIGHEST PRIORITY):
-   - Compare `resource.generation` with `resource.status.observed_generation`
-   - If `resource.generation > resource.status.observed_generation`:
+   - Compare `resource.generation` with `resource.status.conditions.Ready.observed_generation`
+   - If `resource.generation > resource.status.conditions.Ready.observed_generation`:
      - Return: `{ShouldPublish: true, Reason: "generation changed - new spec to reconcile"}`
      - This ensures immediate reconciliation when users change the spec
 
@@ -649,7 +649,7 @@ This approach reduces API load significantly at scale since most resources will 
 - Use `status.conditions.Ready.last_updated_time` from adapter status updates (NOT `last_transition_time`) for max age calculations
 - Clear logging of decision reasoning (which condition triggered the event)
 
-> **Note**: With selective querying (see Resource Watcher above), the Decision Engine only receives resources that already need attention — not-ready resources and stale ready resources. This shifts the primary filtering responsibility to the API query layer, making the Decision Engine's per-resource evaluation more efficient.
+> **Note**: With selective querying (see Resource Watcher above), the Decision Engine only receives resources that already need attention — not-ready resources, stale ready resources, and resources with a missing Ready condition. This shifts the primary filtering responsibility to the API query layer, making the Decision Engine's per-resource evaluation more efficient.
 >
 > **API Invariant for Generation-First Correctness**: For selective querying to work correctly with the Decision Engine's generation-mismatch check, the API **must atomically set `Ready=False`** when a user updates the resource spec (which increments `generation`). This ensures the resource appears in the "Not-ready resources" query on the next Sentinel poll, so the Decision Engine observes the new generation and publishes a reconciliation event immediately. Without this atomic flip, a resource with a recent `last_updated_time` and `Ready=True` would not be returned by either selective query, causing a delayed generation-mismatch detection.
 >
