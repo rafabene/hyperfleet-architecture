@@ -84,7 +84,7 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 ARG GIT_SHA=unknown
 ARG GIT_DIRTY=""
 ARG BUILD_DATE=""
-ARG VERSION=""
+ARG APP_VERSION="0.0.0-dev"
 
 USER root
 RUN dnf install -y make && dnf clean all
@@ -104,7 +104,7 @@ COPY --chown=1001:0 . .
 RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     --mount=type=cache,target=/opt/app-root/src/.cache/go-build,uid=1001 \
     CGO_ENABLED=0 GOOS=linux \
-    GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} VERSION=${VERSION} \
+    GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} \
     make build
 
 # ── Runtime stage ──
@@ -186,7 +186,7 @@ Standard ldflags:
 
 ```makefile
 LDFLAGS := -s -w \
-           -X main.version=$(VERSION) \
+           -X main.version=$(APP_VERSION) \
            -X main.commit=$(GIT_SHA) \
            -X main.date=$(BUILD_DATE)
 ```
@@ -210,10 +210,10 @@ $(CONTAINER_TOOL) build --platform $(PLATFORM) ...
 All production images **MUST** include standardized OCI labels. Place the `LABEL` instruction at the end of the Dockerfile (after `ARG` re-declarations) so it doesn't invalidate earlier layer caches:
 
 ```dockerfile
-ARG VERSION=""
+ARG APP_VERSION="0.0.0-dev"
 LABEL name="<service-name>" \
       vendor="Red Hat" \
-      version="${VERSION}" \
+      version="${APP_VERSION}" \
       summary="<one-line summary>" \
       description="<detailed description of what the service does>"
 ```
@@ -263,7 +263,7 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 ARG GIT_SHA=unknown
 ARG GIT_DIRTY=""
 ARG BUILD_DATE=""
-ARG VERSION=""
+ARG APP_VERSION="0.0.0-dev"
 
 USER root
 RUN dnf install -y make && dnf clean all
@@ -286,7 +286,7 @@ COPY --chown=1001:0 . .
 RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     --mount=type=cache,target=/opt/app-root/src/.cache/go-build,uid=1001 \
     CGO_ENABLED=0 GOOS=linux \
-    GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} VERSION=${VERSION} \
+    GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} \
     make build
 
 FROM ${BASE_IMAGE}
@@ -299,13 +299,51 @@ USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/app/<service-name>"]
 
-ARG VERSION=""
+ARG APP_VERSION="0.0.0-dev"
 LABEL name="<service-name>" \
       vendor="Red Hat" \
-      version="${VERSION}" \
+      version="${APP_VERSION}" \
       summary="<one-line service summary>" \
       description="<detailed service description>"
 ```
+
+---
+
+## APP_VERSION Convention
+
+### Problem
+
+The `ubi9/go-toolset` base image sets `ENV VERSION=<go-toolchain-version>` (e.g. `1.25.7`). In Docker/Podman, an inherited `ENV` always shadows an `ARG` with the same name inside `RUN` commands. If a Dockerfile declares `ARG VERSION` and the Makefile uses `VERSION ?=`, the Go toolchain version leaks into the binary instead of the intended application version.
+
+### Solution
+
+All HyperFleet Dockerfiles and Makefiles **MUST** use `APP_VERSION` instead of `VERSION` for the application version variable:
+
+```dockerfile
+ARG APP_VERSION="0.0.0-dev"
+```
+
+Since the Makefile uses `APP_VERSION` exclusively, the base image's `ENV VERSION=<go-version>` is harmless — nothing reads it. No `ENV VERSION` override is needed.
+
+### Version Flow
+
+```
+Makefile (APP_VERSION via git describe)
+  ├─ go build -ldflags "-X ...Version=$(APP_VERSION)"    → binary version (local builds)
+  └─ docker build --build-arg APP_VERSION=$(APP_VERSION)  → Dockerfile
+       └─ ARG APP_VERSION                                  → available in RUN commands
+            └─ make build                                  → Makefile picks up APP_VERSION
+```
+
+### Default Version Semantics
+
+| Scenario | APP_VERSION Value | Source |
+|----------|------------------|--------|
+| Untagged local build | `a1b2c3d` (or `a1b2c3d-dirty`) | `git describe --tags --always --dirty` (abbreviated commit SHA) |
+| Dev build from tagged repo | `v0.1.1-3-gabcdef` | `git describe --tags --always --dirty` |
+| Release build (at tag) | `v0.1.1` | `git describe` returns the tag automatically; explicit `APP_VERSION=v0.1.1` is optional, useful for shallow clones where `git describe` may fail |
+| No git metadata available | `0.0.0-dev` | Makefile fallback when `git describe` fails |
+| Raw `go build` (no Make) | `0.0.0-dev` | Source code default constant |
 
 ---
 
