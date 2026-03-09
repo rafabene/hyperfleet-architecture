@@ -111,6 +111,9 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
+
+# ubi9-micro doesn't include CA certificates; copy from builder for TLS (e.g. Google Pub/Sub)
+COPY --from=builder /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 COPY --from=builder /build/bin/<service-name> /app/<service-name>
 
 USER 65532:65532
@@ -121,6 +124,7 @@ ENTRYPOINT ["/app/<service-name>"]
 
 ### Key Practices
 
+- **CA certificates** copied from builder stage — `ubi9-micro` doesn't include `ca-certificates`; required for TLS connections to external services
 - **Cache mounts** for Go module and build caches to speed up rebuilds
 - **`go mod download`** as a separate layer before copying source for better layer caching
 - **`--chown=1001:0`** on COPY commands for the builder stage (UBI9 convention)
@@ -292,6 +296,9 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
+
+# ubi9-micro doesn't include CA certificates; copy from builder for TLS (e.g. Google Pub/Sub)
+COPY --from=builder /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 COPY --from=builder /build/bin/<service-name> /app/<service-name>
 
 USER 65532:65532
