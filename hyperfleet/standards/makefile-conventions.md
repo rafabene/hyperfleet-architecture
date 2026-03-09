@@ -267,7 +267,7 @@ All Makefiles **SHOULD** support these environment variables:
 
 | Variable | Default | Description | Example Usage |
 |----------|---------|-------------|---------------|
-| `IMAGE_TAG` | `$(VERSION)` | Container image tag | `make image IMAGE_TAG=v1.0.0` |
+| `IMAGE_TAG` | `$(APP_VERSION)` | Container image tag | `make image IMAGE_TAG=v1.0.0` |
 | `IMAGE_REGISTRY` | (repo-specific) | Container registry URL | `make image IMAGE_REGISTRY=quay.io/hyperfleet` |
 | `IMAGE_NAME` | (repo-specific) | Container image name | `make image IMAGE_NAME=my-service` |
 | `GOOS` | (host OS) | Target operating system for build | `make build GOOS=linux` |
@@ -278,7 +278,7 @@ All Makefiles **SHOULD** support these environment variables:
 | `GIT_SHA` | (auto-detected) | Short git commit hash | — |
 | `GIT_DIRTY` | (auto-detected) | `-modified` suffix if working tree is dirty | — |
 | `BUILD_DATE` | (auto-detected) | ISO 8601 UTC build timestamp | — |
-| `VERSION` | `$(GIT_SHA)$(GIT_DIRTY)` | Image/binary version string | `make image VERSION=v1.2.3` |
+| `APP_VERSION` | `$(shell git describe --tags --always --dirty 2>/dev/null \|\| echo "0.0.0-dev")` | Application version string. **MUST** use `APP_VERSION` (not `VERSION`) to avoid collision with `ubi9/go-toolset`'s `ENV VERSION=<go-version>` — see [Container Image Standard: APP_VERSION Convention](container-image-standard.md#app_version-convention) | `make image APP_VERSION=v1.2.3` |
 
 ### Variable Definition Pattern
 
@@ -286,10 +286,10 @@ Always use `?=` for variables that can be overridden:
 
 ```makefile
 # Good - allows override
-IMAGE_TAG ?= $(VERSION)
+IMAGE_TAG ?= $(APP_VERSION)
 
 # Bad - cannot override
-IMAGE_TAG = $(VERSION)
+IMAGE_TAG = $(APP_VERSION)
 ```
 
 ---
@@ -343,11 +343,13 @@ GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-m
 All service Makefiles **MUST** define these version variables:
 
 ```makefile
-BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GIT_SHA    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-GIT_DIRTY  ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
-VERSION    ?= $(GIT_SHA)$(GIT_DIRTY)
+BUILD_DATE  ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+GIT_SHA     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY   ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
+APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 ```
+
+> **Important:** Use `APP_VERSION` (not `VERSION`) for the application version variable. The `ubi9/go-toolset` base image sets `ENV VERSION=<go-toolchain-version>`, which overrides a Makefile `VERSION ?=` inside container builds. See [Container Image Standard: APP_VERSION Convention](container-image-standard.md#app_version-convention) for details.
 
 These values are embedded into binaries via `-ldflags` and passed as `--build-arg` to container builds so that every artifact is traceable back to its source commit.
 
@@ -360,7 +362,7 @@ All service Makefiles **MUST** define standard Go build flags for reproducible, 
 ```makefile
 GOFLAGS ?= -trimpath
 LDFLAGS := -s -w \
-           -X main.version=$(VERSION) \
+           -X main.version=$(APP_VERSION) \
            -X main.commit=$(GIT_SHA) \
            -X main.date=$(BUILD_DATE)
 ```
@@ -396,7 +398,7 @@ Repositories that produce container images **MUST** pass version build args and 
 PLATFORM       ?= linux/amd64
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
 IMAGE_NAME     ?= my-service
-IMAGE_TAG      ?= $(VERSION)
+IMAGE_TAG      ?= $(APP_VERSION)
 
 .PHONY: image
 image: check-container-tool ## Build container image
@@ -405,7 +407,7 @@ image: check-container-tool ## Build container image
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
 .PHONY: image-push
@@ -434,7 +436,7 @@ endif
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 ```
