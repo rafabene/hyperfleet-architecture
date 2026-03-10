@@ -590,7 +590,7 @@ Where `<cutoff_timestamp>` is `now - max_age_ready` (e.g., 30 minutes ago).
 
 Resources without a `Ready` condition (e.g., newly created resources that have not yet received any adapter status report) are not returned by either selective query. Implementations should add a periodic full-scan fallback to catch these cases (see Decision Engine note below).
 
-This approach reduces API load significantly at scale since most resources will be in a `Ready=True` state and only a small subset will be stale at any given poll cycle.
+This approach reduces the result set size returned per poll cycle. In steady state, most resources are `Ready=True` with a recent `last_updated_time`, so neither query returns them. For example, with N=10,000 managed resources where 50 are `Ready=False` and 200 have a stale `last_updated_time` (older than `max_age_ready`), the two selective queries return ~250 rows total instead of 10,000 — a ~97% reduction in rows fetched and processed per poll cycle. The number of API calls per resource type remains constant at 2 regardless of fleet size.
 
 **Supported API Search Fields for Conditions**:
 
