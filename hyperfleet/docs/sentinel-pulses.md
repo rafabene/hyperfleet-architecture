@@ -36,14 +36,12 @@ Sentinel will publish messages whenever:
 
 ### Selective Querying (Implemented)
 
-To avoid fetching ALL resources every poll cycle, the API supports condition-based search queries that allow Sentinel to make three targeted API calls:
+To avoid fetching ALL resources every poll cycle, the API supports condition-based search queries that allow Sentinel to make two targeted API calls:
 
 1. **Not-ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='False'`
 2. **Stale ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '<cutoff>'`
-3. **Missing Ready condition** (bootstrap/migration edge case): `GET /api/hyperfleet/v1/{resourceType}?search=NOT EXISTS(status.conditions.Ready)`
-   - Catches newly created resources that have not yet received any adapter status report, or resources migrated from an older schema that lack a `Ready` condition entirely.
 
-Where `<cutoff>` is `now - max_age_ready`. This reduces API and database load at scale by only fetching resources that actually need reconciliation events.
+Where `<cutoff>` is `now - max_age_ready`. Resources without a `Ready` condition (e.g., newly created or migrated resources) are covered by the periodic full-scan fallback. This reduces API and database load at scale by only fetching resources that actually need reconciliation events.
 
 The API supports the following condition subfields for comparison queries:
 - `status.conditions.<Type>.last_updated_time` — TIMESTAMPTZ comparison
