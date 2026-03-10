@@ -30,6 +30,23 @@ quay.io/openshift-hyperfleet/{component}:latest   # Not recommended for producti
 
 **Key principle:** Semver tags are applied once at release time to an already-existing SHA-tagged image. This preserves immutability - you never have multiple different images tagged with the same semver.
 
+### Dev Image Builds
+
+Dev images built via `make image-dev` **must** use a hardcoded version of `0.0.0-dev` rather than deriving the version from `git describe --tags`. This ensures:
+
+- Dev images are clearly distinguishable from release builds
+- No misleading release version strings are baked into dev binaries
+- Consistent versioning across all developer environments regardless of local git tag state
+
+**Implementation:** The `image-dev` Makefile target must pass `--build-arg APP_VERSION=0.0.0-dev` instead of `--build-arg APP_VERSION=$(APP_VERSION)`.
+
+**Dev image tag format:**
+```
+quay.io/{user}/{component}:dev-{short-sha}    # Dev image (personal registry)
+```
+
+This convention applies to all HyperFleet components (API, Sentinel, Adapters).
+
 **Image tag immutability:**
 - **Once published, semantic version and git SHA tags are IMMUTABLE**
 - `quay.io/openshift-hyperfleet/api:1.2.3` never changes after publication
