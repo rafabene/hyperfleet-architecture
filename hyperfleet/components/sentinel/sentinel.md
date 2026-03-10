@@ -588,7 +588,7 @@ GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND 
 
 Where `<cutoff_timestamp>` is `now - max_age_ready` (e.g., 30 minutes ago).
 
-Resources without a `Ready` condition (e.g., newly created resources that have not yet received any adapter status report) are covered by the periodic full-scan fallback (see Decision Engine note below).
+Resources without a `Ready` condition (e.g., newly created resources that have not yet received any adapter status report) are not returned by either selective query. Implementations should add a periodic full-scan fallback to catch these cases (see Decision Engine note below).
 
 This approach reduces API load significantly at scale since most resources will be in a `Ready=True` state and only a small subset will be stale at any given poll cycle.
 

@@ -41,7 +41,7 @@ To avoid fetching ALL resources every poll cycle, the API supports condition-bas
 1. **Not-ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='False'`
 2. **Stale ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '<cutoff>'`
 
-Where `<cutoff>` is `now - max_age_ready`. Resources without a `Ready` condition (e.g., newly created or migrated resources) are covered by the periodic full-scan fallback. This reduces API and database load at scale by only fetching resources that actually need reconciliation events.
+Where `<cutoff>` is `now - max_age_ready`. Resources without a `Ready` condition (e.g., newly created or migrated resources) are not returned by either selective query. Implementations should add a periodic full-scan fallback (e.g., once every N poll cycles) to catch these cases. This reduces API and database load at scale by only fetching resources that actually need reconciliation events.
 
 The API supports the following condition subfields for comparison queries:
 - `status.conditions.<Type>.last_updated_time` — TIMESTAMPTZ comparison
