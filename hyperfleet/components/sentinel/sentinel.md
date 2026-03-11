@@ -565,50 +565,12 @@ data:
 
 ### 2. Resource Watcher
 
-**Responsibility**: Fetch resources from HyperFleet API with selective querying based on condition status and staleness
+**Responsibility**: Fetch resources from HyperFleet API that need reconciliation
 
 **Key Functions**:
 - `FetchResources(ctx, resourceType, selector)` - Fetch resources matching label selector and condition criteria
 
-**Selective Querying Strategy**:
-
-Instead of fetching ALL resources on every poll cycle, the Resource Watcher makes targeted API calls to fetch only resources that need attention:
-
-1. **Not-ready resources** (need frequent polling):
-
-```text
-GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='False'
-```
-
-2. **Stale ready resources** (ready but haven't been refreshed within the max age interval):
-
-```text
-GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '<cutoff_timestamp>'
-```
-
-Where `<cutoff_timestamp>` is `now - max_age_ready` (e.g., 30 minutes ago).
-
-Resources without a `Ready` condition (e.g., newly created resources that have not yet received any adapter status report) are not returned by either selective query. Implementations should add a periodic full-scan fallback to catch these cases (see Decision Engine note below).
-
-This approach reduces the result set size returned per poll cycle. In steady state, most resources are `Ready=True` with a recent `last_updated_time`, so neither query returns them. For example, with N=10,000 managed resources where 50 are `Ready=False` and 200 have a stale `last_updated_time` (older than `max_age_ready`), the two selective queries return ~250 rows total instead of 10,000 — a ~97% reduction in rows fetched and processed per poll cycle. The number of API calls per resource type remains constant at 2 regardless of fleet size.
-
-**Supported API Search Fields for Conditions**:
-
-- `status.conditions.<Type>` - Condition status (`True`, `False`). Examples:
-  - `status.conditions.Ready='True'`
-  - `status.conditions.Available='False'`
-- `status.conditions.<Type>.<Subfield>` - Condition subfield values with comparison operators (`=`, `!=`, `<`, `<=`, `>`, `>=`):
-  - `status.conditions.Ready.last_updated_time < '<timestamp>'` - Filter by last update time
-  - `status.conditions.Ready.last_transition_time > '<timestamp>'` - Filter by last transition time
-  - `status.conditions.Ready.observed_generation < 5` - Filter by observed generation
-
-**Implementation Requirements**:
-- Use the HyperFleet API `search` query parameter with condition-based queries
-- Combine label selectors with condition queries using `AND` when both are specified
-- Handle empty result sets gracefully (no resources need attention)
-- Return list of resource objects with status conditions (Ready, Available, with timestamps)
-- Handle API errors and timeouts gracefully
-- Parse status conditions including `last_updated_time` from adapter status reports
+The Resource Watcher uses the API's condition-based search to selectively query only resources that need attention (not-ready or stale), rather than fetching all resources on every poll cycle. See the API and Sentinel component documentation for query details.
 
 ### 3. Decision Engine
 
@@ -642,12 +604,6 @@ This approach reduces the result set size returned per poll cycle. In steady sta
 - Use `resource.generation` and `resource.status.conditions.Ready.observed_generation` for spec change detection
 - Use `status.conditions.Ready.last_updated_time` from adapter status updates (NOT `last_transition_time`) for max age calculations
 - Clear logging of decision reasoning (which condition triggered the event)
-
-> **Note**: With selective querying (see Resource Watcher above), the Decision Engine only receives resources that already need attention — not-ready resources and stale ready resources. This shifts the primary filtering responsibility to the API query layer, making the Decision Engine's per-resource evaluation more efficient.
->
-> **API Invariant for Generation-First Correctness**: For selective querying to work correctly with the Decision Engine's generation-mismatch check, the API **must atomically set `Ready=False`** when a user updates the resource spec (which increments `generation`). This ensures the resource appears in the "Not-ready resources" query on the next Sentinel poll, so the Decision Engine observes the new generation and publishes a reconciliation event immediately. Without this atomic flip, a resource with a recent `last_updated_time` and `Ready=True` would not be returned by either selective query, causing a delayed generation-mismatch detection.
->
-> As a defense-in-depth measure, implementations may also add a **periodic full-scan fallback** (e.g., once every N poll cycles) that fetches all resources regardless of condition status, to catch any generation-mismatch cases that selective querying might miss — for example, due to race conditions or API bugs that fail to flip `Ready=False`.
 
 ### 4. Message Publisher
 

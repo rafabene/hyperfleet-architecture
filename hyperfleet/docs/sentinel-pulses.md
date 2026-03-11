@@ -34,20 +34,6 @@ Sentinel will publish messages whenever:
   - For `Ready==False` clusters/nodepools, TTL=10sec
   - For `Ready==True` clusters/nodepools, TTL=30min
 
-### Selective Querying (Implemented)
-
-To avoid fetching ALL resources every poll cycle, the API supports condition-based search queries that allow Sentinel to make two targeted API calls:
-
-1. **Not-ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='False'`
-2. **Stale ready resources**: `GET /api/hyperfleet/v1/{resourceType}?search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '<cutoff>'`
-
-Where `<cutoff>` is `now - max_age_ready`. Resources without a `Ready` condition (e.g., newly created or migrated resources) are not returned by either selective query. Implementations should add a periodic full-scan fallback (e.g., once every N poll cycles) to catch these cases. This reduces API and database load at scale by only fetching resources that actually need reconciliation events.
-
-The API supports the following condition subfields for comparison queries:
-- `status.conditions.<Type>.last_updated_time` — TIMESTAMPTZ comparison
-- `status.conditions.<Type>.last_transition_time` — TIMESTAMPTZ comparison
-- `status.conditions.<Type>.observed_generation` — INTEGER comparison
-
 Adapters performs some actions in their "resources" phase in order to query the state of the resource and then reports to the HyperFleet API with at least 3 mandatory conditions:
 
 - Applied: the work to be done has been started
