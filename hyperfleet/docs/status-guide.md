@@ -2447,7 +2447,8 @@ To poll until an adapter completes:
 
 To verify cluster is fully provisioned:
 1. Fetch cluster: `GET /v1/clusters/{clusterId}`
-2. Check `status.phase === "Ready"`
+2. Check the `Ready` condition in `status.conditions`:
+   - `status.conditions.Ready === "True"` — cluster is ready
 3. Optionally verify each adapter in `status.adapters`:
    - All have `observed_generation === cluster.generation`
    - All have `available === "True"`
