@@ -2,7 +2,7 @@
 
 **Status**: Active
 **Owner**: HyperFleet Team
-**Last Updated**: 2026-01-08
+**Last Updated**: 2026-03-12
 
 ---
 
@@ -21,8 +21,11 @@ repository-name/
 ├── README.md                    # Project overview and getting started (REQUIRED)
 ├── CONTRIBUTING.md              # Development and contribution guidelines (REQUIRED)
 ├── CHANGELOG.md                 # Release history in Keep a Changelog format (REQUIRED)
-├── docs/                        # Detailed documentation directory (OPTIONAL)
-│   ├── configs/                 # Configuration guides and references
+├── docs/                        # Documentation directory (REQUIRED for services, OPTIONAL otherwise)
+│   ├── metrics.md               # Prometheus metrics (REQUIRED for services)
+│   ├── alerts.md                # Alert rules (REQUIRED for services)
+│   ├── runbook.md               # Operational runbook (REQUIRED for services)
+│   ├── configuration.md         # Config reference (REQUIRED for services)
 │   ├── development/             # Development setup and workflows
 │   ├── deployment/              # Deployment guides and procedures
 │   ├── troubleshooting/         # Debugging and troubleshooting guides
@@ -31,11 +34,6 @@ repository-name/
 ```
 
 ### Directory Descriptions
-
-#### `/docs/configs/`
-- Configuration file references and examples
-- Environment-specific configuration guides
-- Configuration validation and troubleshooting
 
 #### `/docs/development/`
 - Local development setup instructions
@@ -50,10 +48,10 @@ repository-name/
 - Monitoring and operational guides
 
 #### `/docs/troubleshooting/`
-- Common issues and solutions
-- Debugging guides and techniques
-- Performance troubleshooting
+- In-depth debugging guides beyond `runbook.md` scope
+- Performance troubleshooting and profiling
 - Log analysis and error resolution
+- For service repos, operational troubleshooting (symptom → cause → fix) belongs in `runbook.md`; use this directory for deeper investigations, development-time debugging, or guides that don't fit the runbook format
 
 #### `/docs/examples/`
 - Usage examples and tutorials
@@ -62,8 +60,55 @@ repository-name/
 - Common use case walkthroughs
 
 ### Notes on Structure
-- **docs/ directory is optional** - only create it if you have substantial documentation beyond README and CONTRIBUTING
+- **docs/ directory is required for services** (repos that expose metrics, health endpoints, or run as long-lived processes) — see [Operational Documentation Structure](#operational-documentation-structure). For non-service repos, only create it if you have substantial documentation beyond README and CONTRIBUTING
 - **Keep it simple** - don't create directories unless you have multiple files to organize
+
+---
+
+## Operational Documentation Structure
+
+Service and component repositories (e.g., `hyperfleet-adapter`, `hyperfleet-api`, `hyperfleet-sentinel`) that expose metrics, serve health endpoints, or run as long-lived services MUST include the following operational documentation files in `docs/`. Each file has a single responsibility and a defined audience.
+
+| Doc File | Audience | Purpose |
+|----------|----------|---------|
+| `metrics.md` | Developers, SREs | **Metric definitions.** All Prometheus metrics with type, labels, descriptions, and example PromQL queries. Canonical source for "what metrics does this component expose". |
+| `alerts.md` | SREs setting up monitoring | **Alert rules.** Recommended Prometheus alert rules with PromQL expressions, severity levels, impact descriptions, and response actions. Links to `metrics.md` for metric definitions — does not redefine them. |
+| `runbook.md` | On-call engineers during incidents | **Operational runbook.** Service overview, health check behavior (under a required `## Health Checks` heading), failure modes (symptom → cause → resolution), recovery procedures, and escalation paths. Canonical location for health endpoint documentation. |
+| `configuration.md` | Operators deploying the service | **Configuration reference.** All config options (YAML fields, CLI flags, environment variables), override precedence, and example configurations per environment. |
+
+### Content Ownership Rules
+
+Each piece of operational content has exactly one canonical location. Other docs MUST cross-reference, not duplicate.
+
+| Content | Canonical Location | Other Docs |
+|---------|-------------------|------------|
+| Metric names, types, labels | `metrics.md` | Link: "See [metrics.md](metrics.md) for definitions" |
+| Health endpoint behavior | `runbook.md` (Health Checks section) | Link: "See [runbook.md#health-checks](runbook.md#health-checks)" |
+| PromQL for alerting | `alerts.md` | Do not duplicate in `metrics.md` |
+| PromQL for "what does this metric look like" | `metrics.md` (Example Queries section) | Do not duplicate in `alerts.md` |
+| Config option defaults and types | `configuration.md` | Reference, do not repeat values |
+
+### Audience Headers
+
+Every operational doc file MUST begin with a one-line audience statement immediately after the title:
+
+```markdown
+# Component Alerts
+
+> **Audience:** SREs setting up monitoring for this component.
+```
+
+### Where Operational Docs Live
+
+Operational documentation belongs in the **component repository** (`docs/`), not in the architecture repository.
+
+| Architecture Repo | Component Repo (`docs/`) |
+|-------------------|--------------------------|
+| Design decisions and rationale | Metric definitions and PromQL |
+| Cross-component interfaces and contracts | Alert rules and monitoring |
+| API specifications and async API contracts | Runbooks and recovery procedures |
+| Standards (metrics naming, health endpoints) | Configuration reference |
+| Component design docs (the "why" and "what") | Deployment and operational guides (the "how") |
 
 ---
 
@@ -118,12 +163,19 @@ Every repository README.md MUST include these sections in order:
 ```
 
 ### 7. Additional Documentation (if docs/ directory exists)
+
+Include only the links that exist in your repository. Service repos MUST include Metrics, Alerts, Runbook, and Configuration.
+
 ```markdown
-- [Configuration](docs/configs/README.md) - Configuration guides and reference
+<!-- Include only links to docs that exist in this repository -->
+- [Metrics](docs/metrics.md) - Prometheus metric definitions and PromQL examples
+- [Alerts](docs/alerts.md) - Recommended alert rules and monitoring queries
+- [Runbook](docs/runbook.md) - Operational runbook for on-call engineers
+- [Configuration](docs/configuration.md) - Configuration reference
 - [Development](docs/development/README.md) - Development setup and workflows
 - [Deployment](docs/deployment/README.md) - Deployment guides and procedures
-- [Examples](docs/examples/README.md) - Usage examples and tutorials
 - [Troubleshooting](docs/troubleshooting/README.md) - Debugging and troubleshooting guides
+- [Examples](docs/examples/README.md) - Usage examples and tutorials
 ```
 
 ### Repository-Specific Sections
@@ -290,6 +342,13 @@ This documentation standard builds upon and references other HyperFleet standard
 ---
 
 ## Changelog
+
+### 2026-03-12 - Operational Documentation Standard
+- Added standard operational docs structure for service repositories (metrics.md, alerts.md, runbook.md, configuration.md)
+- Defined content ownership rules to prevent duplication across docs
+- Added audience header requirement for operational docs
+- Defined architecture repo vs component repo placement guidelines
+- Updated Additional Documentation section with operational doc links
 
 ### 2026-01-08 - Initial Version
 - Created standard for HyperFleet documentation structure
