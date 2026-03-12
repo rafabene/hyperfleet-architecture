@@ -93,10 +93,15 @@ repo-root/
 │   ├── Chart.yaml
 │   ├── values.yaml
 │   └── templates/
-├── docs/                   # Documentation
-│   ├── architecture.md
-│   ├── api.md
-│   └── development.md
+├── docs/                   # Documentation (see documentation standard for details)
+│   ├── metrics.md          # Prometheus metric definitions (services only)
+│   ├── alerts.md           # Alert rules and monitoring (services only)
+│   ├── runbook.md          # Operational runbook (services only)
+│   ├── configuration.md   # Configuration reference (services only)
+│   ├── development/        # Development setup and workflows
+│   ├── deployment/         # Deployment guides and procedures
+│   ├── troubleshooting/    # Debugging and troubleshooting guides
+│   └── examples/           # Usage examples and tutorials
 ├── scripts/                # Helper scripts
 │   ├── setup.sh
 │   └── deploy.sh
@@ -139,7 +144,7 @@ repo-root/
 | `openapi/` | OpenAPI/Swagger specifications | If repo defines APIs via OpenAPI specs | YAML/JSON files, committed to Git |
 | `kustomize/` | Kustomize manifests | If repo uses Kustomize for deployment | Base + overlays structure |
 | `charts/` | Helm charts | If repo uses Helm for deployment | Follows Helm community convention |
-| `docs/` | Additional documentation | If README.md is not sufficient | Markdown files |
+| `docs/` | Documentation (operational, development, deployment) | If README.md is not sufficient for the repo's documentation needs | Service repos: see [documentation standard](../docs/documentation.md) for required operational files. Non-service repos: use for development guides, architecture notes, etc. |
 | `scripts/` | Helper scripts | If repo has automation scripts | Shell, Python, etc. |
 | `test/` | Integration/E2E tests | If unit tests are in `*_test.go` files | Separate from unit tests |
 
