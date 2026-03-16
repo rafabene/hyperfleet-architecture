@@ -92,25 +92,26 @@ While remote clusters could be accessed via kubeconfig, for ARO-HCP and similar 
 
 Infrastructure settings for Maestro connection. This section is **OPTIONAL** - only configure when maestro transport is used in business logic.
 
-> **See full example:** [`../framework/configs/adapter-deployment-config-template.yaml`](../framework/configs/adapter-deployment-config-template.yaml)
+> **See full example:** [`hyperfleet-adapter/charts/examples/maestro/adapter-config.yaml`](https://github.com/openshift-hyperfleet/hyperfleet-adapter/blob/main/charts/examples/maestro/adapter-config.yaml)
 
 #### Business Logic Configuration (adapter-business-logic-template-MVP.yaml)
 
 Per-resource transport configuration with `targetCluster` resolved from captured params.
 
-> **See full example:** [`../framework/configs/adapter-business-logic-template-MVP.yaml`](../framework/configs/adapter-business-logic-template-MVP.yaml)
+> **See full example:** [`hyperfleet-adapter/charts/examples/maestro/adapter-task-config.yaml`](https://github.com/openshift-hyperfleet/hyperfleet-adapter/blob/main/charts/examples/maestro/adapter-task-config.yaml)
 
 #### Key Design Decisions
 
 | Aspect | Location | Notes |
 |--------|----------|-------|
-| Manifest format | Business logic config | Same K8s manifest format for both `direct` and `maestro` transport |
+| Manifest format | Business logic config | Same K8s manifest format for both `kubernetes` and `maestro` transport |
 | Generation management | Both transports | Same behavior: check annotation generation, apply update when generation differs |
-| Maestro server connection | Deployment config | Static infrastructure settings |
-| Authentication (TLS) | Deployment config | Managed via Helm/secrets |
+| Maestro server connection | Deployment config | Static infrastructure settings (grpcServerAddress, httpServerAddress) |
+| Authentication (TLS) | Deployment config | Managed via Helm/secrets, supports insecure mode for development |
 | consumerName/targetCluster | Business logic config | Dynamic, resolved from precondition captures |
-| Transport type per resource | Business logic config | `direct` or `maestro` per resource |
-| sourceId | Deployment config | Unique identifier for CloudEvents routing |
+| Transport client per resource | Business logic config | `client: "kubernetes"` or `client: "maestro"` per resource |
+| sourceId / clientId | Deployment config | Unique identifiers for CloudEvents routing |
+| nestedDiscoveries | Business logic config | Discover sub-resources within ManifestWork for status access |
 
 ### 2. Authentication Configuration
 
@@ -154,7 +155,7 @@ type Resource struct {
 
 // TransportMeta contains transport-specific information
 type TransportMeta struct {
-    Type             string  // "direct" or "maestro"
+    Client           string  // "kubernetes" or "maestro"
     TargetCluster    string  // For Maestro: consumer name
     ManifestWorkName string  // For Maestro: ManifestWork name
 }
@@ -204,12 +205,32 @@ type MaestroClientManager struct {
 
 #### Unified Status Access
 
-The transport layer abstracts status retrieval - business logic accesses `resources.?resourceName.?status...` regardless of transport type. The framework handles:
+The transport layer abstracts status retrieval - business logic accesses resource status regardless of transport type. The framework handles:
 
-- **Direct transport**: Status from K8s API response
-- **Maestro transport**: Status extracted from ManifestWork conditions
+- **Kubernetes transport**: Status from K8s API response directly via `resources.?resourceName.?status...`
+- **Maestro transport**: Status extracted from ManifestWork via `nestedDiscoveries`
 
-> **See full example:** [`../framework/configs/adapter-business-logic-template-MVP.yaml`](../framework/configs/adapter-business-logic-template-MVP.yaml) (post section)
+#### Nested Discoveries for ManifestWork
+
+For Maestro transport, use `nestedDiscoveries` to access sub-resource status within a ManifestWork:
+
+```yaml
+resources:
+  - name: "agentNamespaceManifestWork"
+    transport:
+      client: "maestro"
+    # ...
+    nestedDiscoveries:
+      - name: "mgmtNamespace"
+        discovery:
+          bySelectors:
+            labelSelector:
+              hyperfleet.io/resource-type: "namespace"
+```
+
+Status is then accessed via: `resources.?agentNamespaceManifestWork.mgmtNamespace.?status.?phase.orValue("")`
+
+> **See full example:** [`hyperfleet-adapter/charts/examples/maestro/adapter-task-config.yaml`](https://github.com/openshift-hyperfleet/hyperfleet-adapter/blob/main/charts/examples/maestro/adapter-task-config.yaml) (post section)
 
 #### Reporting Cycle Considerations (Sentinel timer is configurable via deployment)
 - **Pre-Ready (10s polling)**: More frequent status updates during cluster provisioning
@@ -290,7 +311,7 @@ data:
 
 ### Phase 4: Example Implementation & Helm Integration
 1. **Example Adapter**: Implement reference adapter using Maestro transport
-2. **Business Logic Example**: Create sample business logic config with both direct and maestro resources
+2. **Business Logic Example**: Create sample business logic config with maestro resources and nestedDiscoveries
 3. **Helm Charts Update**: Add Maestro configuration options to adapter Helm charts
 4. **Secret Management**: Helm templates for Maestro TLS certificates
 
@@ -384,7 +405,7 @@ Sentinel Event → Adapter → Apply Resources via Maestro → Get Status via Ma
 |---------|-------------|
 | **Simplicity** | Single goroutine per broker subscription, no complex watch management |
 | **Traceability** | All operations tied to Sentinel events, easy to trace full request lifecycle |
-| **Consistency** | Same execution pattern for both direct K8s and Maestro transports |
+| **Consistency** | Same execution pattern for both kubernetes and maestro transports |
 | **Predictable** | No background processes, resource usage scales with Sentinel polling rate |
 
 #### Trade-off
