@@ -32,12 +32,19 @@ The following linters are enabled in the standard configuration:
 
 | Linter | Purpose | Rationale |
 |--------|---------|-----------|
-| `gofmt` | Checks code is formatted | Ensures consistent formatting across all code |
-| `goimports` | Checks import statements | Ensures imports are properly organized and formatted |
 | `misspell` | Finds misspelled words | Improves code readability and professionalism |
 | `lll` | Reports long lines | Maintains readable line lengths (120 chars max) |
 | `revive` | Fast, configurable linter | Catches common style issues and potential bugs |
 | `gocritic` | Diagnostics for bugs, performance, style | Additional checks beyond other linters |
+
+### Formatters
+
+In golangci-lint v2, formatters are a separate top-level section, not part of `linters`:
+
+| Formatter | Purpose | Rationale |
+|-----------|---------|-----------|
+| `gofmt` | Checks code is formatted | Ensures consistent formatting across all code |
+| `goimports` | Checks import statements | Ensures imports are properly organized and formatted |
 
 ### Security
 
@@ -77,13 +84,6 @@ misspell:
   locale: US  # Use US English spelling
 ```
 
-### gofmt
-
-```yaml
-gofmt:
-  simplify: true  # Apply code simplifications
-```
-
 ### lll
 
 ```yaml
@@ -107,13 +107,6 @@ revive:
       disabled: false
 ```
 
-### unused
-
-```yaml
-unused:
-  check-exported: false  # Don't flag unused exported identifiers
-```
-
 ### unparam
 
 ```yaml
@@ -125,38 +118,66 @@ unparam:
 
 ```yaml
 exhaustive:
-  check-generated: false                # Skip generated code
   default-signifies-exhaustive: true    # Allow default case to satisfy exhaustiveness
 ```
 
 This linter ensures all enum values are handled in switch statements. When a new cloud provider or cluster state is added, the linter will flag any switch statements that need updating.
 
+## Formatter Settings
+
+### gofmt
+
+In golangci-lint v2, `gofmt` is configured under the `formatters` top-level section:
+
+```yaml
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true  # Apply code simplifications
+  exclusions:
+    generated: lax
+    paths:
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
+```
+
 ## Standard Exclusions
 
 ### Generated Code
 
-Generated code MUST be excluded from linting (see [Generated Code Policy](generated-code-policy.md)). Use the `exclude-dirs` setting:
+Generated code MUST be excluded from linting (see [Generated Code Policy](generated-code-policy.md)). Use the `linters.exclusions.paths` setting:
 
 ```yaml
-issues:
-  exclude-dirs:
-    - pkg/api/openapi      # OpenAPI generated code
-    - data/generated       # Other generated files
+linters:
+  exclusions:
+    generated: lax
+    paths:
+      - pkg/api/openapi      # OpenAPI generated code
+      - data/generated       # Other generated files
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
 ```
 
-Each repository should add its specific generated code directories to this list.
+Each repository should add its specific generated code directories to this list. Path patterns use the `(/|$)` suffix to correctly match files nested inside those directories.
 
 ### Test Files
 
-Some linters are relaxed for test files to reduce noise:
+Some linters are relaxed for test files to reduce noise. In v2, these are configured under `linters.exclusions.rules`:
 
 ```yaml
-exclude-rules:
-  - path: _test\.go
-    linters:
-      - gosec      # Security checks less critical in tests
-      - errcheck   # Error checking less strict in tests
-      - unparam    # Unused params common in test helpers
+linters:
+  exclusions:
+    rules:
+      - linters:
+          - gosec      # Security checks less critical in tests
+          - errcheck   # Error checking less strict in tests
+          - unparam    # Unused params common in test helpers
+        path: _test\.go
 ```
 
 ## Performance Settings
@@ -173,9 +194,8 @@ run:
 ```yaml
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
+    text:
+      path: stdout
 ```
 
 ## Repository-Specific Overrides
@@ -184,8 +204,8 @@ Repositories MAY add additional exclusions or settings for legitimate reasons:
 
 ### Allowed Overrides
 
-- Additional `exclude-dirs` for repository-specific generated code
-- Additional `exclude-rules` for framework-specific patterns
+- Additional `linters.exclusions.paths` for repository-specific generated code
+- Additional `linters.exclusions.rules` for framework-specific patterns
 - Enabling additional linters beyond the baseline
 
 ### Not Allowed
@@ -199,13 +219,14 @@ Repositories MAY add additional exclusions or settings for legitimate reasons:
 Any overrides MUST be documented with a comment explaining the rationale:
 
 ```yaml
-issues:
-  exclude-rules:
-    # OVERRIDE: Framework requires specific pattern that triggers false positive
-    - path: pkg/framework/
-      linters:
-        - revive
-      text: "unexported-return"
+linters:
+  exclusions:
+    rules:
+      # OVERRIDE: Framework requires specific pattern that triggers false positive
+      - linters:
+          - revive
+        path: pkg/framework/
+        text: "unexported-return"
 ```
 
 ## CI Integration
@@ -244,7 +265,7 @@ To adopt this standard in an existing repository:
 
 1. Install golangci-lint via bingo: `bingo get golangci-lint@v2`
 2. Copy the reference [.golangci.yml](./golangci.yml) to your repository root
-3. Add any repository-specific generated code directories to `exclude-dirs`
+3. Add any repository-specific generated code directories to `linters.exclusions.paths`
 4. Run `make lint` to identify existing issues
 5. Create a tracking ticket for fixing existing violations (separate from adoption)
 6. Enable linting in CI pipeline

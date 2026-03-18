@@ -14,49 +14,6 @@ run:
   tests: true
   modules-download-mode: readonly
 
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-
-  govet:
-    enable-all: true
-
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-
-  misspell:
-    locale: US
-
-  lll:
-    line-length: 120
-
-  gofmt:
-    simplify: true
-
-  revive:
-    rules:
-      - name: exported
-        severity: warning
-        disabled: true
-      - name: unexported-return
-        severity: warning
-        disabled: false
-      - name: var-naming
-        severity: warning
-        disabled: false
-
-  unused:
-    check-exported: false
-
-  unparam:
-    check-exported: false
-
-  exhaustive:
-    check-generated: false
-    default-signifies-exhaustive: true
-
 linters:
   enable:
     # Code Quality
@@ -78,31 +35,75 @@ linters:
 
     # Security
     - gosec
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: US
+    lll:
+      line-length: 120
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          disabled: true
+        - name: unexported-return
+          severity: warning
+          disabled: false
+        - name: var-naming
+          severity: warning
+          disabled: false
+    unparam:
+      check-exported: false
+    exhaustive:
+      default-signifies-exhaustive: true
+  exclusions:
+    generated: lax
+    rules:
+      # Relaxed rules for test files
+      - linters:
+          - gosec
+          - errcheck
+          - unparam
+        path: _test\.go
+      # Exclude generated code (backup pattern if exclusion paths don't catch all)
+      - linters:
+          - all
+        path: pkg/api/openapi/
+    # Add repository-specific generated code directories here
+    paths:
+      - pkg/api/openapi
+      - data/generated
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
 
 issues:
-  # Add repository-specific generated code directories here
-  exclude-dirs:
-    - pkg/api/openapi
-    - data/generated
-
-  exclude-rules:
-    # Relaxed rules for test files
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-        - unparam
-
-    # Exclude generated code (backup pattern if exclude-dirs doesn't catch all)
-    - path: pkg/api/openapi/
-      linters:
-        - all
-
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false
 
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
+
 output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
+  formats:
+    text:
+      path: stdout
