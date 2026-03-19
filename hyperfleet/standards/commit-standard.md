@@ -67,7 +67,23 @@ When there is no associated JIRA ticket:
 
 The **header** is mandatory.
 
-**Character limit:** Keep all lines to a maximum of 72 characters.
+### Character Limits
+
+**Subject line:** The `<type>: <subject>` portion (excluding JIRA ticket prefix) MUST NOT exceed 72 characters.
+
+**Body:** No hard line length limit. Use natural paragraph formatting with complete sentences.
+
+**Examples:**
+
+Good - `<type>: <subject>` is less than 72 characters:
+```
+HYPERFLEET-123 - feat: add comprehensive cluster validation with adapters
+```
+
+Bad - `<type>: <subject>` exceeds 72 characters:
+```
+HYPERFLEET-123 - feat: add comprehensive cluster validation logic for all cloud providers globally
+```
 
 ---
 
