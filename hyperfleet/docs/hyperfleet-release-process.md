@@ -1,17 +1,20 @@
-# HyperFleet Release Process - Spike Report
+# HyperFleet Release Process
 
-**Document Status:** Draft
-**Date:** 2026-01-29
-**Last Updated:** 2026-02-10
+**Status**: Draft
+**Owner**: HyperFleet Team
+**Last Updated**: 2026-03-19
 
 ---
 
 ## Executive Summary
 
-This spike report defines a comprehensive release process for HyperFleet (API service, Sentinel, and Adapter Framework). The proposed process balances agility with stability, leveraging existing Prow infrastructure while establishing clear gates, workflows, and artifacts for production releases.
+This report defines a comprehensive release process for HyperFleet (API Service, Sentinel, and Adapter Framework). The proposed process balances agility with stability, leveraging existing Prow infrastructure while establishing clear gates, workflows, and artifacts for production releases.
 
 **Key Recommendations:**
 - **Hybrid release cadence:** Regular 3-week (1-sprint) releases for quality + ad-hoc releases for urgent requirements
+  - Weeks 1-2: Active development
+  - End of Week 2: Release Readiness Review (go/no-go)
+  - Week 3 (5 working days): Feature Freeze → Stabilization → Code Freeze → GA Release
 - Git branching strategy with release branches and cherry-pick workflow
 - **Independent component versioning:** Each component (API Service, Sentinel, Adapter Framework) maintains its own semantic version
 - Validated HyperFleet releases defined by compatibility-tested component version combinations
@@ -22,52 +25,455 @@ This spike report defines a comprehensive release process for HyperFleet (API se
 
 ---
 
-## 1. Release Entry Criteria
+## 1. Release Owner Checklist
+
+This checklist guides the Release Owner through each phase of the release process. Use it to track progress, ensure all criteria are met, and communicate status to stakeholders.
+
+### 1.1 Stakeholder Communication
+
+**Key Stakeholders:**
+- Development Team
+- QE Owner
+- CI Owner (Prow/Konflux)
+- Tech Lead
+- Manager
+
+**Primary Communication Channels:**
+- Slack: `#hyperfleet-releases` (create if not exists)
+- GitHub: Release tracking issue (see Appendix C)
+
+---
+
+### 1.2 Phase 1: Pre-Release Planning (End of Week 2)
+
+**Timing:** End of Week 2, 1-2 days before Feature Freeze
+
+This is your **Release Readiness Review** - assess whether you're ready to cut the release branch.
+
+#### Setup
+- [ ] Create release tracking issue using template (Appendix C)
+- [ ] Assign yourself as Release Owner in tracking issue
+- [ ] Identify target HyperFleet Release number (e.g., Release 1.5)
+- [ ] Determine component versions and branching strategy (see [Versioning Strategy](#35-versioning-strategy))
+
+#### Feature Completeness Assessment
+- [ ] Review all planned features for milestone - which are code-complete? (see [Feature Completeness Criteria](#21-feature-completeness-criteria))
+- [ ] Identify features that won't make this release (defer to next)
+- [ ] Feature toggles in place for incomplete features if applicable
+- [ ] Feature documentation drafted for completed features
+- [ ] No CRITICAL/HIGH security vulnerabilities unaddressed (once konflux job is supported)
+
+#### Documentation Readiness
+- [ ] Release notes draft exists with completed features
+- [ ] Known issues documented
+- [ ] Component documentation up-to-date:
+  - [ ] API Service documentation 
+  - [ ] Sentinel documentation 
+  - [ ] Adapter Framework documentation 
+
+#### Stakeholder Communication
+- [ ] **Slack**: Announce release readiness status to `#hyperfleet-releases`
+  ```
+  📅 HyperFleet Release X.Y - Readiness Review
+  - Feature Freeze: [DATE] (Week 3, Day 1)
+  - Target GA: [DATE] (Week 3, Day 5)
+  - Release Owner: @your-name
+  - Tracking Issue: [LINK]
+  - Status: [Ready/At Risk - explain]
+  ```
+- [ ] **Tech Lead**: Confirm feature scope
+- [ ] **CI Owner**: Verify Prow jobs are stable on main branch
+- [ ] **QE Owner**: Confirm testing capacity for Week 3
+
+#### Go/No-Go Decision
+- [ ] **If READY**: Proceed to Feature Freeze on Week 3, Day 1
+- [ ] **If AT RISK**:
+  - [ ] Identify specific blockers and estimated resolution time
+  - [ ] Raise risk to **Manager** and **Tech Lead** for approval
+  - [ ] Options: Defer release by X days, or descope features and proceed
+
+**Exit Criteria:** All features complete, documentation drafted, CI green, stakeholder alignment → Proceed to Feature Freeze
+
+---
+
+### 1.3 Phase 2: Feature Freeze (Week 3, Day 1)
+
+**Timing:** Start of Week 3 in sprint
+
+#### Branch Creation
+For each component with changes, create release branch (see [Branching Model](#31-branching-model)):
+
+```bash
+# Example: API Service getting v1.5.0
+cd openshift-hyperfleet/hyperfleet-api
+git checkout main && git pull origin main
+git checkout -b release-1.5
+git push origin release-1.5
+```
+
+- [ ] **hyperfleet-api**: Create `release-X.Y` branch (if version bump)
+- [ ] **hyperfleet-sentinel**: Create `release-X.Y` branch (if version bump)
+- [ ] **hyperfleet-adapter**: Create `release-X.Y` branch (if version bump)
+
+For supporting repos (using HyperFleet release version, e.g., `release-1.5`):
+- [ ] **hyperfleet-e2e**: Create `release-X.Y` branch
+- [ ] **hyperfleet-infra**: Create `release-X.Y` branch and update charts, images to correct component versions
+- [ ] **hyperfleet-release**: Create `release-X.Y` branch
+
+#### Configure Prow Jobs (see [Prow Job Configuration](#40-prow-job-configuration-for-release-branches))
+**Note:** Must be done BEFORE tagging RC1, as RC1 builds depend on these jobs.
+
+- [ ] **CI Owner**: Copy build jobs for release branches
+- [ ] **CI Owner**: Copy nightly E2E jobs for release branch testing
+- [ ] Verify release branch Prow jobs are configured correctly
+
+#### Cut First Release Candidate
+For each component, tag RC1 (see [Code Freeze Mechanics](#33-code-freeze-mechanics)):
+
+```bash
+# Example: API Service v1.5.0-rc.1
+git checkout release-1.5
+git tag -a v1.5.0-rc.1 -m "API Service RC1 for v1.5.0"
+git push origin v1.5.0-rc.1
+```
+
+- [ ] Tag RC1 for each component: `vX.Y.0-rc.1`
+- [ ] **Verify Prow builds container images for all RC1 tags** (wait for builds to complete)
+- [ ] Confirm all RC1 images pushed to `quay.io/openshift-hyperfleet/hyperfleet-*`
+
+#### Stakeholder Communication
+- [ ] **Slack**: Announce Feature Freeze
+  ```
+  🔒 Feature Freeze - HyperFleet Release X.Y
+  - Release branches created
+  - RC1 tagged: [component versions]
+  - Main branch OPEN for X.Y+1 development
+  - Bug fixes must be cherry-picked to release branch
+  ```
+- [ ] **Developers**: Notify team that `main` branch reopens for X.Y+1 development
+- [ ] **QE Owner**: Notify RC1 ready for testing, share component versions
+
+**Exit Criteria:** Release branches created, RC1 tagged, Prow jobs configured → Begin Stabilization
+
+---
+
+### 1.4 Phase 3: Stabilization & Testing (Week 3, Days 1-3)
+
+**Timing:** Days 1-3 of Week 3 (3 working days)
+
+#### Testing Execution (see [Testing & Validation](#41-testing--validation-mandatory))
+- [ ] **QE Owner**: Unit tests passing on all release branches
+- [ ] **QE Owner**: Integration tests passing
+- [ ] **QE Owner**: E2E test suite execution started
+- [ ] **QE Owner**: Cross-component compatibility validation
+- [ ] **QE Owner**: Backward compatibility testing (N-1 version)
+- [ ] **QE Owner**: Performance benchmarks (no regression > 10%) (once performance testing is supported)
+
+#### Bug Triage (see [Bug Triage Process](#51-bug-triage-process))
+Monitor bugs reported during stabilization:
+
+- [ ] Review all new bugs daily with severity assignment
+- [ ] **Blocker/Critical bugs**: Assign developer immediately (see [Decision Framework](#52-decision-framework))
+  - [ ] Developer fixes in `main` first
+  - [ ] Cherry-pick to release branch
+  - [ ] Cut new RC if needed (e.g., `vX.Y.0-rc.2`)
+  - [ ] Re-run affected tests
+- [ ] **Major bugs**: Evaluate fix or defer decision (see [Decision Framework](#52-decision-framework))
+- [ ] **Normal/Minor bugs**: Defer to next release
+
+#### Cherry-Pick Process (see [Code Freeze Mechanics](#33-code-freeze-mechanics))
+For each bug fix needed in release:
+
+```bash
+# 1. Fix merged to main (PR #123)
+# 2. Cherry-pick to release branch
+git checkout release-X.Y
+git cherry-pick <commit-sha>
+git push origin release-X.Y
+# 3. Create PR to release branch for review
+```
+
+- [ ] All cherry-pick PRs have Release Owner approval
+- [ ] All cherry-pick PRs include justification and risk assessment
+
+#### Stakeholder Communication
+- [ ] **Daily**: Update release tracking issue with bug triage status
+- [ ] **Daily Slack Update** (`#hyperfleet-releases`): Post daily status update
+  ```
+  📊 Daily Status - HyperFleet Release X.Y (Day N of Stabilization)
+  - Testing Progress: [E2E: 80% complete, Integration: PASSING]
+  - Bugs Found: [X Blocker, Y Critical, Z Major]
+  - Risks: [Any delays, blockers, or concerns]
+  - ETA: [On track / At risk - explain]
+  ```
+- [ ] **When new RC cut**: Notify QE Owner that RC is ready for testing, share updated component versions
+- [ ] **Tech Lead**: Review major bugs and defer/fix decisions
+
+**Exit Criteria:** E2E tests passing, no Blocker/Critical/Major bugs → Enter Code Freeze
+
+---
+
+### 1.5 Phase 4: Code Freeze (Week 3, Days 4-5)
+
+**Timing:** Days 4-5 of Week 3 (last 2 working days before GA)
+
+#### Code Freeze Gate
+- [ ] **Mandatory**: No open Blocker/Critical/Major bugs (see [Bug Severity Gates](#42-bug-severity-gates-mandatory))
+- [ ] **Mandatory**: E2E tests passing
+- [ ] **Mandatory**: Cross-component compatibility validated
+
+#### Stakeholder Communication
+- [ ] **Slack**: Announce Code Freeze
+  ```
+  ❄️ Code Freeze - HyperFleet Release X.Y
+  - Only CRITICAL fixes allowed
+  - All PRs require Release Owner approval
+  - GA target: [DATE]
+  - Outstanding items: [list or "none"]
+  ```
+- [ ] **When new RC cut**: Notify QE Owner that RC is ready for testing, share updated component versions
+
+#### Final Validation (see [Release Readiness Criteria](#4-release-readiness-criteria))
+- [ ] All unit/integration tests passing (see [Testing & Validation](#41-testing--validation-mandatory))
+- [ ] E2E critical user workflows validated
+- [ ] Performance benchmarks within acceptable bounds (once performance testing is supported)
+- [ ] Installation/upgrade path tested
+- [ ] Vulnerability scanning: No CRITICAL/HIGH CVEs (see [Security & Compliance](#45-security--compliance))
+
+#### Documentation Finalization (see [Documentation Completeness](#43-documentation-completeness-mandatory))
+- [ ] Release notes finalized (see [Release Notes](#721-release-notes))
+  - [ ] What's New section complete
+  - [ ] Breaking changes documented
+  - [ ] Known issues listed
+  - [ ] Compatibility matrix complete
+- [ ] Upgrade guide finalized (see [Upgrade/Installation Guide](#722-upgradeinstallation-guide))
+- [ ] Component documentation updated (see [Component Documentation](#723-component-documentation))
+  - [ ] API Service documentation 
+  - [ ] Sentinel documentation 
+  - [ ] Adapter Framework documentation 
+- [ ] CHANGELOG.md updated per component (see [Change Log](#724-change-log))
+
+#### Critical Fix Approval (see [Post-Code Freeze PR Approval](#53-post-code-freeze-pr-approval-process))
+If critical fix needed during code freeze:
+- [ ] PR includes severity justification
+- [ ] PR includes risk assessment
+- [ ] Minimum 2 approvals (reviewer + Release Owner)
+- [ ] Prow tests green
+- [ ] Cut new RC: `vX.Y.0-rc.N`
+- [ ] Re-run full test suite
+
+#### Final Stakeholder Sign-Off
+- [ ] **QE Owner**: Confirm final test results
+- [ ] **CI Owner**: Confirm Prow pipeline health
+- [ ] **Tech Lead**: Review and approve GA readiness
+- [ ] **Pillar Teams**: Notify for integration validation (if applicable)
+
+**Exit Criteria:** All release readiness criteria met (see [Release Readiness Criteria](#4-release-readiness-criteria)) → Proceed to GA Release
+
+---
+
+### 1.6 Phase 5: GA Release (Week 3, End of Day 5)
+
+**Timing:** End of Day 5, Week 3 (end of sprint)
+
+#### Tag GA Release
+For each component, tag final version (see [Practical Example](#352-practical-example-hyperfleet-release-15)):
+
+```bash
+# Example: API Service v1.5.0 GA
+cd openshift-hyperfleet/hyperfleet-api
+git checkout release-1.5
+git tag -a v1.5.0 -m "API Service v1.5.0 - GitOps integration"
+git push origin v1.5.0
+```
+
+- [ ] Tag GA for each component: `vX.Y.Z`
+- [ ] Verify Prow builds and pushes container images to registry
+
+#### Release Artifacts (see [Release Artifacts](#7-release-artifacts-and-deliverables))
+- [ ] Container images published to `quay.io/openshift-hyperfleet/hyperfleet-*`
+- [ ] Helm charts packaged and tested
+- [ ] Git tags created with correct versions
+- [ ] Release notes published in `hyperfleet-release` repo
+- [ ] Compatibility matrix documented
+
+#### Publish GitHub Release
+- [ ] In `hyperfleet-release` repo `release-X.Y` branch (created at Feature Freeze), finalize release notes and compatibility matrix
+- [ ] Create GitHub Release entry with title "HyperFleet Release X.Y"
+- [ ] Release notes body: Include what's new, breaking changes, known issues, and full compatibility matrix
+- [ ] Attach artifacts (if applicable)
+
+#### Stakeholder Communication
+- [ ] **Slack**: Announce GA Release
+  ```
+  🚀 HyperFleet Release X.Y - GA
+  - hyperfleet-api: vX.Y.Z
+  - hyperfleet-sentinel: vX.Y.Z
+  - hyperfleet-adapter: vX.Y.Z
+  - Release Notes: [LINK]
+  - Container Images: quay.io/openshift-hyperfleet/hyperfleet-*
+  ```
+- [ ] **Developers**: Notify release is complete
+- [ ] **Offering Team**: Notify for GCP integration deployment
+- [ ] **Pillar Teams**: Share release notes and upgrade instructions
+
+**Exit Criteria:** All artifacts published, stakeholders notified → Enter Post-Release
+
+---
+
+### 1.7 Phase 6: Post-Release (Week 4+)
+
+**Timing:** Immediately after GA
+
+#### Immediate Actions (Day 1)
+- [ ] Monitor nightly Prow jobs on release branch
+- [ ] Monitor for critical bugs reported
+- [ ] Update release tracking issue to "Completed"
+
+#### Retrospective (Within 1 week) if required
+- [ ] Schedule retrospective with team (see [Conduct Retrospectives and Identify Improvements](#921-conduct-retrospectives-and-identify-improvements))
+- [ ] Collect metrics:
+  - [ ] Code freeze duration
+  - [ ] Number of RCs cut
+  - [ ] Bugs found post-Feature Freeze
+  - [ ] On-time delivery (yes/no)
+- [ ] Document lessons learned
+- [ ] Update release process if needed
+
+#### Patch Release Monitoring (see [Release Branch Maintenance](#34-release-branch-maintenance))
+- [ ] Monitor nightly Prow E2E jobs on `release-X.Y` branch (runs until EOL at 6 months)
+- [ ] Investigate and address any nightly test failures to detect regressions early
+- [ ] Track bugs for potential patch releases
+- [ ] Blocker/Critical bugs → Hotfix within 48 hours (see [Hotfix Workflow](#54-hotfix-workflow-post-ga))
+- [ ] Major bugs → Patch release within 1 week
+- [ ] Disable nightly jobs when release reaches EOL
+
+#### Stakeholder Communication if required
+- [ ] **Slack**: Share retrospective findings
+- [ ] **Tech Lead**: Discuss process improvements
+
+---
+
+### 1.8 Ad-Hoc Release Process
+
+When urgent release needed outside regular cadence:
+
+#### Request Evaluation
+- [ ] Create ad-hoc release request using template (Appendix D)
+- [ ] Evaluate justification: Why can't this wait?
+- [ ] Assess risk level and blast radius
+- [ ] Determine if Full HyperFleet Release or Single Component Patch
+
+#### Approval
+- [ ] Get Tech Lead approval
+- [ ] Get Manager approval
+- [ ] Document approval and conditions in request issue
+
+#### Execution (3-5 days timeline)
+- [ ] Follow condensed testing plan (unit, integration, E2E for affected components)
+- [ ] Cut RC and validate
+- [ ] Tag GA release
+- [ ] Notify stakeholders 48 hours in advance minimum
+- [ ] Monitor post-release for 24 hours
+
+---
+
+### 1.9 Emergency Hotfix Process (Post-GA)
+
+For critical bugs discovered after GA:
+
+#### Severity Assessment
+- [ ] Confirm severity: Blocker or Critical only
+- [ ] Identify affected component(s)
+- [ ] Estimate impact and timeline
+
+#### Hotfix Execution (see [Hotfix Workflow](#54-hotfix-workflow-post-ga))
+```bash
+# Create hotfix branch from GA tag (previous patch version)
+git checkout -b hotfix-X.Y.Z vX.Y.(Z-1)
+# Apply fix, test, commit
+git commit -m "Fix critical bug"
+# Merge to release branch
+git checkout release-X.Y
+git merge --no-ff hotfix-X.Y.Z
+# Tag patch release
+git tag -a vX.Y.Z -m "Patch release vX.Y.Z"
+git push origin release-X.Y --tags
+```
+
+- [ ] Fix in `main` first (if applicable)
+- [ ] Cherry-pick to release branch
+- [ ] Tag next patch version: `vX.Y.Z` (NO RC for patches, see [Branching Model](#31-branching-model))
+- [ ] Run focused test suite
+- [ ] Deploy hotfix
+
+#### Timeline
+- [ ] **Blocker/Critical**: Patch within 48 hours
+- [ ] **Major**: Patch within 1 week
+
+#### Stakeholder Communication
+- [ ] **Slack**: Immediate notification of critical issue
+  ```
+  🚨 Critical Hotfix - Component vX.Y.Z
+  - Issue: [description]
+  - Severity: Critical
+  - ETA: [timeline]
+  - Tracking: [LINK]
+  ```
+- [ ] **Slack**: Notify when hotfix released
+- [ ] **Offering Team**: Coordinate deployment
+
+---
+
+## 2. Release Entry Criteria
 
 These criteria determine when the development team can initiate the release process and enter code freeze.
 
-### 1.1 Feature Completeness Criteria
+### 2.1 Feature Completeness Criteria
 
 **Feature Freeze Gate:**
 - ✓ All planned features for the release milestone are code-complete
-- ✓ Feature flags are in place for any experimental or incomplete features
+- ✓ Feature toggles are in place for any experimental or incomplete features if applicable
 - ✓ Feature documentation is drafted (can be finalized during code freeze)
 
 **Technical Debt Assessment:**
-- ✓ No known security vulnerabilities rated HIGH or CRITICAL remain unaddressed
+- ✓ No known security vulnerabilities rated HIGH or CRITICAL remain unaddressed (once konflux job is supported) 
 - ✓ Technical debt has been reviewed and acceptable items are explicitly deferred to next release
 - ✓ All deprecated APIs have migration paths documented
 
-### 1.2 Testing & Quality Gates
+### 2.2 Testing & Quality Gates
 
 - **CI/CD Pipeline Health:** Prow CI pipeline is green for all components on the main branch, validating:
-  - Unit tests: ≥70% coverage for new code
+  - Unit tests: Passing consistently (coverage ensured by pre-submit jobs, not part of release gating)
   - Integration tests: Passing consistently
   - E2E tests: Critical user journeys validated
-  - Performance regression tests: No degradation >10% vs. previous release
+  - Performance regression tests: No degradation >10% vs. previous release (once performance testing is supported)
 
 - **Build**:
   - Container images: Build successfully for all target architectures
   - Helm charts: Package without errors
 
-### 1.3 Cross-Component Dependencies
+### 2.3 Cross-Component Dependencies
 
 **Version Compatibility:**
-- ✓ Each component uses independent semantic versioning (see Section 2.5)
+- ✓ Each component uses independent semantic versioning (see [Versioning Strategy](#35-versioning-strategy))
 - ✓ HyperFleet Release X.Y defines a validated, compatibility-tested set of component versions
 - ✓ Compatibility matrix documented showing which component versions work together
 - ✓ Breaking changes (if any) are documented with migration guides and version requirements
 - ✓ Backward compatibility: Each component supports N-1 version upgrade paths independently
 - ✓ Cross-component API contracts validated during integration testing
 
-### 1.4 Documentation Readiness
+### 2.4 Documentation Readiness
 
 - ✓ Release notes draft exists with major features listed
 - ✓ Known issues and limitations are documented
 - ✓ Upgrade/migration documentation is drafted (if applicable)
-- ✓ API documentation is up-to-date
+- ✓ Component documentation is up-to-date:
+  - API Service documentation 
+  - Sentinel documentation 
+  - Adapter Framework documentation 
 
-### 1.5 Organizational Readiness
+### 2.5 Organizational Readiness
 
 - ✓ Release Owner identified and assigned
 - ✓ Stakeholder communication plan is in place
@@ -76,9 +482,9 @@ These criteria determine when the development team can initiate the release proc
 
 ---
 
-## 2. Code Freeze and Branching Strategy
+## 3. Code Freeze and Branching Strategy
 
-### 2.1 Branching Model
+### 3.1 Branching Model
 
 HyperFleet follows a **release branch workflow** based on Kubernetes and OpenShift best practices:
 
@@ -104,12 +510,18 @@ main (development branch)
 After GA:
 release-X.Y (branch maintained post-release)
   │
-  ├─── vX.Y.1 (tag - Patch release via cherry-picks)
-  ├─── vX.Y.2 (tag - Patch release)
+  ├─── vX.Y.1 (tag - Z-stream/patch release, NO RC)
+  ├─── vX.Y.2 (tag - Z-stream/patch release, NO RC)
   └─── ... (support window: 6 months)
 ```
 
-### 2.2 Timeline and Freeze Process
+**Note on Z-Stream (Patch) Releases:**
+- Z-stream releases (vX.Y.1, vX.Y.2, etc.) **do not require Release Candidate (RC) tags**
+- These releases go directly from testing to GA tag
+- Scope limited to bug fixes, security patches, and minor improvements (no new features or breaking changes)
+- Faster turnaround for low-risk fixes while maintaining quality gates
+
+### 3.2 Timeline and Freeze Process
 
 **Sprint-Based Release Cycle (3 weeks / 1 sprint):**
 
@@ -118,19 +530,17 @@ release-X.Y (branch maintained post-release)
   - Continuous testing on all PRs (unit, integration, linting)
   - Documentation written alongside code
   - Features merged as they're completed
-- **Week 3 (Stabilization & Release Phase):**
-  - Feature Freeze - create `release-X.Y` branch, cut RC.1
-  - `main` branch reopens immediately for next release development
-  - Bug fixes cherry-picked from `main`
-  - Full E2E test suite execution (automated + manual)
-  - Documentation finalization
-  - Code Freeze - only critical/blocker fixes with Release Owner approval
-  - Final validation and sign-off
-  - GA release tagged and published with all artifacts
+  - **End of Week 2:** Release Readiness Review (go/no-go decision)
+- **Week 3 (Stabilization & Release Phase - 5 working days):**
+  - **Day 1:** Feature Freeze - create `release-X.Y` branch, cut RC.1
+    - `main` branch reopens immediately for next release development
+  - **Days 1-3:** Stabilization - bug fixes cherry-picked from `main`, full E2E test suite execution (automated + manual)
+  - **Days 4-5:** Code Freeze - only critical/blocker fixes with Release Owner approval, documentation finalization, final validation and sign-off
+  - **End of Day 5:** GA release tagged and published with all artifacts
 
 **Note:** This 3-week cadence is designed for HyperFleet as a new product requiring rapid feedback cycles with pillar teams. Since CI/CD automation is currently being built, the Stabilization & Release Phase (Week 3) may take longer in the initial releases. As the product matures and automation capabilities improve, the team should continuously refine and optimize the release cadence based on actual data and lessons learned from each release cycle.
 
-### 2.3 Code Freeze Mechanics
+### 3.3 Code Freeze Mechanics
 
 **Feature Freeze:**
 ```bash
@@ -167,7 +577,7 @@ git push origin v1.5.0-rc.1
 **Release-Specific Fix (Only if bug doesn't exist in main):**
 1. Create PR directly to `release-X.Y` branch → Release Owner approves
 
-### 2.4 Release Branch Maintenance
+### 3.4 Release Branch Maintenance
 
 **Support Policy:** 6 months with lifecycle stages
 
@@ -192,7 +602,7 @@ Every release receives 6 months of support from its GA date, divided into two ph
 - Version 3-6 months old: Backport only CRITICAL/HIGH CVEs and Blockers
 - Version > 6 months old: EOL, no backports
 
-### 2.5 Versioning Strategy
+### 3.5 Versioning Strategy
 
 **HyperFleet uses independent component versioning** with validated release combinations.
 
@@ -200,9 +610,9 @@ Each core component (API Service, Sentinel, Adapter Framework) maintains its own
 
 ```text
 HyperFleet Release 1.5 (validated combination):
-├─ api-service: v1.5.0
-├─ sentinel: v1.4.2
-└─ adapter-framework: v2.0.0
+├─ hyperfleet-api: v1.5.0
+├─ hyperfleet-sentinel: v1.4.2
+└─ hyperfleet-adapter: v2.0.0
 ```
 
 **Rationale:**
@@ -218,7 +628,7 @@ HyperFleet Release 1.5 (validated combination):
 - Documented in release notes with full compatibility matrix
 - Simplifies user experience: "Install HyperFleet Release 1.5" with clear component version mapping
 
-#### 2.5.1 Branching and Tagging Rules
+#### 3.5.1 Branching and Tagging Rules
 
 **Key Principles:**
 1. **Independent branching:** Each component creates release branches based on its own version (e.g., `release-1.5`, `release-2.0`)
@@ -236,7 +646,7 @@ Between HyperFleet releases, individual components can issue releases independen
 # Current: HyperFleet Release 1.5 (API v1.5.0, Sentinel v1.4.2, Adapter v2.0.0)
 
 # Sentinel creates patch release v1.4.3
-cd openshift-hyperfleet/sentinel
+cd openshift-hyperfleet/hyperfleet-sentinel
 git checkout release-1.4
 # Apply fix, test
 git tag -a v1.4.3 -m "Sentinel v1.4.3 - Hotfix for metrics bug"
@@ -256,7 +666,54 @@ Create a component release only for isolated, fully backward-compatible fixes wi
 
 Create a HyperFleet release whenever a change affects supported platform users, introduces cross-component compatibility or contract implications, delivers security or critical stability fixes, or requires coordinated, platform-wide, validated upgrades.
 
-#### 2.5.2 Practical Example: HyperFleet Release 1.5
+**Supporting Repository Branching for HyperFleet Releases:**
+
+When creating a HyperFleet release, the following supporting repositories also participate in the release process:
+
+**For Major/Minor Releases (e.g., HyperFleet Release 1.5):**
+
+1. **hyperfleet-e2e** - E2E test suites
+   - Create `release-1.5` branch at Feature Freeze
+   - Contains E2E tests validating the specific component combinations for this release
+
+2. **hyperfleet-infra** - Infrastructure configurations
+   - Create `release-1.5` branch at Feature Freeze (if infrastructure changes needed)
+   - Contains deployment scripts, cluster configs aligned with this release
+
+3. **hyperfleet-release** - Release coordination and documentation
+   - Create `release-1.5` branch at Feature Freeze
+   - Contains release notes, compatibility matrices, installation guides
+   - Tag the release: `release-1.5` at GA
+
+**For Patch Releases (e.g., HyperFleet Release 1.5.1, 1.5.2):**
+
+Supporting repositories **do not create new branches** for patch releases:
+
+1. **hyperfleet-e2e, hyperfleet-infra**
+   - Stay on existing `release-1.5` branch
+   - Commit updates/fixes to the same branch as needed
+
+2. **hyperfleet-release**
+   - Stay on existing `release-1.5` branch
+   - Update release notes and compatibility matrix
+   - **Create new tag** for each patch: `release-1.5.1`, `release-1.5.2`
+
+   ```bash
+   # Example: HyperFleet Release 1.5.1 (patch)
+   cd openshift-hyperfleet/hyperfleet-release
+   git checkout release-1.5
+
+   # Update release notes with patch changes
+   # (e.g., API Service v1.5.0 → v1.5.1)
+
+   # Tag the patch release
+   git tag -a release-1.5.1 -m "HyperFleet Release 1.5.1 (API v1.5.1, Sentinel v1.4.2, Adapter v2.0.0)"
+   git push origin release-1.5.1
+   ```
+
+**Rationale:** Patch releases are incremental updates on the same base release. Supporting repos use the same branch infrastructure with updated content and new tags to mark each patch version.
+
+#### 3.5.2 Practical Example: HyperFleet Release 1.5
 
 **Scenario:**
 - API Service: **Major feature** (new GitOps integration) → Version bump to v1.5.0
@@ -267,16 +724,16 @@ Create a HyperFleet release whenever a change affects supported platform users, 
 
 ```bash
 # API Service - MINOR version bump (new features)
-cd openshift-hyperfleet/api-service
+cd openshift-hyperfleet/hyperfleet-api
 git checkout -b release-1.5 && git push origin release-1.5
 
 # Sentinel - PATCH version bump (bug fixes only)
-cd openshift-hyperfleet/sentinel
+cd openshift-hyperfleet/hyperfleet-sentinel
 git checkout -b release-1.4 && git push origin release-1.4
 # (or cherry-pick to existing release-1.4 if it exists)
 
 # Adapter Framework - MAJOR version bump (breaking changes)
-cd openshift-hyperfleet/adapter-framework
+cd openshift-hyperfleet/hyperfleet-adapter
 git checkout -b release-2.0 && git push origin release-2.0
 ```
 
@@ -284,19 +741,19 @@ git checkout -b release-2.0 && git push origin release-2.0
 
 ```bash
 # API Service - Tag v1.5.0 (new minor version)
-cd openshift-hyperfleet/api-service
+cd openshift-hyperfleet/hyperfleet-api
 git checkout release-1.5
 git tag -a v1.5.0 -m "API Service v1.5.0 - GitOps integration"
 git push origin v1.5.0
 
 # Sentinel - Tag v1.4.2 (patch release)
-cd openshift-hyperfleet/sentinel
+cd openshift-hyperfleet/hyperfleet-sentinel
 git checkout release-1.4
 git tag -a v1.4.2 -m "Sentinel v1.4.2 - Memory leak fix"
 git push origin v1.4.2
 
 # Adapter Framework - Tag v2.0.0 (major version)
-cd openshift-hyperfleet/adapter-framework
+cd openshift-hyperfleet/hyperfleet-adapter
 git checkout release-2.0
 git tag -a v2.0.0 -m "Adapter Framework v2.0.0 - Plugin API v2"
 git push origin v2.0.0
@@ -307,19 +764,19 @@ git push origin v2.0.0
 HyperFleet Release 1.5 (validated combination):
 
 Component Release Branches:
-- api-service: release-1.5
-- sentinel: release-1.4
-- adapter-framework: release-2.0
+- hyperfleet-api: release-1.5
+- hyperfleet-sentinel: release-1.4
+- hyperfleet-adapter: release-2.0
 
 Component Version Tags:
-- api-service: v1.5.0
-- sentinel: v1.4.2
-- adapter-framework: v2.0.0
+- hyperfleet-api: v1.5.0
+- hyperfleet-sentinel: v1.4.2
+- hyperfleet-adapter: v2.0.0
 
 Container Images (for HyperFleet Release 1.5):
-- registry.ci.openshift.org/hyperfleet/api-service:v1.5.0
-- registry.ci.openshift.org/hyperfleet/sentinel:v1.4.2
-- registry.ci.openshift.org/hyperfleet/adapter-framework:v2.0.0
+- quay.io/openshift-hyperfleet/hyperfleet-api:v1.5.0
+- quay.io/openshift-hyperfleet/hyperfleet-sentinel:v1.4.2
+- quay.io/openshift-hyperfleet/hyperfleet-adapter:v2.0.0
 
 Compatibility:
 - API Service v1.5.0 requires Adapter Framework ≥ v2.0.0
@@ -329,11 +786,44 @@ Compatibility:
 
 ---
 
-## 3. Release Readiness Criteria
+## 4. Release Readiness Criteria
 
 Before declaring a release as "GA-Ready", all the following criteria must be satisfied:
 
-### 3.1 Testing & Validation (Mandatory)
+### 4.0 Prow Job Configuration for Release Branches
+
+After creating release branches for components and supporting repositories, Prow jobs must be configured to support release branch builds and testing.
+
+**Required Prow Job Configuration:**
+
+**1. Copy Build Jobs for Release Images**
+
+After cutting component release branches (e.g., `release-1.5` for API Service, `release-1.4` for Sentinel):
+
+- **Action:** Copy existing Prow jobs that build container images from `main` branch
+- **Update:** Configure copied jobs to trigger on release branch commits
+- **Purpose:** Enable automated image builds from release branches when fixes are merged
+- **Result:** Release images automatically built and pushed to registry when release branch is updated
+
+**2. Copy E2E Prow Jobs for Nightly Release Testing**
+
+After cutting `hyperfleet-e2e` release branch (e.g., `release-1.5`):
+
+- **Action:** Copy E2E test Prow jobs that run nightly on `main` branch
+- **Update:** Configure copied jobs to:
+  - Run against the release branch E2E test suite
+  - Test the validated component version combination for this release
+  - Trigger nightly to detect regressions in release branch
+- **Purpose:** Continuous validation of release stability throughout support lifecycle
+- **Result:** Early detection of issues in release branches before they reach users
+
+**Best Practices:**
+- Copy jobs at Feature Freeze when release branches are created
+- Maintain consistent naming convention: `{job-name}-release-X.Y`
+- Monitor nightly release test results for regressions
+- Disable nightly jobs when release reaches EOL (after 6 months)
+
+### 4.1 Testing & Validation (Mandatory)
 
 **Unit & Integration Testing:**
 - ✓ All unit tests passing across all components
@@ -344,20 +834,20 @@ Before declaring a release as "GA-Ready", all the following criteria must be sat
 - ✓ Backward compatibility testing with N-1 version
 - ✓ Installation/upgrade path tested
 
-**Performance & Load Testing:**
+**Performance & Load Testing (once performance testing is supported):**
 - ✓ Performance benchmarks show no regression > 10% vs. previous release
 - ✓ Load testing validates system handles expected production load
 - ✓ Resource utilization (CPU, memory) within acceptable bounds
 
 **Note:** Automated testing is preferred for all scenarios. If a test scenario is not yet automated, it must be executed manually before release approval.
 
-### 3.2 Bug Severity Gates (Mandatory)
+### 4.2 Bug Severity Gates (Mandatory)
 
 - ✓ No open bugs with severity **Normal** or above (Blocker, Critical, Major, Normal)
     - Note: `Normal` bugs do not gate **MVP releases**
 - ✓ Minor bugs:  No gate, tracked for future releases
 
-### 3.3 Documentation Completeness (Mandatory)
+### 4.3 Documentation Completeness (Mandatory)
 
 **Release Documentation:**
 - ✓ Release notes finalized (what's new, bug fixes, breaking changes)
@@ -370,14 +860,17 @@ Before declaring a release as "GA-Ready", all the following criteria must be sat
 - ✓ Deployment runbook created and reviewed
 
 **Technical Documentation:**
-- ✓ API documentation updated (if APIs changed)
-- ✓ Configuration changes documented
+- ✓ Component documentation updated (if changed):
+  - API Service documentation 
+  - Sentinel documentation 
+  - Adapter Framework documentation 
+- ✓ Configuration changes documented per component
 
-### 3.4 Cross-Team Coordination
+### 4.4 Cross-Team Coordination
 
 - ⚠ Integration validation with dependent offerings (TBD)
 
-### 3.5 Security & Compliance
+### 4.5 Security & Compliance
 
 **Mandatory (All Phases):**
 - ✓ Vulnerability scanning: No CRITICAL/HIGH CVEs in container images
@@ -390,7 +883,7 @@ Before declaring a release as "GA-Ready", all the following criteria must be sat
 
 **Note:** For MVP, focus on vulnerability scanning. Full supply chain security (SBOM, signing, provenance) will be implemented during Post-MVP Konflux migration.
 
-### 3.6 Release Artifacts Verification (Mandatory)
+### 4.6 Release Artifacts Verification (Mandatory)
 
 - ✓ All container images built and pushed to registry
 - ✓ Helm charts packaged and tested
@@ -401,9 +894,9 @@ Before declaring a release as "GA-Ready", all the following criteria must be sat
 
 ---
 
-## 4. Bug Handling Workflow After Code Freeze
+## 5. Bug Handling Workflow After Code Freeze
 
-### 4.1 Bug Triage Process
+### 5.1 Bug Triage Process
 
 When a bug is discovered after code freeze (during RC testing or late in release cycle):
 
@@ -430,7 +923,7 @@ When a bug is discovered after code freeze (during RC testing or late in release
   [FIX NOW]    [TRIAGE MEETING]  [DEFER]
 ```
 
-### 4.2 Decision Framework
+### 5.2 Decision Framework
 
 **For Blocker/Critical bugs:**
 1. **Immediate Action:** Developer assigned within 2 hours
@@ -455,7 +948,7 @@ When a bug is discovered after code freeze (during RC testing or late in release
 - Default: Defer to next patch release or next minor release
 - Track in backlog for future releases
 
-### 4.3 Post-Code Freeze PR Approval Process
+### 5.3 Post-Code Freeze PR Approval Process
 
 All PRs to release branch after code freeze require:
 
@@ -478,7 +971,7 @@ All PRs to release branch after code freeze require:
    - Update release tracking issue
    - Notify stakeholders if fix delays GA timeline
 
-### 4.4 Hotfix Workflow (Post-GA)
+### 5.4 Hotfix Workflow (Post-GA)
 
 For bugs discovered after GA release:
 
@@ -507,11 +1000,11 @@ git cherry-pick <commit-sha>
 - Blocker/Critical severity: Patch release within 48 hours
 - Major severity: Patch release within 1 week
 
-### 4.5 Release Recovery Strategy
+### 5.5 Release Recovery Strategy
 
 **HyperFleet uses a roll-forward recovery strategy for MVP releases.**
 
-#### 4.5.1 Roll-Forward (Primary Strategy)
+#### 5.5.1 Roll-Forward (Primary Strategy)
 
 When issues are discovered in a GA release, the default recovery path is to **fix forward** via a patch release:
 
@@ -531,7 +1024,7 @@ When issues are discovered in a GA release, the default recovery path is to **fi
 - Maintains forward version progression
 - Faster response for critical issues
 
-#### 4.5.2 Rollback Support (Post-MVP)
+#### 5.5.2 Rollback Support (Post-MVP)
 
 **Status:** Deferred to Post-Q1 (separate epic required)
 
@@ -545,14 +1038,19 @@ When issues are discovered in a GA release, the default recovery path is to **fi
 
 ---
 
-## 5. Release Cadence
+## 6. Release Cadence
 
 **Regular Releases:** Every 3 weeks (1 sprint) - ~17 releases per year
-- Weeks 1-2: Active development
-- Week 3: Feature freeze, stabilization, testing, GA release
+- **Weeks 1-2**: Active development
+- **End of Week 2**: Release Readiness Review (go/no-go decision)
+- **Week 3 (5 working days)**:
+  - Day 1: Feature freeze, create release branches
+  - Days 1-3: Stabilization and testing
+  - Days 4-5: Code freeze, final validation
+  - End of Day 5: GA release
   - Note: Duration may vary as CI/CD automation is being built
 
-**Ad-Hoc Releases:** As needed for urgent requirements (3-5 days)
+**Ad-Hoc Releases:** As needed for urgent requirements (3-5 working days)
 - Triggers: Critical bugs, security vulnerabilities, urgent business needs
 - Reduced testing scope (unit, integration, E2E for affected components only)
 - Release Owner approval required
@@ -565,11 +1063,11 @@ As HyperFleet matures and based on retrospective data, the team may adjust the r
 
 ---
 
-## 6. Release Artifacts and Deliverables
+## 7. Release Artifacts and Deliverables
 
-### 6.0 Release Repository
+### 7.0 Release Repository
 
-**Create: `openshift-hyperfleet/releases` repository**
+**Create: `openshift-hyperfleet/hyperfleet-release` repository**
 
 A dedicated release repository serves as the single source of truth for all HyperFleet releases.
 
@@ -597,21 +1095,24 @@ A dedicated release repository serves as the single source of truth for all Hype
 
 **Benefits:** Single location for offering team to find all release information, clear component version combinations for each release, cleaner separation between component development and integrated release artifacts.
 
-### 6.1 Primary Release Artifacts
+### 7.1 Primary Release Artifacts
 
 **Container Images:**
 - Built automatically by Prow on release tag creation
-- Published to `registry.ci.openshift.org/hyperfleet/*`
+- Published to `quay.io/openshift-hyperfleet/hyperfleet-*`
 - **Image naming:** Each component uses its own independent semantic version
   ```text
-  registry.ci.openshift.org/hyperfleet/{component}:v{component-version}
+  quay.io/openshift-hyperfleet/hyperfleet-{component}:v{component-version}
   ```
+  - `hyperfleet-api` for API Service
+  - `hyperfleet-sentinel` for Sentinel
+  - `hyperfleet-adapter` for Adapter Framework
 - **Example for HyperFleet Release 1.5:**
-  - `registry.ci.openshift.org/hyperfleet/api-service:v1.5.0`
-  - `registry.ci.openshift.org/hyperfleet/sentinel:v1.4.2`
-  - `registry.ci.openshift.org/hyperfleet/adapter-framework:v2.0.0`
+  - `quay.io/openshift-hyperfleet/hyperfleet-api:v1.5.0`
+  - `quay.io/openshift-hyperfleet/hyperfleet-sentinel:v1.4.2`
+  - `quay.io/openshift-hyperfleet/hyperfleet-adapter:v2.0.0`
 
-  (Each component has its own version reflecting its actual changes per Section 2.5)
+  (Each component has its own version reflecting its actual changes per [Versioning Strategy](#35-versioning-strategy))
 
 **Helm Charts:**
 - Each component has its own Helm chart in component repositories
@@ -620,12 +1121,12 @@ A dedicated release repository serves as the single source of truth for all Hype
 
 **Git Tags:**
 - Git tags created independently in component repositories: `vX.Y.Z` (reflecting each component's version)
-- HyperFleet Release tag created in `openshift-hyperfleet/releases` repository: `release-X.Y` (single source of truth for the validated component combination - see Section 6.0)
+- HyperFleet Release tag created in `openshift-hyperfleet/hyperfleet-release` repository: `release-X.Y` (single source of truth for the validated component combination - see [Release Repository](#70-release-repository))
 - GitHub Releases created from tags with release notes and compatibility matrix
 
-### 6.2 Documentation Deliverables
+### 7.2 Documentation Deliverables
 
-#### 6.2.1 Release Notes
+#### 7.2.1 Release Notes
 
 **Required Sections:**
 ```markdown
@@ -696,7 +1197,7 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 - [ ] Upgrade instructions validated
 - [ ] Published to docs site and GitHub Release
 
-#### 6.2.2 Upgrade/Installation Guide
+#### 7.2.2 Upgrade/Installation Guide
 
 **Content:**
 - Prerequisites (Kubernetes version, permissions, dependencies)
@@ -712,7 +1213,7 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 - [ ] Screenshots/examples updated
 - [ ] Published to documentation site
 
-#### 6.2.3 API Documentation
+#### 7.2.3 Component Documentation
 
 **For API Service:**
 - OpenAPI/Swagger specification updated
@@ -720,13 +1221,26 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 - Code examples for new endpoints
 - Deprecation notices for old APIs
 
-**Checklist:**
-- [ ] OpenAPI spec generated from code
-- [ ] API docs published (e.g., via Swagger UI)
-- [ ] Examples tested and validated
-- [ ] Breaking changes highlighted
+**For Sentinel:**
+- Deployment documentation updated
+- Monitoring and metrics documentation
+- Configuration reference
+- Troubleshooting guide
 
-#### 6.2.4 Change Log
+**For Adapter Framework:**
+- Operator guide updated
+- Code examples for custom adapters
+- Migration guide for breaking changes
+
+**Checklist:**
+- [ ] API Service: OpenAPI spec generated from code
+- [ ] API Service: API docs published (e.g., via Swagger UI)
+- [ ] Sentinel: Deployment and monitoring docs updated
+- [ ] Adapter Framework: Operator guide updated
+- [ ] Code examples tested and validated for all components
+- [ ] Breaking changes highlighted per component
+
+#### 7.2.4 Change Log
 
 **Format:** Keep a Changelog standard (per component)
 
@@ -796,7 +1310,7 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 - [ ] Links to PRs/issues included
 - [ ] Security fixes clearly marked
 
-### 6.3 Compliance and Security Artifacts
+### 7.3 Compliance and Security Artifacts
 
 **MVP:**
 - Vulnerability scanning of container images
@@ -810,9 +1324,9 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 
 ---
 
-## 7. Konflux vs. Prow Comparison
+## 8. Konflux vs. Prow Comparison
 
-### 7.1 Current State: Prow
+### 8.1 Current State: Prow
 
 **What Works:**
 - Automated CI/CD pipeline (testing, image builds)
@@ -823,7 +1337,7 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 - SLSA provenance, SBOM generation, image signing
 - Requires additional tooling for supply chain security
 
-### 7.2 Konflux Benefits
+### 8.2 Konflux Benefits
 
 **Supply Chain Security:**
 - SLSA Level 3 provenance, SBOM, Sigstore signing (built-in)
@@ -835,7 +1349,7 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 - OCI artifact management
 - Policy-as-code compliance gates
 
-### 7.3 Recommendation
+### 8.3 Recommendation
 
 **MVP Approach:**
 - **Use Prow + manual release process**
@@ -850,17 +1364,17 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
 
 ---
 
-## 8. Next Steps
+## 9. Next Steps
 
-### 8.1 MVP Tickets (First Release Preparation)
+### 9.1 MVP Tickets (First Release Preparation)
 
 **[TICKET-1] Create HyperFleet Releases Repository**
-- **Objective:** Set up `openshift-hyperfleet/releases` as single source of truth
+- **Objective:** Set up `openshift-hyperfleet/hyperfleet-release` as single source of truth
 - **Tasks:**
   - Initialize repository structure (release notes, docs, charts)
   - Set up issue templates for release tracking and ad-hoc requests
   - Document repository purpose and usage in README
-- **Reference:** Section 6
+- **Reference:** [Release Artifacts and Deliverables](#7-release-artifacts-and-deliverables)
 
 **[TICKET-2] Establish Release Cadence and Calendar**
 - **Objective:** Define release schedule to meet first release
@@ -869,7 +1383,7 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
   - Publish release calendar for next 3 months (including first release)
   - Document ad-hoc release criteria and process
   - Communicate calendar to team and stakeholders
-- **Reference:** Section 5
+- **Reference:** [Release Cadence](#6-release-cadence)
 
 **[TICKET-3] Prepare for First Release**
 - **Objective:** Document procedures and assign ownership for first release
@@ -880,23 +1394,23 @@ See [Upgrade Guide](docs/upgrade-to-release-1.5.md) for detailed instructions.
   - Assign Release Owner for first release
   - Document Release Owner responsibilities (gatekeeper, approver)
   - Plan rotation strategy for future releases
-- **Reference:** Sections 2, 3, 6
+- **Reference:** [Release Entry Criteria](#2-release-entry-criteria), [Code Freeze and Branching Strategy](#3-code-freeze-and-branching-strategy), [Release Artifacts and Deliverables](#7-release-artifacts-and-deliverables)
 
 **[TICKET-4] Execute First Release**
 - **Objective:** Run first release following documented process
 - **Tasks:**
   - Create `release-v{X.Y}` branch at feature freeze
   - Cut Release Candidate (RC.1)
-  - Execute testing per Section 3.1
-  - Cherry-pick bug fixes if needed (follow Section 2 process)
+  - Execute testing per [Branching Model](#31-branching-model)
+  - Cherry-pick bug fixes if needed (follow [Bug Handling Workflow](#5-bug-handling-workflow-after-code-freeze) process)
   - Cut final GA release
   - Publish release artifacts and documentation
   - Conduct post-release retrospective
-- **Reference:** Sections 2, 3, 6
+- **Reference:** [Release Entry Criteria](#2-release-entry-criteria), [Code Freeze and Branching Strategy](#3-code-freeze-and-branching-strategy), [Release Artifacts and Deliverables](#7-release-artifacts-and-deliverables)
 
-### 8.2 Post-MVP Improvements
+### 9.2 Post-MVP Improvements
 
-#### 8.2.1 Conduct Retrospectives and Identify Improvements
+#### 9.2.1 Conduct Retrospectives and Identify Improvements
 
 After completing the first few releases with manual processes, conduct retrospectives to:
 - Identify workflow pain points and bottlenecks
@@ -906,7 +1420,7 @@ After completing the first few releases with manual processes, conduct retrospec
 - Update release procedures based on lessons learned
 - Prioritize automation opportunities (Helm packaging, release notes generation, GitHub Releases)
 
-#### 8.2.2 Migrate to Konflux for Official Releases
+#### 9.2.2 Migrate to Konflux for Official Releases
 
 Transition from manual Prow-based releases to Konflux for production-grade, compliant releases:
 
@@ -925,7 +1439,7 @@ Transition from manual Prow-based releases to Konflux for production-grade, comp
 - Automate SBOM generation, image signing, and provenance
 - Full cutover after validation
 
-#### 8.2.3 Additional Process Improvements
+#### 9.2.3 Additional Process Improvements
 
 Based on retrospective findings and Konflux capabilities:
 - Establish automated E2E test gate as mandatory release criteria
@@ -934,7 +1448,7 @@ Based on retrospective findings and Konflux capabilities:
 - Optimize release cadence based on data (6-month review)
 - Consider LTS release designation (e.g., every 4th release)
 
-### 8.3 Success Metrics
+### 9.3 Success Metrics
 
 **Track and review quarterly:**
 
@@ -953,7 +1467,7 @@ Based on retrospective findings and Konflux capabilities:
 
 ---
 
-## 9. Appendices
+## 10. Appendices
 
 ### Appendix A: References and Sources
 
@@ -998,11 +1512,12 @@ Based on retrospective findings and Konflux capabilities:
 ```markdown
 # HyperFleet Release 1.5 Tracking Issue
 
-## Timeline (3-week sprint cycle)
-- Sprint Start: YYYY-MM-DD
-- Feature Freeze: YYYY-MM-DD
-- Code Freeze: YYYY-MM-DD
-- GA Target: YYYY-MM-DD
+## Timeline (3-week sprint cycle, 5-day release week)
+- Sprint Start (Week 1, Day 1): YYYY-MM-DD
+- Readiness Review (End of Week 2): YYYY-MM-DD
+- Feature Freeze (Week 3, Day 1): YYYY-MM-DD
+- Code Freeze (Week 3, Day 4): YYYY-MM-DD
+- GA Target (Week 3, Day 5): YYYY-MM-DD
 
 **Note:** Dates may shift based on stabilization phase needs as automation is being built.
 
@@ -1026,9 +1541,9 @@ Based on retrospective findings and Konflux capabilities:
 - [ ] Pillar team sign-off
 
 ## Release Candidates
-- [ ] v1.5.0-rc.1 (April 15, at Feature Freeze)
-- [ ] v1.5.0-rc.2 (April 16-17, if needed)
-- [ ] v1.5.0-rc.3 (April 18, if needed)
+- [ ] v1.5.0-rc.1 (Day 1, at Feature Freeze)
+- [ ] v1.5.0-rc.2 (Day 2-3, if critical bugs found)
+- [ ] v1.5.0-rc.3 (Day 4, if needed - Code Freeze phase)
 
 ## Blockers
 - None currently
@@ -1165,13 +1680,15 @@ What testing will be deferred to next regular release?
 
 ## Release Timeline
 
+**Target: 3-5 working days**
+
 | Day | Date | Activities | Owner |
 |-----|------|-----------|-------|
 | 1 | YYYY-MM-DD | Development + unit tests | @dev-team |
 | 2 | YYYY-MM-DD | Code review + CI tests | @reviewers |
 | 3 | YYYY-MM-DD | E2E testing + RC build | @qa-team |
 | 4 | YYYY-MM-DD | Manual testing + stakeholder review | @qa + @stakeholders |
-| 5 | YYYY-MM-DD | GA release + deployment | @Technical Lead and @Manager |
+| 5 | YYYY-MM-DD | GA release + deployment | @release-owner |
 
 ## Post-Release Monitoring
 - [ ] Metrics dashboard monitored for 24 hours
