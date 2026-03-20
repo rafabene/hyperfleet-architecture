@@ -138,7 +138,7 @@ Or on failure:
 
 **Required Metrics**: See component-specific documentation:
 
-- [Sentinel Deployment](../components/sentinel/sentinel-deployment.md) - Sentinel metrics
+- [Sentinel Operator Guide](https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/sentinel-operator-guide.md) - Sentinel metrics
 - [Adapter Metrics](../components/adapter/framework/adapter-metrics.md) - Adapter metrics
 
 ---

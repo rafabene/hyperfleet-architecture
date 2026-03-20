@@ -208,17 +208,14 @@ cluster_statuses
 
 **Why**:
 - **Centralized Orchestration Logic**: Single component decides "when" to reconcile
-- **Simple Max Age Strategy**: Time-based decisions using status.last_updated_time (updated on every adapter check)
+- **Configurable Message Decision**: CEL-based decision logic with named params and boolean result expressions
 - **Horizontal Scalability**: Sharding via label selectors (by region, environment, etc.)
 - **Broker Abstraction**: Pluggable event publishers (GCP Pub/Sub, RabbitMQ, Stub)
 - **Self-Healing**: Continuously retries without manual intervention
 
 **Responsibilities**:
 1. **Fetch Resources**: Poll HyperFleet API for resources matching shard selector
-2. **Decision Logic**: Determine if resource needs reconciliation based on:
-   - `status.phase` (Ready vs Not Ready)
-   - `status.last_updated_time` (time since last adapter check)
-   - Configured max age intervals (10s for not-ready, 30m for ready)
+2. **Decision Logic**: Determine if resource needs reconciliation based on configurable message decision with named params (CEL expressions) and a boolean result expression
 3. **Event Creation**: Create reconciliation event with resource context
 4. **Event Publishing**: Publish event to configured message broker
 5. **Metrics & Observability**: Expose Prometheus metrics for monitoring
@@ -228,8 +225,16 @@ cluster_statuses
 # sentinel-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
+
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && now - timestamp(ref_time) > duration("30m")'
+    not_ready_and_debounced: '!is_ready && now - timestamp(ref_time) > duration("10s")'
+  result: 'is_new_resource || ready_and_stale || not_ready_and_debounced'
+
 resource_selector:
   - label: region
     value: us-east
@@ -259,14 +264,11 @@ data:
 **Decision Algorithm**:
 ```
 FOR EACH resource in FetchResources(resourceType, resourceSelector):
-  IF resource.status.phase != "Ready":
-    max_age = max_age_not_ready (10s)
-  ELSE:
-    max_age = max_age_ready (30m)
+  Evaluate message_decision params (CEL expressions, dependency-ordered)
+  Evaluate result expression (combines params with && / ||)
 
-  IF now >= resource.status.last_updated_time + max_age:
-    event = CreateEvent(resource)
-    PublishEvent(broker, event)
+  IF result == true:
+    PublishEvent(broker, CreateEvent(resource))
 ```
 
 **Benefits**:
@@ -541,7 +543,7 @@ sequenceDiagram
     DB-->>API: [cluster list]
     API-->>Sentinel: [{id, status, ...}]
 
-    Note over Sentinel: Decision: phase != "Ready" &&<br/>last_updated_time + 10s < now
+    Note over Sentinel: Decision: evaluate<br/>message_decision result
 
     Sentinel->>Broker: Publish event<br/>{resourceType: "clusters",<br/>resourceId: "cls-123"}
 
@@ -564,12 +566,12 @@ sequenceDiagram
     DB-->>API: ClusterStatus saved
     API-->>Adapter: 201 Created
 
-    Note over Sentinel: Next poll cycle (10s later)
+    Note over Sentinel: Next poll cycle
 
     Sentinel->>API: GET /clusters
-    API-->>Sentinel: [{id, status.last_updated_time = now(), ...}]
+    API-->>Sentinel: [{id, status.conditions[...], ...}]
 
-    Note over Sentinel: Decision: Create event again<br/>(cycle continues for other adapters)
+    Note over Sentinel: Evaluate message_decision<br/>(cycle continues for other adapters)
 
     Sentinel->>Broker: Publish event
 ```
@@ -610,7 +612,7 @@ sequenceDiagram
     DB-->>API: [cluster list with updated last_updated_time]
     API-->>Sentinel: [{id, status, ...}]
 
-    Note over Sentinel: Decision: Create event<br/>if max-age expired
+    Note over Sentinel: Decision: evaluate<br/>message_decision result
 ```
 
 ---
@@ -737,8 +739,14 @@ See [Status Guide](../docs/status-guide.md) for complete details on the status c
 # sentinel-us-east-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && now - timestamp(ref_time) > duration("30m")'
+    not_ready_and_debounced: '!is_ready && now - timestamp(ref_time) > duration("10s")'
+  result: 'is_new_resource || ready_and_stale || not_ready_and_debounced'
 resource_selector:
   - label: region
     value: us-east
@@ -758,8 +766,14 @@ message_data:
 # sentinel-eu-west-config.yaml (ConfigMap)
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 15s
-max_age_ready: 1h
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && now - timestamp(ref_time) > duration("1h")'
+    not_ready_and_debounced: '!is_ready && now - timestamp(ref_time) > duration("15s")'
+  result: 'is_new_resource || ready_and_stale || not_ready_and_debounced'
 resource_selector:
   - label: region
     value: eu-west
