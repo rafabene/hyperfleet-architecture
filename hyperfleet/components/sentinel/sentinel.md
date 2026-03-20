@@ -2,7 +2,7 @@
 
 **What**
 
-Implement a "HyperFleet Sentinel" service that continuously polls the HyperFleet API for resources (clusters, node pools, etc.) and publishes reconciliation events directly to the message broker to trigger adapter processing. The Sentinel acts as the "watchful guardian" of the HyperFleet system with simple, configurable max age intervals. Multiple Sentinel deployments can be configured via YAML configuration files to handle different shards of resources for horizontal scalability.
+Implement a "HyperFleet Sentinel" service that continuously polls the HyperFleet API for resources (clusters, node pools, etc.) and publishes reconciliation events directly to the message broker to trigger adapter processing. The Sentinel acts as the "watchful guardian" of the HyperFleet system with configurable message decision logic using CEL expressions and composable boolean params. Multiple Sentinel deployments can be configured via YAML configuration files to handle different shards of resources for horizontal scalability.
 
 **Pattern Reusability**: The Sentinel is designed as a generic reconciliation service that can watch ANY HyperFleet resource type, not just clusters. Future deployments can include:
 - **Cluster Sentinel** (this epic) - watches clusters
@@ -20,10 +20,9 @@ Without the Sentinel, the cluster provisioning workflow has a critical gap:
 
 The Sentinel solves these problems by:
 - **Closing the reconciliation loop**: Continuously polls resources and publishes events to trigger adapter evaluation
-- **Generation-based reconciliation**: Immediately triggers reconciliation when resource spec changes (generation increments), ensuring responsive updates
-- **Uses adapter status updates**: Reads `status.last_updated_time` and `status.observed_generation` (updated by adapters on every check) to determine when to create next event
-- **Smart triggering**: Two-tier decision logic prioritizes spec changes (generation mismatch) over periodic health checks (max age)
-- **Simple max age intervals**: 10 seconds for non-ready resources, 30 minutes for ready resources (configurable)
+- **Uses adapter status updates**: Reads `status.conditions[].last_updated_time` and condition statuses (updated by adapters on every check) to determine when to create next event
+- **Fully configurable decision logic**: Named CEL params and a boolean result expression define the complete decision logic (e.g., different age thresholds for ready vs not-ready resources)
+- **Relies on API-computed Ready condition**: The API aggregates adapter statuses into a `Ready` condition — when `Ready != True` (including after spec changes that increment `generation`), the Sentinel's default rules trigger reconciliation
 - **Self-healing**: Automatically retries without manual intervention
 - **Horizontal scalability**: Resource filtering allows multiple Sentinels to handle different resource subsets
 - **Event-driven architecture**: Maintains decoupling by publishing CloudEvents to message broker
@@ -37,17 +36,15 @@ The Sentinel solves these problems by:
 - Service reads configuration from YAML files with environment variable overrides
 - Broker configuration separated and shared with adapters
 - Polls HyperFleet API for resources matching resource selector criteria
-- **Decision Engine checks `resource.generation > resource.status.observed_generation` for immediate reconciliation**
-- **Generation mismatch triggers immediate event publication, regardless of max age intervals**
-- Uses `status.last_updated_time` and `status.observed_generation` from adapter status updates
-- Creates CloudEvents for resources based on two-tier decision logic (generation first, then max age)
+- Decision Engine evaluates configurable message_decision (CEL params + boolean result) to determine if a resource needs reconciliation
+- Uses `status.conditions[].last_updated_time` and condition statuses from adapter status updates
+- Creates CloudEvents for resources when message decision result is `true`
 - CloudEvent data structure is configurable via message_data field
 - Publishes events directly to message broker (GCP Pub/Sub or RabbitMQ)
-- Configurable max age intervals (not-ready vs ready)
+- Configurable message decision via CEL expressions (params + result)
 - Resource filtering support via label selectors in configuration
 - Metrics exposed for monitoring (reconciliation rate, event publishing, errors)
-- **Integration tests verify generation-based triggering takes priority over max age**
-- **Integration tests verify all test scenarios (generation mismatch, max age, edge cases)**
+- **Integration tests verify all test scenarios (message decision evaluation, edge cases)**
 - **100% test coverage maintained on Decision Engine package**
 - Graceful shutdown and error handling implemented
 - Multiple services can run simultaneously with different resource selectors
@@ -75,32 +72,25 @@ Adapter fails transiently
 
 ```mermaid
 flowchart TD
-    Init([Service Startup]) --> ReadConfig[Load YAML Configuration<br/>- max_age_not_ready: 10s<br/>- max_age_ready: 30m<br/>- resourceSelector: region=us-east<br/>- message_data composition<br/>+ Load broker config separately]
+    Init([Service Startup]) --> ReadConfig[Load YAML Configuration<br/>- message_decision params + result<br/>- resourceSelector: region=us-east<br/>- message_data composition<br/>+ Load broker config separately]
 
-    ReadConfig --> Validate{Configuration<br/>Valid?}
+    ReadConfig --> CompileCEL[Compile CEL Expressions<br/>- Resolve param dependencies<br/>- Compile params and result<br/>- Fail-fast on invalid expressions]
+    CompileCEL --> Validate{Configuration<br/>Valid?}
     Validate -->|No| Exit[Exit with Error]
     Validate -->|Yes| StartLoop([Start Polling Loop])
 
-    StartLoop --> FetchClusters[Fetch Clusters with Resource Selector<br/>GET /api/hyperfleet/v1/clusters<br/>?labels=region=us-east]
+    StartLoop --> FetchClusters[Fetch Resources with Resource Selector<br/>GET /api/hyperfleet/v1/clusters<br/>?labels=region=us-east]
 
-    FetchClusters --> ForEach{For Each Cluster}
+    FetchClusters --> ForEach{For Each Resource}
 
-    ForEach --> CheckGeneration{generation ><br/>observed_generation?}
+    ForEach --> EvalDecision[Evaluate message_decision<br/>1. Eval params in dependency order<br/>2. Eval result expression]
 
-    CheckGeneration -->|Yes - Spec Changed| PublishEvent[Create CloudEvent<br/>Publish to Broker<br/>Reason: generation changed]
-    CheckGeneration -->|No - Spec Stable| CheckReady{Cluster Status<br/>== Ready?}
+    EvalDecision --> CheckResult{result == true?}
 
-    CheckReady -->|No - NOT Ready| CheckBackoffNotReady{last_updated_time + 10s<br/>< now?}
-    CheckReady -->|Yes - Ready| CheckBackoffReady{last_updated_time + 30m<br/>< now?}
+    CheckResult -->|Yes| PublishEvent[Create CloudEvent<br/>Publish to Broker<br/>Reason: message decision matched]
+    CheckResult -->|No| Skip[Skip<br/>Decision result is false]
 
-    CheckBackoffNotReady -->|Yes - Expired| PublishEventMaxAge[Create CloudEvent<br/>Publish to Broker<br/>Reason: max age expired]
-    CheckBackoffNotReady -->|No - Not Expired| Skip[Skip<br/>Max age not expired]
-
-    CheckBackoffReady -->|Yes - Expired| PublishEventMaxAge
-    CheckBackoffReady -->|No - Not Expired| Skip
-
-    PublishEvent --> NextCluster{More Clusters?}
-    PublishEventMaxAge --> NextCluster
+    PublishEvent --> NextCluster{More Resources?}
     Skip --> NextCluster
 
     NextCluster -->|Yes| ForEach
@@ -110,15 +100,15 @@ flowchart TD
 
     style Init fill:#d4edda
     style ReadConfig fill:#fff3cd
+    style CompileCEL fill:#fff3cd
     style Validate fill:#fff3cd
     style Exit fill:#f8d7da
     style StartLoop fill:#e1f5e1
     style PublishEvent fill:#ffe1e1
-    style PublishEventMaxAge fill:#ffe1e1
     style Skip fill:#e1e5ff
     style FetchClusters fill:#fff4e1
     style Sleep fill:#f0f0f0
-    style CheckGeneration fill:#d4f1f4
+    style EvalDecision fill:#d4f1f4
 ```
 
 **Multiple Sentinel Deployments (Resource Filtering)**:
@@ -200,7 +190,7 @@ Resource filtering can be based on **any label criteria** of the cluster object 
 This flexibility allows you to:
 - Scale horizontally by dividing clusters across multiple Sentinel instances
 - Isolate blast radius (failures in one Sentinel don't affect others)
-- Optimize configurations per Sentinel instance (different max age intervals for prod vs dev)
+- Optimize configurations per Sentinel instance (different message decision params for prod vs dev)
 - Deploy Sentinels close to their managed clusters (regional Sentinels in regional k8s clusters)
 
 **Important caveat**: Since this is label-based filtering (not true sharding), operators must manually ensure:
@@ -209,56 +199,113 @@ This flexibility allows you to:
 
 ### Decision Logic
 
-The service uses a two-tier decision logic that prioritizes spec changes over periodic checks:
+The service uses a fully configurable decision logic based on the `message_decision` configuration. There is no hardcoded check — all decision logic is expressed as CEL rules:
 
-**Publish Event IF** (evaluated in priority order):
-
-1. **Generation Mismatch** (HIGHEST PRIORITY - immediate reconciliation):
-   - Resource generation > resource.status.observed_generation
-   - Reason: User changed the spec (e.g., scaled nodes), requires immediate reconciliation
-   - Example: Cluster generation=2, observed_generation=1 → publish immediately
-
-2. **Max Age Expired** (periodic health checks):
-   - Cluster status is NOT "Ready" AND max_age_not_ready interval expired (10 seconds default)
-   - OR Cluster status IS "Ready" AND max_age_ready interval expired (30 minutes default)
+**Publish Event IF**:
+- Evaluate all `message_decision.params` in dependency order (each param is a CEL expression or duration literal)
+- Params can reference other params (e.g., `is_ready` can be used in `ready_and_stale`)
+- Evaluate `message_decision.result` boolean expression (standard CEL logical operators)
+- If result is `true` → publish event
 
 **Skip IF**:
-- Generation matches observed_generation AND max age not expired
+- Message decision result is `false`
 
-**Key Insight - Generation-Based Reconciliation**:
+**Key Insight — Why No Hardcoded Generation Check**:
 
-This implements the Kubernetes controller pattern where:
-- `resource.generation` tracks user's desired state version (increments when spec changes)
-- `resource.status.observed_generation` tracks which generation was last reconciled by adapters
-- Mismatch indicates new spec changes that require immediate reconciliation, regardless of max age intervals
+The API already aggregates adapter statuses into the `Ready` condition. When a user changes the resource spec (incrementing `generation`), the API sets `Ready` to `False` because not all adapters have reconciled the new generation yet. This means `Ready == False` already covers the generation mismatch case — there is no need for the Sentinel to duplicate this logic with a separate generation check.
 
-**Important**: Max age intervals are for periodic health checks when the spec is stable. Spec changes (generation increments) should trigger immediate reconciliation.
+This simplifies the Sentinel to a single unified rule engine:
+- The `Ready` condition is the canonical signal for "this resource needs reconciliation"
+- The `Available` condition is informational but not used for decision-making in the default configuration
+- Operators can write custom rules using any condition type if their use case requires it
 
-### Max Age Strategy (MVP Simple)
+### Message Decision
 
-The service uses two configurable max age intervals:
+The Sentinel uses a `message_decision` configuration with named **params** and a boolean **result** expression. This is the **sole decision mechanism** — there are no hardcoded checks.
 
-| Cluster State | Max Age Time | Reason |
-|---------------|--------------|--------|
-| NOT Ready     | 10 seconds   | Cluster being provisioned - check frequently |
-| Ready         | 30 minutes   | Cluster stable - periodic health check |
+**How It Works**:
+
+1. **Params** are named variables defined as CEL expressions or duration literals
+2. Params can reference other params (evaluated in dependency order via topological sort)
+3. The **result** expression combines params using standard CEL logical operators (`&&`, `||`) to produce a boolean
+4. If result is `true`, a reconciliation event is published
+
+**Default Configuration** (equivalent to previous behavior):
+
+| Param Name | Type | Expression | Purpose |
+|------------|------|------------|---------|
+| `ref_time` | CEL → string | `condition("Ready").last_updated_time` | Reference timestamp for age calculation |
+| `is_ready` | CEL → bool | `condition("Ready").status == "True"` | Whether resource is ready |
+| `is_new_resource` | CEL → bool | `!is_ready && resource.generation == 1` | Brand-new resource that needs immediate reconciliation |
+| `ready_and_stale` | CEL → bool | `is_ready && now - timestamp(ref_time) > duration("30m")` | Ready resource whose last check is stale |
+| `not_ready_and_debounced` | CEL → bool | `!is_ready && now - timestamp(ref_time) > duration("10s")` | Not-ready resource, debounce period elapsed |
+
+**Result**: `is_new_resource || ready_and_stale || not_ready_and_debounced`
+
+**Why debounce?**
+
+The Sentinel polls every cycle (5s by default) and will publish a message for not-ready resources. This provides fast reaction time to changes including newly created resources, but can create unnecessary load in downstream services.
+
+Debouncing is a programming technique that limits the rate at which a function fires by delaying its execution until a specified amount of time has passed since the last event. It groups multiple rapid, sequential events into a single action, improving performance by reducing unnecessary calculations or API calls.
+
+By introducing a debounce interval (10s default), the Sentinel limits the messages published for a resource — ensuring adapters have time to complete their work before triggering the next reconciliation cycle. Brand-new resources (`is_new_resource`) bypass this debounce because no adapter has processed them yet — there is no "previous work" to wait for.
+
+**Key Design Decisions**:
+- All CEL expressions are compiled at startup (fail-fast on invalid configuration)
+- Params are evaluated in dependency order (topological sort); circular dependencies are rejected at startup
+- Duration literals (e.g., `30m`, `10s`) in params are auto-detected and converted to CEL duration values
+- The `now` variable (current timestamp) is available in all expressions
+- The `result` is the **sole decision maker** — all time-based checks, condition evaluations, and reconciliation triggers are encoded in params (no hardcoded checks)
+- The `result` expression uses standard CEL logical operators (`&&`, `||`). No aliases or custom operator syntax — pure CEL.
+- A single custom helper function `condition(name)` provides access to resource status data (see reference below). Fields are accessed directly (e.g., `condition("Ready").status`), keeping the API surface minimal.
+- This aligns with the adapter framework's preconditions pattern (CEL-based evaluation)
+
+#### Custom CEL Function Reference
+
+A single custom function is registered at startup. The `resource` parameter is implicit — the function already knows the resource structure:
+
+**`condition(name)`** — `(string) → Condition`
+
+Returns the full condition object matching the given `type` name, with fields:
+- `.status` — `"True"`, `"False"`, or `"Unknown"`
+- `.observed_generation` — which generation this condition last reconciled
+- `.last_updated_time` — ISO 8601 timestamp of last adapter check
+- `.last_transition_time` — ISO 8601 timestamp of last status change
+
+**When condition is missing**: Returns a zero-value Condition (`.status = ""`, `.observed_generation = 0`, `.last_updated_time` = zero time). This follows Go's zero-value convention and allows safe field access without null checks.
+
+**Examples**:
+```cel
+condition("Ready").status == "True"              # check if resource is ready
+condition("Ready").last_updated_time             # get timestamp for age calculation
+condition("Available").observed_generation       # get last reconciled generation
+```
+
+**Notes**:
+- Searches `resource.status.conditions[]` by the `type` field
+- Works with **any** condition type present on the resource (e.g., `"Ready"`, `"Available"`, `"Applied"`, `"Health"`, or custom conditions)
+- When accessing `.last_updated_time` on a missing condition, the zero time value will cause `timestamp()` conversion to produce a very old timestamp, which naturally triggers age-exceeded checks — acting as a fail-safe that ensures new or unknown resources get reconciled (see Test 7)
 
 **Configuration** (via YAML files):
 
 ```yaml
 # File: sentinel-config.yaml
-# See hyperfleet/components/sentinel/sentinel-config.yaml for a complete example template
-# Sentinel-specific configuration
 resource_type: clusters  # Resource to watch: clusters, nodepools, manifests, workloads
 
 # Polling configuration
 poll_interval: 5s
-max_age_not_ready: 10s   # Max age when resource status != "Ready"
-max_age_ready: 30m       # Max age when resource status == "Ready"
+
+# Message decision - configurable decision logic
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && now - timestamp(ref_time) > duration("30m")'
+    not_ready_and_debounced: '!is_ready && now - timestamp(ref_time) > duration("10s")'
+  result: 'is_new_resource || ready_and_stale || not_ready_and_debounced'
 
 # Resource selector - only process resources matching these labels
-# Note: NOT true sharding, just label-based filtering
-# Format: List of label/value pairs (AND logic - all must match)
 resource_selector:
   - label: region
     value: us-east
@@ -267,7 +314,6 @@ resource_selector:
 hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
   timeout: 10s
-  # token: Override via HYPERFLEET_API_TOKEN="secret-token"
 
 # Message data composition - define CloudEvent data payload structure
 message_data:
@@ -289,8 +335,6 @@ metadata:
 data:
   BROKER_TYPE: "pubsub"
   BROKER_PROJECT_ID: "hyperfleet-prod"
-  # Note: Sentinel publishes to topic (implicit default topic per project)
-  # Adapters use BROKER_SUBSCRIPTION_ID to consume
 
 ---
 # RabbitMQ Example:
@@ -306,14 +350,13 @@ data:
   BROKER_VHOST: "/"
   BROKER_EXCHANGE: "hyperfleet-events"
   BROKER_EXCHANGE_TYPE: "fanout"
-  # Note: Sentinel publishes to exchange, Adapters consume from queues bound to this exchange
 ```
 
 > **Note:** For topic naming conventions and multi-tenant isolation strategies, see [Naming Strategy](./sentinel-naming-strategy.md).
 
 ### Adapter Status Update Contract
 
-**CRITICAL REQUIREMENT**: For the Sentinel max age strategy to work correctly, adapters MUST update their status on EVERY evaluation, regardless of whether they take action.
+**CRITICAL REQUIREMENT**: For the Sentinel message decision to work correctly, adapters MUST update their status on EVERY evaluation, regardless of whether they take action.
 
 **Why This Matters**:
 
@@ -324,7 +367,7 @@ Time 10:00 - DNS adapter receives event
 Time 10:00 - DNS checks preconditions: Validation not complete
 Time 10:00 - DNS does NOT update status (skips work)
             ❌ cluster.status.last_updated_time remains at 09:50
-Time 10:10 - Sentinel sees last_updated_time=09:50, max age expired (10s)
+Time 10:10 - Sentinel sees last_updated_time=09:50, age threshold exceeded (10s)
 Time 10:10 - Sentinel publishes ANOTHER event
 Time 10:10 - DNS receives event AGAIN...
             ↻ INFINITE LOOP until validation completes
@@ -371,23 +414,35 @@ Adapters MUST update status in ALL scenarios:
 Integration tests MUST verify that:
 - Adapters send `observed_time` when preconditions are met
 - Adapters send `observed_time` when preconditions are NOT met
-- Sentinel correctly calculates max age from `cluster.status.last_updated_time` (aggregated from adapter reports)
+- Sentinel correctly calculates age from `cluster.status.last_updated_time` (aggregated from adapter reports) for message decision evaluation
 
 ---
 
 **Status Tracking**:
 
-The Sentinel uses multiple fields from the resource's status to make intelligent reconciliation decisions:
+The Sentinel reads the resource's status conditions to evaluate the message decision rules. The default configuration relies on the `Ready` condition, but custom rules can reference any condition:
 
 ```json
 {
   "id": "cls-123",
-  "generation": 2,                                  // User's desired state version (increments on spec changes)
+  "generation": 2,
   "status": {
-    "phase": "Provisioning",
-    "observed_generation": 1,                        // Which generation was last reconciled by adapters
-    "last_transition_time": "2025-10-21T10:00:00Z",  // When status changed to "Provisioning"
-    "last_updated_time": "2025-10-21T12:00:00Z"          // When adapter last checked this resource
+    "conditions": [
+      {
+        "type": "Available",
+        "status": "True",
+        "observed_generation": 1,
+        "last_updated_time": "2025-10-21T12:00:00Z",
+        "last_transition_time": "2025-10-21T10:00:00Z"
+      },
+      {
+        "type": "Ready",
+        "status": "False",
+        "observed_generation": 1,
+        "last_updated_time": "2025-10-21T12:00:00Z",
+        "last_transition_time": "2025-10-21T10:00:00Z"
+      }
+    ]
   }
 }
 ```
@@ -396,29 +451,22 @@ The Sentinel uses multiple fields from the resource's status to make intelligent
 
 - **`generation`**: User's desired state version. Increments when the resource spec changes (e.g., user scales nodes from 3 to 5). This is the "what the user wants" field.
 
-- **`status.observed_generation`**: Which generation was last reconciled by adapters. Updated by adapters when they successfully process a resource. This is the "what we've reconciled" field.
+- **`condition.observed_generation`**: Which generation was last reconciled by a given adapter. The API uses this to compute the aggregated `Ready` condition — when any adapter's `observed_generation` is behind `resource.generation`, the API sets `Ready` to `False`.
 
-- **`last_transition_time`**: Updates ONLY when the status.phase changes (e.g., Provisioning → Ready)
+- **`condition.last_transition_time`**: Updates ONLY when the condition status changes (e.g., Ready False → True)
 
-- **`last_updated_time`**: Updates EVERY time an adapter checks the resource, regardless of whether status changed
+- **`condition.last_updated_time`**: Updates EVERY time an adapter checks the resource, regardless of whether status changed
 
-**Why generation/observed_generation matters for reconciliation:**
+**How generation changes flow through the system:**
 
-When a user changes the cluster spec (e.g., scales nodes), `generation` increments (1 → 2). The Sentinel compares:
-- If `generation > observed_generation` (e.g., 2 > 1): **User made changes that haven't been reconciled yet** → Publish event immediately
-- If `generation == observed_generation` (e.g., 2 == 2): **Spec is stable, reconciliation is current** → Use max age intervals for periodic health checks
+When a user changes the cluster spec (e.g., scales nodes), `generation` increments (1 → 2). The API detects that not all adapters have reconciled this generation and sets `Ready` to `False`. The Sentinel's default rules see `Ready != True` and trigger reconciliation — no separate generation check is needed in the Sentinel.
 
-This implements the Kubernetes controller pattern and ensures:
-1. **Responsive reconciliation**: Spec changes trigger immediate events (no waiting 30 minutes)
-2. **Efficient polling**: When spec is stable, fall back to longer intervals for health checks
-3. **Correct semantics**: Generation mismatch means "user intent changed", not "adapter is slow"
+**Why this matters for age calculation in message decision:**
 
-**Why this matters for max age calculation:**
-
-If a cluster stays in "Provisioning" state for 2 hours, `last_transition_time` would remain at the time it entered "Provisioning" (e.g., 10:00), even though adapters check it at 11:00, 11:30, 12:00. Using `last_transition_time` for max age calculation would incorrectly trigger events too frequently. Using `last_updated_time` ensures max age is calculated from the last adapter check, not the last status change.
+If a cluster stays in "Provisioning" state for 2 hours, `last_transition_time` would remain at the time it entered "Provisioning" (e.g., 10:00), even though adapters check it at 11:00, 11:30, 12:00. Using `last_transition_time` for age calculation would incorrectly trigger events too frequently. Using `last_updated_time` ensures age is calculated from the last adapter check, not the last status change.
 
 **For complete details on generation and observed_generation semantics, see:**
-- [HyperFleet Status Guide](../../docs/status-guide.md) - Complete documentation of the status contract, including how adapters report `observed_generation`
+- [HyperFleet Status Guide](../../docs/status-guide.md) - Complete documentation of the status contract, including how adapters report `observed_generation` and how the API aggregates it into the `Ready` condition
 
 ### Resource Filtering Architecture
 
@@ -428,7 +476,7 @@ If a cluster stays in "Provisioning" state for 2 hours, `last_transition_time` w
 - Horizontal scalability - distribute load across multiple Sentinel instances
 - Regional isolation - deploy Sentinel per region
 - Blast radius reduction - failures affect only filtered resources
-- Flexibility - different configurations per Sentinel instance (e.g., different max age intervals for dev vs prod)
+- Flexibility - different configurations per Sentinel instance (e.g., different message decision params for dev vs prod)
 
 **Important: This is NOT True Sharding**
 - True sharding guarantees complete coverage: all resources are handled by exactly one shard
@@ -451,8 +499,14 @@ If a cluster stays in "Provisioning" state for 2 hours, `last_transition_time` w
 # Deployment 1: US East clusters
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && now - timestamp(ref_time) > duration("30m")'
+    not_ready_and_debounced: '!is_ready && now - timestamp(ref_time) > duration("10s")'
+  result: 'is_new_resource || ready_and_stale || not_ready_and_debounced'
 resource_selector:
   - label: region
     value: us-east
@@ -461,21 +515,24 @@ hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
   timeout: 10s
 
-# Message data composition
 message_data:
   resource_id: .id
   resource_type: .kind
   region: .metadata.labels.region
 
-# Note: Broker config is in separate sentinel-broker-config.yaml ConfigMap
-
 ---
 # File: sentinel-us-west-config.yaml
-# Deployment 2: US West clusters (different config!)
+# Deployment 2: US West clusters (different intervals!)
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 15s  # Different max age!
-max_age_ready: 1h       # Different max age!
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && now - timestamp(ref_time) > duration("1h")'      # Different!
+    not_ready_and_debounced: '!is_ready && now - timestamp(ref_time) > duration("15s")' # Different!
+  result: 'is_new_resource || ready_and_stale || not_ready_and_debounced'
 resource_selector:
   - label: region
     value: us-west
@@ -494,9 +551,14 @@ message_data:
 # Future: NodePool Sentinel (different resource type!)
 resource_type: nodepools
 poll_interval: 5s
-max_age_not_ready: 5s
-max_age_ready: 10m
-# resource_selector: []  # Watch all node pools (empty list matches all)
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && now - timestamp(ref_time) > duration("10m")'
+    not_ready_and_debounced: '!is_ready && now - timestamp(ref_time) > duration("5s")'
+  result: 'is_new_resource || ready_and_stale || not_ready_and_debounced'
 
 hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
@@ -510,7 +572,6 @@ message_data:
 ---
 # File: sentinel-broker-config.yaml (Same across all Sentinel deployments)
 # Choose one of the following based on your environment:
-# Note: Adapters have their own broker ConfigMap with different fields
 
 # Google Cloud Pub/Sub:
 apiVersion: v1
@@ -554,7 +615,9 @@ data:
 
 **Implementation Requirements**:
 - Load Sentinel configuration from YAML file path specified via command-line flag
-- Parse duration strings (max_age_not_ready, max_age_ready, poll_interval, timeout)
+- Parse duration strings (poll_interval, timeout)
+- Parse `message_decision` section: params (CEL expressions or duration literals) and result expression
+- Resolve param dependencies (topological sort) and compile all CEL expressions at startup for fail-fast validation
 - Parse resource_type field to determine which HyperFleet resources to fetch
 - Parse message_data configuration for composable CloudEvent data structure
 - Load broker configuration separately (from environment variables or shared ConfigMap)
@@ -574,36 +637,27 @@ The Resource Watcher uses the API's condition-based search to selectively query 
 
 ### 3. Decision Engine
 
-**Responsibility**: Generation-aware decision logic with time-based fallback
+**Responsibility**: Configurable decision logic via CEL-based message decision
 
 **Key Functions**:
 - `Evaluate(resource, now)` - Determine if resource needs an event
 
-**Decision Logic** (evaluated in priority order):
-1. **Check for generation mismatch** (HIGHEST PRIORITY):
-   - Compare `resource.generation` with `resource.status.conditions.Ready.observed_generation`
-   - If `resource.generation > resource.status.conditions.Ready.observed_generation`:
-     - Return: `{ShouldPublish: true, Reason: "generation changed - new spec to reconcile"}`
-     - This ensures immediate reconciliation when users change the spec
+**Decision Logic**:
+1. **Evaluate message decision params** in dependency order, building an activation map:
+   - Duration literal params (e.g., `30m`) are converted to CEL duration values
+   - CEL expression params are evaluated with access to `resource`, `now`, and previously evaluated params
 
-2. **Check resource status conditions** (fallback to max age intervals):
-   - Select appropriate max age interval based on the `Ready` condition:
-     - If `status.conditions.Ready='True'` → use `max_age_ready` (30 minutes)
-     - If `status.conditions.Ready='False'` → use `max_age_not_ready` (10 seconds)
+2. **Evaluate result expression** with all params in scope:
+   - Result uses standard CEL logical operators (`&&`, `||`)
 
-3. **Check if max age expired**:
-   - Get `status.conditions.Ready.last_updated_time` (updated by adapters every time they report status)
-   - Calculate `nextEventTime = last_updated_time + max_age`
-   - If `now >= nextEventTime` → publish event
-   - Otherwise → skip (max age not expired)
-
-4. **Return decision with reason for logging**
+3. **Return decision based on result**:
+   - If result is `true` → publish event (reason: "message decision matched")
+   - If result is `false` → skip (reason: "message decision not matched")
 
 **Implementation Requirements**:
-- Priority-based decision logic: generation check first, then max age
-- Use `resource.generation` and `resource.status.conditions.Ready.observed_generation` for spec change detection
-- Use `status.conditions.Ready.last_updated_time` from adapter status updates (NOT `last_transition_time`) for max age calculations
-- Clear logging of decision reasoning (which condition triggered the event)
+- All CEL expressions compiled at startup (fail-fast on invalid expressions)
+- Param dependencies resolved via topological sort; circular dependencies rejected at startup
+- Clear logging of decision reasoning
 
 ### 4. Message Publisher
 
@@ -716,7 +770,7 @@ message_data:
 1. **Load Configuration**:
    - Load Sentinel configuration from YAML file specified via command-line flag
    - Load broker configuration from environment or shared ConfigMap
-   - Parse max age intervals, resource selector, message_data, and resource type
+   - Parse message_decision params/result, resource selector, message_data, and resource type
    - Apply environment variable overrides for sensitive fields
    - Initialize MessagePublisher with broker config
    - Log configuration details and validate all required fields
@@ -746,7 +800,7 @@ message_data:
    - Repeat the loop
 
 **Service Architecture**:
-- **Single-phase initialization**: Load configuration once during startup, fail fast if invalid
+- **Single-phase initialization**: Load configuration once during startup, resolve param dependencies, compile CEL expressions, fail fast if invalid
 - **Stateless polling loop**: No configuration reloading during runtime
 - **Simple service model**: No Kubernetes controller pattern, just periodic polling
 - **Graceful shutdown**: Support clean termination on SIGTERM/SIGINT (see [Graceful Shutdown Standard](../../standards/graceful-shutdown.md))
@@ -760,116 +814,189 @@ message_data:
 
 ## Decision Engine Test Scenarios
 
-The following test scenarios ensure the Decision Engine correctly implements generation-based reconciliation and max age behavior:
+The following test scenarios ensure the Decision Engine correctly implements the message decision behavior:
 
-### Generation-Based Reconciliation Tests
+### Message Decision Tests
 
-**Test 1: Ready cluster with generation mismatch → publish immediately**
+**Test 1: Ready resource with recent check → skip**
 ```
 Given:
-  - Cluster status.phase: Ready
-  - cluster.generation = 2
-  - cluster.status.observed_generation = 1
-  - cluster.status.last_updated_time = now() - 5s
-  - max_age_ready = 30m
-Then:
-  - Decision: PUBLISH
-  - Reason: "generation changed - new spec to reconcile"
-  - Max age NOT checked (generation takes priority)
-```
-
-**Test 2: Ready cluster with generation match → wait for max age**
-```
-Given:
-  - Cluster status.phase: Ready
-  - cluster.generation = 2
-  - cluster.status.observed_generation = 2
-  - cluster.status.last_updated_time = now() - 5m
-  - max_age_ready = 30m
+  - Resource Ready condition status: True
+  - resource.generation = 2
+  - condition("Ready").last_updated_time = now() - 5m (age < 30m)
 Then:
   - Decision: SKIP
-  - Reason: "max age not expired"
-  - Next event: now() + 25m
+  - Reason: "message decision not matched"
+  - Params evaluated: ref_time, is_ready=true, is_new_resource=false,
+    ready_and_stale=false, not_ready_and_debounced=false
+  - Result: false || false || false = false
 ```
 
-**Test 3: Not-Ready cluster with generation mismatch → publish immediately**
+**Test 2: Not-Ready resource with debounce elapsed → publish**
 ```
 Given:
-  - Cluster status.phase: NotReady
-  - cluster.generation = 3
-  - cluster.status.observed_generation = 2
-  - cluster.status.last_updated_time = now() - 2s
-  - max_age_not_ready = 10s
+  - Resource Ready condition status: False
+  - resource.generation = 2
+  - condition("Ready").last_updated_time = now() - 15s (age > 10s)
 Then:
   - Decision: PUBLISH
-  - Reason: "generation changed - new spec to reconcile"
-  - Max age NOT checked (generation takes priority)
+  - Reason: "message decision matched"
+  - Params evaluated: ref_time, is_ready=false, is_new_resource=false,
+    ready_and_stale=false, not_ready_and_debounced=true
+  - Result: false || false || true = true
 ```
 
-**Test 4: Not-Ready cluster with generation match and max age expired → publish**
+**Test 3: Not-Ready resource within debounce period → skip**
 ```
 Given:
-  - Cluster status.phase: NotReady
-  - cluster.generation = 1
-  - cluster.status.observed_generation = 1
-  - cluster.status.last_updated_time = now() - 15s
-  - max_age_not_ready = 10s
-Then:
-  - Decision: PUBLISH
-  - Reason: "max age expired (not ready)"
-```
-
-**Test 5: Not-Ready cluster with generation match and max age not expired → skip**
-```
-Given:
-  - Cluster status.phase: NotReady
-  - cluster.generation = 1
-  - cluster.status.observed_generation = 1
-  - cluster.status.last_updated_time = now() - 5s
-  - max_age_not_ready = 10s
+  - Resource Ready condition status: False
+  - resource.generation = 2
+  - condition("Ready").last_updated_time = now() - 5s (age < 10s)
 Then:
   - Decision: SKIP
-  - Reason: "max age not expired"
-  - Next event: now() + 5s
+  - Reason: "message decision not matched"
+  - Params evaluated: ref_time, is_ready=false, is_new_resource=false,
+    ready_and_stale=false, not_ready_and_debounced=false
+  - Result: false || false || false = false
 ```
 
-**Test 6: Ready cluster with generation match and max age expired → publish**
+**Test 4: Ready resource with stale check → publish (periodic health check)**
 ```
 Given:
-  - Cluster status.phase: Ready
-  - cluster.generation = 1
-  - cluster.status.observed_generation = 1
-  - cluster.status.last_updated_time = now() - 31m
-  - max_age_ready = 30m
+  - Resource Ready condition status: True
+  - resource.generation = 2
+  - condition("Ready").last_updated_time = now() - 31m (age > 30m)
 Then:
   - Decision: PUBLISH
-  - Reason: "max age expired (ready)"
+  - Reason: "message decision matched"
+  - Params evaluated: ref_time, is_ready=true, is_new_resource=false,
+    ready_and_stale=true, not_ready_and_debounced=false
+  - Result: false || true || false = true
+```
+
+**Test 5: Brand-new resource (generation 1, not ready) → publish immediately**
+```
+Given:
+  - Resource Ready condition status: False
+  - resource.generation = 1
+  - condition("Ready").last_updated_time = now() - 2s (within debounce period)
+Then:
+  - Decision: PUBLISH
+  - Reason: "message decision matched"
+  - Params evaluated: ref_time, is_ready=false, is_new_resource=true,
+    ready_and_stale=false, not_ready_and_debounced=false
+  - Result: true || false || false = true
+Note:
+  - Brand-new resources bypass the debounce because no adapter has
+    processed them yet — there is no "previous work" to wait for.
+```
+
+**Test 6: Not-Ready resource due to generation mismatch → publish via debounce**
+```
+Given:
+  - resource.generation = 2 (user changed spec)
+  - API has set Ready condition status: False (because adapters haven't reconciled generation 2)
+  - condition("Ready").last_updated_time = now() - 15s (debounce elapsed)
+Then:
+  - Decision: PUBLISH
+  - Reason: "message decision matched"
+  - Params evaluated: ref_time, is_ready=false, is_new_resource=false,
+    ready_and_stale=false, not_ready_and_debounced=true
+  - Result: false || false || true = true
+Note:
+  - The generation mismatch is handled implicitly: the API sets Ready=False when
+    any adapter's observed_generation is behind resource.generation.
+    The Sentinel's default rules pick this up via the not_ready_and_debounced path.
 ```
 
 ### Edge Cases
 
-**Test 7: observed_generation ahead of generation (should not happen, but handle gracefully)**
+**Test 7: Missing Ready condition on resource (zero-value fail-safe)**
 ```
 Given:
-  - Cluster status.phase: Ready
-  - cluster.generation = 1
-  - cluster.status.observed_generation = 2
+  - Resource has no Ready condition
+  - resource.generation = 1
 Then:
-  - Decision: SKIP (treat as match)
-  - Log warning: "observed_generation ahead of generation - potential API issue"
+  - condition("Ready") returns zero-value Condition
+  - is_ready = false (zero-value .status == "" != "True")
+  - is_new_resource = true (generation == 1 && !is_ready)
+  - Decision: PUBLISH
+  - Reason: "message decision matched"
+Note:
+  - Brand-new resources with no conditions are caught by is_new_resource.
+    Even without is_new_resource, the zero-value ref_time would produce
+    a very old timestamp, making not_ready_and_debounced true as well.
 ```
 
-**Test 8: Missing observed_generation (initial state)**
+**Test 8: CEL expression compilation failure at startup**
 ```
 Given:
-  - Cluster status.phase: NotReady
-  - cluster.generation = 1
-  - cluster.status.observed_generation = 0 (or nil)
-  - cluster.status.last_updated_time = now() - 2s
-  - max_age_not_ready = 10s
+  - Configuration contains invalid CEL expression in params or result
+Then:
+  - Sentinel exits with error at startup (fail-fast)
+  - Clear error message indicating which param/expression failed
+```
+
+**Test 9: Circular param dependency at startup**
+```
+Given:
+  - Param A references Param B, and Param B references Param A
+Then:
+  - Sentinel exits with error at startup (fail-fast)
+  - Clear error message indicating the circular dependency
+```
+
+**Test 10: Brand-new resource with no Ready condition and generation > 1**
+```
+Given:
+  - Resource has no Ready condition (no adapter has reported yet)
+  - resource.generation = 2 (created with a spec update before any adapter ran)
+Then:
+  - condition("Ready") returns zero-value Condition
+  - is_ready = false (.status == "" != "True")
+  - is_new_resource = false (generation != 1)
+  - ref_time = zero time → age is effectively infinite
+  - not_ready_and_debounced = true
+  - Decision: PUBLISH
+  - Reason: "message decision matched"
+Note:
+  - Even without is_new_resource, the zero-value ref_time produces a very old
+    timestamp, so not_ready_and_debounced catches it as a fail-safe.
+```
+
+**Test 11: message_decision omitted from configuration**
+```
+Given:
+  - Configuration YAML has no message_decision section
+Then:
+  - Sentinel exits with error at startup (fail-fast)
+  - Error: "message_decision is required — params and result must be defined"
+Note:
+  - There is no implicit default configuration. The message_decision section
+    is a required field. This ensures operators explicitly define their
+    decision logic rather than relying on hidden defaults.
+```
+
+**Test 12: Params reference non-Ready condition types**
+```
+Given:
+  - Configuration uses custom condition types:
+    params:
+      ref_time: 'condition("Applied").last_updated_time'
+      is_applied: 'condition("Applied").status == "True"'
+      age_exceeded: 'is_applied && now - timestamp(ref_time) > duration("5m")'
+    result: age_exceeded
+  - Resource has Applied condition with status "True" and last_updated_time = now() - 10m
 Then:
   - Decision: PUBLISH
-  - Reason: "generation changed - new spec to reconcile"
+  - Reason: "message decision matched"
+  - Params evaluated: ref_time=Applied.last_updated_time, is_applied=true, age_exceeded=true
+Note:
+  - The condition() function works with ANY condition type present in
+    resource.status.conditions[], not just "Ready".
+  - If the referenced condition type does not exist on the resource,
+    condition() returns a zero-value Condition, which naturally triggers
+    age-exceeded checks (zero timestamp = very old age).
 ```
 
 ### Test Requirements
@@ -877,35 +1004,32 @@ Then:
 **Unit Tests** (Decision Engine):
 
 The Decision Engine logic should be tested with unit tests covering:
-- All decision paths: generation check → max age check → skip
-- All reasons logged correctly (which condition triggered the event)
-- Edge cases handled gracefully (observed_generation ahead, missing, etc.)
-- 100% code coverage on the Decision Engine package
+- All decision paths: param evaluation → result evaluation → publish/skip
+- CEL expression compilation (valid and invalid expressions)
+- CEL custom function behavior (condition() with zero-value handling)
+- Param dependency resolution (topological sort, cycle detection)
+- Duration literal detection and conversion
+- Result expression evaluation with logical operators
+- Zero-value Condition handling (missing conditions naturally trigger reconciliation)
+- Edge cases handled gracefully (missing conditions, brand-new resources, etc.)
 
 **Integration Tests** (End-to-End):
 
 Integration tests should verify the complete Sentinel workflow:
 
-1. **Event Publishing**: Sentinel successfully publishes CloudEvents to the message broker when decision logic indicates an event should be published
+1. **Event Publishing**: Sentinel successfully publishes CloudEvents to the message broker when message decision result is true
 
-2. **Generation-based triggering priority**: When a cluster spec changes (generation increments), Sentinel publishes an event immediately regardless of max age intervals
+2. **Not-Ready triggers reconciliation**: When a resource's Ready condition is False (including after spec changes that increment generation), Sentinel publishes an event based on message decision rules
 
-3. **Max age intervals**: When generation matches observed_generation, Sentinel respects max age intervals before publishing the next event
+3. **Message decision evaluation**: Sentinel evaluates message_decision params and result to determine whether to publish
 
-4. **Adapter feedback loop**: Adapters receive events, process resources, and update observed_generation correctly, which Sentinel reads in subsequent polls
+4. **Adapter feedback loop**: Adapters receive events, process resources, and update conditions correctly, which the API aggregates into the `Ready` condition for Sentinel to read in subsequent polls
 
 ---
 
 ## Service Deployment
 
-For complete Kubernetes deployment manifests, configuration examples, and observability setup, see [sentinel-deployment.md](./sentinel-deployment.md).
-
-The deployment documentation includes:
-- Kubernetes Deployment manifests
-- ServiceAccount and RBAC configuration
-- ConfigMap examples for Sentinel and broker configuration
-- Prometheus metrics specification
-- Health probe configuration
+For complete Kubernetes deployment manifests, configuration examples, and observability setup, see the [Sentinel Operator Guide](https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/sentinel-operator-guide.md) in the sentinel repository.
 
 For logging configuration standards, see [Logging Specification](../../standards/logging-specification.md).
 

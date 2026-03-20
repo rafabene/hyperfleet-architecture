@@ -230,7 +230,7 @@ All metrics MUST be compatible with OpenMetrics format. The Prometheus Go client
 
 For detailed metrics definitions per component, see:
 
-- **Sentinel**: [Sentinel Deployment](../components/sentinel/sentinel-deployment.md#metrics-and-observability)
+- **Sentinel**: [Sentinel Operator Guide](https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/sentinel-operator-guide.md)
 - **Adapters**: [Adapter Metrics](../components/adapter/framework/adapter-metrics.md)
 
 ---

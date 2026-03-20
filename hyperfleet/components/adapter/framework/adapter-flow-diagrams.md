@@ -90,9 +90,9 @@ sequenceDiagram
     S->>API: GET /api/hyperfleet/v1/clusters?labels=shard
     API-->>S: List of clusters
 
-    Note over S: For each cluster:<br/>Check if requires event?<br/>(10s for Not Ready, 30m for Ready)
+    Note over S: For each cluster:<br/>Evaluate message_decision<br/>params + result
 
-    S->>S: Evaluate: now >= lastEventTime + max_age
+    S->>S: Evaluate: message_decision params + result
 
     alt Requires event
         S->>B: Publish CloudEvent<br/>{resourceType: "clusters", resourceId: "cls-123"}
