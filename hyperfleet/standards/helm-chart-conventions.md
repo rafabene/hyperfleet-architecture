@@ -2,7 +2,7 @@
 
 **Status**: Active
 **Owner**: HyperFleet Team
-**Last Updated**: 2026-03-19
+**Last Updated**: 2026-03-23
 
 ---
 
@@ -114,7 +114,13 @@ Charts SHOULD expose these when the component requires them:
 - Bump **major** for breaking values.yaml changes (renamed keys, removed fields).
 - Bump **minor** for new features (new values keys, new templates).
 - Bump **patch** for fixes (template bugs, default value corrections).
-- `appVersion` SHOULD match the application release tag (e.g., `v0.1.0`).
+
+### appVersion Convention
+
+- `appVersion` in source MUST be set to `"0.0.0-dev"` — it is a placeholder.
+- CI/release tooling stamps the real application version (e.g., `v1.2.3`) at release time.
+- `appVersion` MUST NOT be used as a fallback for the container image tag. Image tags come from git SHAs (dev) or semver (release) and are always set explicitly via `image.tag`.
+- Umbrella charts (e.g., in `hyperfleet-infra`) MUST also use `appVersion: "0.0.0-dev"` since they do not build binaries.
 
 ## 4. Default Security Posture
 
@@ -251,9 +257,11 @@ Charts MUST include these [Kubernetes recommended labels](https://kubernetes.io/
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/version: {{ .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 ```
+
+The `app.kubernetes.io/version` label MUST use `.Values.image.tag` with `.Chart.AppVersion` as fallback. This ensures the label reflects what is actually deployed — a git SHA in dev (e.g., `abc1234`) or a semver in release (e.g., `1.2.3`). The [Kubernetes recommended labels spec](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/) explicitly allows both revision hashes and semantic versions.
 
 ### Selector Labels
 
@@ -325,9 +333,9 @@ Charts MUST use the following image configuration following the Bitnami/communit
 
 ```yaml
 image:
-  registry: quay.io
-  repository: openshift-hyperfleet/hyperfleet-api
-  tag: "v0.1.0"
+  registry: CHANGE_ME
+  repository: CHANGE_ME
+  tag: ""  # Required — no default. Set via --set image.tag=<version>
   pullPolicy: Always
 ```
 
@@ -337,30 +345,54 @@ image:
 |-------|---------|---------|
 | `registry` | Registry host only | `quay.io`, `registry.ci.openshift.org` |
 | `repository` | Org path + image name | `openshift-hyperfleet/hyperfleet-api` |
-| `tag` | Version tag | `v0.1.0`, `latest` |
+| `tag` | Version tag (git SHA or semver) | `abc1234`, `v1.2.3` |
 | `pullPolicy` | Image pull policy | `Always`, `IfNotPresent` |
 
 ### Template Usage
 
 ```yaml
-image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+```
+
+`image.tag` MUST NOT fall back to `.Chart.AppVersion`. Since `appVersion` is `"0.0.0-dev"` in source, a fallback would silently attempt to pull a non-existent image instead of failing fast.
+
+### Validation Guard
+
+Charts MUST include a validation guard in `_helpers.tpl` that fails if `image.tag` is not set. The guard SHOULD be part of the chart's `validateValues` helper:
+
+```yaml
+{{- define "<chart-name>.validateValues" -}}
+{{- $registry := trim (toString .Values.image.registry) -}}
+{{- if or (not $registry) (eq $registry "CHANGE_ME") -}}
+{{- fail "image.registry must be set (e.g. --set image.registry=quay.io)" -}}
+{{- end -}}
+{{- $repository := trim (toString .Values.image.repository) -}}
+{{- if or (not $repository) (eq $repository "CHANGE_ME") -}}
+{{- fail "image.repository must be set (e.g. --set image.repository=openshift-hyperfleet/<component>)" -}}
+{{- end -}}
+{{- if not (trim (toString .Values.image.tag)) -}}
+{{- fail "image.tag must be set (e.g. --set image.tag=abc1234)" -}}
+{{- end -}}
+{{- end }}
+```
+
+The `validateValues` helper MUST be invoked at the top of `deployment.yaml` (or any template that renders a workload):
+
+```yaml
+{{- include "<chart-name>.validateValues" . }}
+apiVersion: apps/v1
+kind: Deployment
+...
 ```
 
 ### Default Values
 
 - `registry` and `repository` MUST default to `CHANGE_ME` to force explicit configuration.
 - `repository` values MUST include the org path (e.g., `openshift-hyperfleet/hyperfleet-api`).
-- `tag` SHOULD default to empty string (falling back to `Chart.AppVersion`).
+- `tag` MUST default to empty string. It is a required field — there is no fallback.
 - `pullPolicy` SHOULD default to `Always` during development. For production with pinned semver tags, operators SHOULD override to `IfNotPresent` to avoid unnecessary registry pulls.
 
 ```yaml
-# Good: both registry and repository require explicit configuration
-image:
-  registry: CHANGE_ME
-  repository: CHANGE_ME
-  tag: ""
-  pullPolicy: Always
-
 # When overriding, repository MUST include org path
 # Good: registry=quay.io, repository=openshift-hyperfleet/hyperfleet-api
 # Bad:  registry=quay.io, repository=hyperfleet-api
