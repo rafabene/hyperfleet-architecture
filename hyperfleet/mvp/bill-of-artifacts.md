@@ -121,7 +121,7 @@ Shared Go library providing a unified pub/sub messaging abstraction with built-i
 |---|---|
 | **Repository** | [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) |
 | **Language** | TypeSpec |
-| **Version** | 1.0.4 |
+| **Version** | 1.0.2 |
 
 TypeSpec definitions generating OpenAPI 3.0 specifications (with optional OpenAPI 2.0 conversion for legacy tooling), published as GitHub Release artifacts. Supports multi-cloud provider variants via alias-based type switching (`aliases-core.tsp`, `aliases-gcp.tsp`). Key models: Cluster, NodePool, Status, Error (RFC 9457). Interactive API docs via GitHub Pages.
 
