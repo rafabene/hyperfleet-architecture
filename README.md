@@ -56,18 +56,15 @@ architecture/
 └── hyperfleet/                    # HyperFleet-specific architecture
     ├── README.md                  # HyperFleet system overview and architecture summary
     ├── components/                # Component-level design decisions
-    │   ├── CLAUDE.md              # Component document guidelines
     │   ├── adapter/               # Adapter framework and implementations
-    │   │   ├── framework/         # Core adapter design docs
-    │   │   ├── maestro-integration/
-    │   │   ├── deprecated/        # Deprecated adapters
     │   ├── api-service/           # HyperFleet API service design
     │   ├── broker/                # Message broker design
     │   ├── claude-code-plugin/    # Claude Code plugin spike
     │   └── sentinel/              # Sentinel reconciliation service
-    ├── adr/                       # Architecture Decision Records
+    ├── adrs/                      # Architecture Decision Records
     ├── docs/                      # Implementation guides and features
     │   └── templates/             # Document templates
+    │   deprecated/                # Deprecated documents
     ├── standards/                 # Prescriptive engineering standards
 ```
 
