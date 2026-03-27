@@ -1,29 +1,15 @@
 ---
 Status: Deprecated
 Owner: HyperFleet Adapter Team
-Last Updated: 2026-01-27
+Last Updated: 2025-12-03
 ---
 
 # SPIKE REPORT: Define DNS Adapter Requirements and Implementation Plan for GCP
 
-> Spike report from the GCP DNS adapter investigation, documenting findings, challenges, and recommendations from the exploration. Deprecated since GCP specific adapters will be developed by GCP team and out of scope for the core HyperFleet repositories
 
----
+## 1. Overview
+
 > Note: This spike report is outdated due to the DNS adapter rescope described in HYPERFLEET-55. As a result, the focus has shifted from implementing DNS creation logic to developing a DNS placement adapter that supports DNS zone placement decisions.
-
----
-> This spike report is a draft outlining a GCP DNS adapter that follows a workflow similar to the DNS creation process implemented for CS ROSA HCP.
-
----
-## Metadata
-**JIRA Story**: HYPERFLEET-60  
-**Date**: December 3, 2025,  
----
-Status: Outdated, the following spike report serves as a record of the DNS-related findings.
----
----
-
-## 1. Executive Summary
 
 This spike defines the implementation approach for a **GCP DNS adapter** that runs as part of the adapter framework to automate DNS infrastructure setup for GKE cluster provisioning. The solution leverages **Config Connector DNS Custom Resources** to create and manage Cloud DNS zones and records, following patterns proven in CS ROSA HCP DNS implementation.
 
