@@ -1,5 +1,5 @@
 ---
-Status: Active
+Status: Deprecated
 Owner: HyperFleet Platform Team
 Last Updated: 2025-11-17
 ---

@@ -10,11 +10,6 @@ Last Updated: 2026-02-24
 
 This document defines the minimum set of metrics that all HyperFleet adapters must expose for observability. These metrics enable baseline measurement and identify areas for post-MVP improvement.
 
----
-Status: MVP
-Last Updated: November 2025
----
-
 **Related Documentation:**
 - [HyperFleet Metrics Standard](../../../standards/metrics.md) - Cross-component metrics conventions
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture

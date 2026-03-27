@@ -8,7 +8,7 @@ Last Updated: 2026-01-27
 
 ### Overview
 
-Detailed Design Review (DDR) document for the GCP Pull Secret Service adapter. Deprecated since GCP specific adapters will be developed by GCP team and out of scope for the core HyperFleet repositories
+Detailed Design Review (DDR) document for the GCP Pull Secret Service adapter. Deprecated since GCP-specific adapters will be developed by GCP team and out of scope for the core HyperFleet repositories
 
 The Pull Secret Service is an event-driven adapter that manages the complete lifecycle of image registry pull secrets for HyperShift-managed OpenShift clusters provisioned on Google Cloud Platform (GCP).
 

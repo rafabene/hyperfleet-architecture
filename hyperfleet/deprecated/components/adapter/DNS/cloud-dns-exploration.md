@@ -6,7 +6,7 @@ Last Updated: 2026-01-27
 
 # Exploring Cloud DNS Creation via Config Connector on OSD GCP Cluster
 
-> Exploration document from the GCP DNS adapter spike, investigating Cloud DNS API capabilities and integration options. Deprecated since GCP specific adapters will be developed by GCP team and out of scope for the core HyperFleet repositories
+> Exploration document from the GCP DNS adapter spike, investigating Cloud DNS API capabilities and integration options. Deprecated since GCP-specific adapters will be developed by GCP team and out of scope for the core HyperFleet repositories
 
 ---
 ## Summary of Exploration
