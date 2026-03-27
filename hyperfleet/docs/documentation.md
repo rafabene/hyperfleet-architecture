@@ -6,6 +6,46 @@ Last Updated: 2026-03-12
 
 # HyperFleet Documentation Standard
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Standard Documentation Structure](#standard-documentation-structure)
+  - [Directory Descriptions](#directory-descriptions)
+  - [Notes on Structure](#notes-on-structure)
+- [Operational Documentation Structure](#operational-documentation-structure)
+  - [Content Ownership Rules](#content-ownership-rules)
+  - [Audience Headers](#audience-headers)
+  - [Where Operational Docs Live](#where-operational-docs-live)
+- [README.md Required Sections](#readmemd-required-sections)
+  - [1. Title & Description](#1-title--description)
+  - [2. Quick Start](#2-quick-start)
+  - [3. Prerequisites](#3-prerequisites)
+  - [4. Installation](#4-installation)
+  - [5. Usage/Core Features](#5-usagecore-features)
+  - [6. Architecture Repository Link](#6-architecture-repository-link)
+  - [7. Additional Documentation (if docs/ directory exists)](#7-additional-documentation-if-docs-directory-exists)
+  - [Repository-Specific Sections](#repository-specific-sections)
+- [CONTRIBUTING.md Required Sections](#contributingmd-required-sections)
+  - [1. Development Setup](#1-development-setup)
+  - [2. Repository Structure](#2-repository-structure)
+  - [3. Testing](#3-testing)
+  - [4. Common Development Tasks](#4-common-development-tasks)
+  - [5. Commit Standards](#5-commit-standards)
+  - [6. Release Process (if applicable)](#6-release-process-if-applicable)
+- [Changelog Format](#changelog-format)
+  - [Template Structure](#template-structure)
+- [API Documentation Approach](#api-documentation-approach)
+  - [REST APIs](#rest-apis)
+  - [Go Packages](#go-packages)
+  - [API Documentation Location](#api-documentation-location)
+- [Architecture Decision Records (ADRs)](#architecture-decision-records-adrs)
+  - [ADR Location (if used)](#adr-location-if-used)
+  - [When to Use ADRs](#when-to-use-adrs)
+- [Template Files](#template-files)
+  - [Using Templates](#using-templates)
+- [Related Standards](#related-standards)
+- [Changelog](#changelog)
+
 ---
 
 ## Overview

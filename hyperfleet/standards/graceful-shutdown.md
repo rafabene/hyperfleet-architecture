@@ -6,6 +6,32 @@ Last Updated: 2026-01-09
 
 # HyperFleet Graceful Shutdown Standard
 
+## Table of Contents
+
+- [Overview](#overview)
+  - [Goals](#goals)
+- [Signal Handling](#signal-handling)
+- [Shutdown Sequence](#shutdown-sequence)
+  - [Phase 1: Mark Not Ready](#phase-1-mark-not-ready)
+  - [Phase 2: Stop Accepting New Work](#phase-2-stop-accepting-new-work)
+  - [Phase 3: Drain In-Flight Work](#phase-3-drain-in-flight-work)
+  - [Phase 4: Cleanup Resources](#phase-4-cleanup-resources)
+  - [Phase 5: Exit](#phase-5-exit)
+- [Timeout Configuration](#timeout-configuration)
+- [HTTP Server Drain Behavior](#http-server-drain-behavior)
+- [Broker Consumer Drain Behavior](#broker-consumer-drain-behavior)
+- [Background Worker Shutdown](#background-worker-shutdown)
+- [Kubernetes Integration](#kubernetes-integration)
+- [Upgrade Behavior](#upgrade-behavior)
+- [Component Guidelines](#component-guidelines)
+  - [API](#api)
+  - [Sentinel](#sentinel)
+  - [Adapters](#adapters)
+- [Logging During Shutdown](#logging-during-shutdown)
+- [Testing Requirements](#testing-requirements)
+- [Summary](#summary)
+- [References](#references)
+
 ## Overview
 
 This document defines the standard approach for graceful shutdown and drain behavior across all HyperFleet components (API, Sentinel, Adapters).

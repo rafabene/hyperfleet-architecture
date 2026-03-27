@@ -4,6 +4,35 @@ Owner: HyperFleet Platform Team
 Last Updated: 2025-11-05
 ---
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Testing Scope in MVP](#testing-scope-in-mvp)
+  - [Testing Workflow](#testing-workflow)
+- [Testing Concepts and Scope Alignment](#testing-concepts-and-scope-alignment)
+  - [Linter Check](#linter-check)
+  - [Unit Test](#unit-test)
+  - [Integration Test](#integration-test)
+  - [E2E Test](#e2e-test)
+- [Testing Strategy](#testing-strategy)
+  - [Pre-submit Job](#pre-submit-job)
+  - [CD Testing](#cd-testing)
+- [Test Data Management Strategy](#test-data-management-strategy)
+  - [MVP Approach](#mvp-approach)
+  - [Post-MVP Enhancements](#post-mvp-enhancements)
+- [Deployment Strategy](#deployment-strategy)
+  - [MVP Approach](#mvp-approach-1)
+- [Actions Breakdown](#actions-breakdown)
+  - [1. Temporary Dockerfile Setup](#1-temporary-dockerfile-setup)
+  - [2. Prow Integration to the Repos](#2-prow-integration-to-the-repos)
+  - [3. Image Build Job Setup](#3-image-build-job-setup)
+  - [4. Pre-submit Jobs Setup](#4-pre-submit-jobs-setup)
+  - [5. E2E Testing Job Setup](#5-e2e-testing-job-setup)
+  - [6. Vault Engine Application for Secrets Management](#6-vault-engine-application-for-secrets-management)
+- [Summary Checklist](#summary-checklist)
+  - [Post-MVP Action Items](#post-mvp-action-items)
+- [Future State](#future-state)
+
 ## Overview
 
 > Documents the test and release strategy defined for the HyperFleet MVP phase. Covers the MVP-specific CI/CD approach, testing scope, release criteria, and known limitations accepted for the initial release. This document is historical — see current test-release docs for active process.

@@ -6,7 +6,43 @@ Last Updated: 2026-03-20
 
 # HyperFleet Sentinel
 
-> Comprehensive design document for the HyperFleet Sentinel service — the central reconciliation loop that continuously polls the HyperFleet API, evaluates configurable CEL-based decision logic, and publishes CloudEvents to the message broker to trigger adapter processing. Covers the full architecture, configuration schema, decision algorithm, sharding strategy, and observability. The Sentinel is a generic pattern reusable for any HyperFleet resource type.
+Comprehensive design document for the HyperFleet Sentinel service — the central reconciliation loop that continuously polls the HyperFleet API, evaluates configurable CEL-based decision logic, and publishes CloudEvents to the message broker to trigger adapter processing. Covers the full architecture, configuration schema, decision algorithm, sharding strategy, and observability. The Sentinel is a generic pattern reusable for any HyperFleet resource type.
+
+---
+
+## Table of Contents
+
+- [What & Why](#what--why)
+- [Sentinel Architecture](#sentinel-architecture)
+  - [The Problem: Stuck Workflows](#the-problem-stuck-workflows)
+  - [The Solution: Continuous Reconciliation with Direct Broker Publishing](#the-solution-continuous-reconciliation-with-direct-broker-publishing)
+  - [Decision Logic](#decision-logic)
+  - [Message Decision](#message-decision)
+  - [Adapter Status Update Contract](#adapter-status-update-contract)
+  - [Resource Filtering Architecture](#resource-filtering-architecture)
+- [Service Components](#service-components)
+  - [1. Config Loader](#1-config-loader)
+  - [2. Resource Watcher](#2-resource-watcher)
+  - [3. Decision Engine](#3-decision-engine)
+  - [4. Message Publisher](#4-message-publisher)
+  - [5. Main Reconciler](#5-main-reconciler)
+- [Decision Engine Test Scenarios](#decision-engine-test-scenarios)
+  - [Message Decision Tests](#message-decision-tests)
+  - [Edge Cases](#edge-cases)
+  - [Test Requirements](#test-requirements)
+- [Service Deployment](#service-deployment)
+- [Trade-offs](#trade-offs)
+  - [What We Gain](#what-we-gain)
+  - [What We Lose / What Gets Harder](#what-we-lose--what-gets-harder)
+  - [Technical Debt Incurred](#technical-debt-incurred)
+  - [Acceptable Because](#acceptable-because)
+- [Alternatives Considered](#alternatives-considered)
+  - [Outbox Pattern (v1 Architecture)](#outbox-pattern-v1-architecture)
+  - [Push-Based Triggering (Webhooks / API Watch)](#push-based-triggering-webhooks--api-watch)
+  - [Hardcoded Decision Logic](#hardcoded-decision-logic)
+  - [Kubernetes Controller Pattern](#kubernetes-controller-pattern)
+- [Post-MVP Enhancements](#post-mvp-enhancements)
+  - [Advanced Alerting](#advanced-alerting)
 
 ---
 

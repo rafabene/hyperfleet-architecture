@@ -5,14 +5,62 @@ Last Updated: 2026-02-03
 ---
 
 # Spike Report: HyperFleet E2E Test Automation Run Strategy
-**JIRA Story:** HYPERFLEET-532  
-**Date:** Jan 30, 2026  
+
+## Table of Contents
+
+- [Overview](#overview)
+- [1. Problem Statement](#1-problem-statement)
+- [2. Goals and Non-Goals](#2-goals-and-non-goals)
+  - [2.1 Goals](#21-goals)
+  - [2.2 Non-Goals](#22-non-goals)
+- [3. Core Design Principles](#3-core-design-principles)
+  - [3.1 Test Run as the Primary Isolation Unit](#31-test-run-as-the-primary-isolation-unit)
+  - [3.2 Explicit Lifecycle Ownership](#32-explicit-lifecycle-ownership)
+  - [3.3 Isolation Over Optimization](#33-isolation-over-optimization)
+- [4. E2E Test Run Model](#4-e2e-test-run-model)
+  - [4.1 Test Run Definition](#41-test-run-definition)
+  - [4.2 Test Run Identification](#42-test-run-identification)
+  - [4.3 Test Run Lifecycle](#43-test-run-lifecycle)
+  - [4.4 Config-Driven Framework Testing](#44-config-driven-framework-testing)
+- [5. Deployment Lifecycle Strategy](#5-deployment-lifecycle-strategy)
+  - [5.1 One Namespace per Test Run](#51-one-namespace-per-test-run)
+  - [5.2 Namespace Naming Convention](#52-namespace-naming-convention)
+  - [5.3 Component Lifecycle Ownership](#53-component-lifecycle-ownership)
+  - [5.4 Resource Labeling Strategy](#54-resource-labeling-strategy)
+- [6. Resource Isolation Strategy](#6-resource-isolation-strategy)
+  - [6.1 Kubernetes Resource Isolation](#61-kubernetes-resource-isolation)
+  - [6.2 Messaging and Broker Isolation](#62-messaging-and-broker-isolation)
+- [7. Race Condition Prevention](#7-race-condition-prevention)
+  - [7.1 Unique Resource Identification](#71-unique-resource-identification)
+  - [7.2 Parallel Test Run Execution Model](#72-parallel-test-run-execution-model)
+- [8. Test Scenario Organization](#8-test-scenario-organization)
+  - [8.1 Lifecycle Management Model](#81-lifecycle-management-model)
+  - [8.2 Test Suite Types](#82-test-suite-types)
+  - [8.3 Suite Execution Order](#83-suite-execution-order)
+  - [8.4 Test Organization Guidelines](#84-test-organization-guidelines)
+  - [8.5 State Management and Suite Independence](#85-state-management-and-suite-independence)
+- [9. Resource Management and Cleanup](#9-resource-management-and-cleanup)
+  - [9.1 Cleanup Ownership Model](#91-cleanup-ownership-model)
+  - [9.2 Retention Policy](#92-retention-policy)
+  - [9.3 Cleanup Reconciliation](#93-cleanup-reconciliation)
+  - [9.4 Orphaned Resource Handling](#94-orphaned-resource-handling)
+  - [9.5 Cloud Resource Cleanup](#95-cloud-resource-cleanup)
+- [10. Testing Infrastructure Considerations](#10-testing-infrastructure-considerations)
+  - [10.1 Image Build and Distribution](#101-image-build-and-distribution)
+- [11. Observability and Debugging](#11-observability-and-debugging)
+- [12. Action Items and Next Steps](#12-action-items-and-next-steps)
+  - [12.1 Phase 1: MVP with Config-Driven Testing (Immediate)](#121-phase-1-mvp-with-config-driven-testing-immediate)
+  - [12.2 Phase 2: Adapter Suite (Future)](#122-phase-2-adapter-suite-future)
+  - [12.3 Post-MVP Enhancements](#123-post-mvp-enhancements)
 
 ## Overview
 
 Spike report on the strategy for running HyperFleet end-to-end tests, including test environment provisioning, test ordering, parallelization, and cleanup. Documents the options evaluated for running E2E tests in CI and the recommended approach for integration with the Prow pipeline.
 
 **Focus:** Deployment lifecycle management, resource isolation, and parallel Test Run execution safety
+
+**JIRA Story:** HYPERFLEET-532
+**Date:** Jan 30, 2026
 
 ---
 

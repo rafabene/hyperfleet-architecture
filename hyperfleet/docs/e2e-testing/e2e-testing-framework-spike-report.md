@@ -1,18 +1,45 @@
 ---
 Status: Active
 Owner: HyperFleet QE Team
-Last Updated: 2026-01-13
+Last Updated: 2026-03-27
 ---
 
 # Spike Report: E2E Testing Framework for Hyperfleet Core Data Flow
-**JIRA Story:** HYPERFLEET-403  
-**Date:** Jan 9, 2026  
 
 ---
+
+## Table of Contents
+
+- [Overview](#overview)
+  - [Decision: Ginkgo v2 + Gomega + Markdown Documentation](#-decision-ginkgo-v2--gomega--markdown-documentation)
+- [1. Background & Problem Statement](#1-background--problem-statement)
+  - [1.1 System Architecture](#11-system-architecture)
+  - [1.2 Testing Challenges](#12-testing-challenges)
+- [2. Framework Selection and Evaluation](#2-framework-selection-and-evaluation)
+  - [2.1 Evaluation Criteria](#21-evaluation-criteria)
+  - [2.2 Framework Comparison](#22-framework-comparison)
+  - [2.3 Implementation: Ginkgo v2 + Gomega + Markdown Documentation](#23-implementation-ginkgo-v2--gomega--markdown-documentation)
+- [3. Compatibility Testing Strategy](#3-compatibility-testing-strategy)
+  - [3.1 Branch-Based Testing Model](#31-branch-based-testing-model)
+  - [3.2 Backward Compatibility Testing](#32-backward-compatibility-testing)
+- [4. Action Items and Next Steps](#4-action-items-and-next-steps)
+  - [4.1 Phase 1: Framework Foundation](#41-phase-1-framework-foundation)
+  - [4.2 Phase 2: Core Test Implementation](#42-phase-2-core-test-implementation)
+  - [4.3 Phase 3: CI/CD Integration](#43-phase-3-cicd-integration)
+  - [4.4 Phase 4 (Post-MVP): Documentation Standards and AI Validation](#44-phase-4-post-mvp-documentation-standards-and-ai-validation)
+  - [4.5 Phase 5 (Post-MVP): Advanced Test Observability and Debugging Platform](#45-phase-5-post-mvp-advanced-test-observability-and-debugging-platform)
+  - [4.6 Success Criteria](#46-success-criteria)
+- [Appendix A: Detailed Framework Evaluations](#appendix-a-detailed-framework-evaluations)
+  - [A.1 Hybrid Ginkgo + Godog Pattern](#a1-hybrid-ginkgo--godog-pattern)
+  - [A.2 Other Frameworks Considered](#a2-other-frameworks-considered)
+- [References](#references)
 
 ## Overview
 
 This spike report evaluates E2E testing frameworks for **Hyperfleet's core data flow**—testing the end-to-end pipeline: Hyperfleet API → Sentinel → Message Broker → Adapters → back to API.
+
+**JIRA Story:** HYPERFLEET-403
+**Date:** Jan 9, 2026
 
 ### ✅ Decision: Ginkgo v2 + Gomega + Markdown Documentation
 

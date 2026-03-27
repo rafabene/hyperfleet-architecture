@@ -6,6 +6,47 @@ Last Updated: 2026-03-23
 
 # HyperFleet Helm Chart Conventions
 
+## Table of Contents
+
+- [Overview](#overview)
+- [1. Key Naming Conventions](#1-key-naming-conventions)
+  - [values.yaml Keys](#valuesyaml-keys)
+  - [Generated Application Config Files](#generated-application-config-files)
+  - [Environment Variables](#environment-variables)
+  - [Kubernetes Resource Names](#kubernetes-resource-names)
+  - [Helper Template Names](#helper-template-names)
+- [2. Values.yaml API Surface](#2-valuesyaml-api-surface)
+  - [Mandatory Sections](#mandatory-sections)
+  - [Conditional Sections](#conditional-sections)
+- [3. Chart Versioning Strategy](#3-chart-versioning-strategy)
+  - [appVersion Convention](#appversion-convention)
+- [4. Default Security Posture](#4-default-security-posture)
+  - [Pod Security Context (REQUIRED defaults)](#pod-security-context-required-defaults)
+  - [Container Security Context (REQUIRED defaults)](#container-security-context-required-defaults)
+- [5. Secret Management Pattern](#5-secret-management-pattern)
+- [6. Configuration Reload Strategy](#6-configuration-reload-strategy)
+- [7. NOTES.txt](#7-notestxt)
+- [8. Chart Testing](#8-chart-testing)
+  - [Makefile Target](#makefile-target)
+  - [Required Test Scenarios](#required-test-scenarios)
+  - [Test Assertions](#test-assertions)
+- [9. Deprecation and Migration Pattern](#9-deprecation-and-migration-pattern)
+- [10. Standard Labels and Annotations](#10-standard-labels-and-annotations)
+  - [Required Labels (all resources)](#required-labels-all-resources)
+  - [Selector Labels](#selector-labels)
+  - [Component Labels](#component-labels)
+  - [Custom Labels and Annotations](#custom-labels-and-annotations)
+- [11. Broker Configuration Pattern](#11-broker-configuration-pattern)
+  - [values.yaml Structure](#valuesyaml-structure)
+  - [Key Rules](#key-rules)
+- [12. Image Configuration](#12-image-configuration)
+  - [Field Definitions](#field-definitions)
+  - [Template Usage](#template-usage)
+  - [Validation Guard](#validation-guard)
+  - [Default Values](#default-values)
+- [Enforcement](#enforcement)
+- [References](#references)
+
 ## Overview
 
 This standard defines conventions for Helm charts across all HyperFleet component repositories (API, Sentinel, Adapter). It ensures consistent naming, structure, security posture, and operational patterns across charts. All HyperFleet charts MUST follow these conventions.

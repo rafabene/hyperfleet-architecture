@@ -6,6 +6,42 @@ Last Updated: 2025-11-07
 
 # HyperFleet Architecture Repository
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Repository Access & MVP Process](#repository-access--mvp-process)
+- [Repository Structure](#repository-structure)
+- [Document Types](#document-types)
+  - [1. Architecture Overview (`hyperfleet/README.md`)](#1-architecture-overview-hyperfleetreadmemd)
+  - [2. Component Design Documents (`components/`)](#2-component-design-documents-components)
+  - [3. Engineering Standards (`standards/`)](#3-engineering-standards-standards)
+  - [4. Implementation Guides (`docs/`)](#4-implementation-guides-docs)
+- [Tracking Trade-offs and Technical Debt](#tracking-trade-offs-and-technical-debt)
+  - [Trade-offs Template](#trade-offs-template)
+  - [Example: Sentinel Direct Broker Publishing](#example-sentinel-direct-broker-publishing)
+- [Living Documents](#living-documents)
+  - [Document Status](#document-status)
+  - [Updating Documents](#updating-documents)
+  - [Review and Merge Process](#review-and-merge-process)
+- [Navigation Guide](#navigation-guide)
+  - [I want to...](#i-want-to)
+- [Writing Guidelines](#writing-guidelines)
+  - [Trade-offs and Alternatives Are Required](#trade-offs-and-alternatives-are-required)
+  - [Be Specific](#be-specific)
+  - [Quantify Impact](#quantify-impact)
+  - [Document Trade-offs Honestly](#document-trade-offs-honestly)
+  - [Include Diagrams](#include-diagrams)
+- [Diagram Guidelines](#diagram-guidelines)
+  - [Use Mermaid for Diagrams](#use-mermaid-for-diagrams)
+- [Quality Standards](#quality-standards)
+  - [Component Design Documents Must Have](#component-design-documents-must-have)
+  - [Guides Must Have](#guides-must-have)
+- [Searching for Technical Debt](#searching-for-technical-debt)
+- [Examples](#examples)
+- [FAQ](#faq)
+- [Related Resources](#related-resources)
+- [Contact](#contact)
+
 ---
 
 ## Overview
@@ -109,7 +145,35 @@ architecture/
 
 ---
 
-### 3. Implementation Guides (`docs/`)
+### 3. Engineering Standards (`standards/`)
+
+**Purpose**: Prescriptive, cross-cutting rules that apply to all HyperFleet repositories
+
+**Standards are mandatory** — they are not guidelines. Every HyperFleet service, adapter, and infrastructure component must comply.
+
+| Category | Standard | Description |
+|---|---|---|
+| **Code Quality** | [Linting](hyperfleet/standards/linting.md) | Static analysis rules and tooling configuration |
+| | [Error Model](hyperfleet/standards/error-model.md) | Error codes, error response structure, and error handling patterns |
+| | [Generated Code Policy](hyperfleet/standards/generated-code-policy.md) | Rules for checking in and managing generated code |
+| | [Dependency Pinning](hyperfleet/standards/dependency-pinning.md) | How to pin dependencies and tool versions for reproducible builds |
+| **Project Structure** | [Directory Structure](hyperfleet/standards/directory-structure.md) | Required layout for HyperFleet component repositories |
+| | [Makefile Conventions](hyperfleet/standards/makefile-conventions.md) | Standard Makefile targets and conventions |
+| | [Commit Standard](hyperfleet/standards/commit-standard.md) | Commit message format (`HYPERFLEET-XXX - <type>: <subject>`) |
+| **Observability** | [Logging Specification](hyperfleet/standards/logging-specification.md) | Log levels, structured logging format, and required fields |
+| | [Metrics](hyperfleet/standards/metrics.md) | Prometheus metrics naming, labels, and required metrics |
+| | [Tracing](hyperfleet/standards/tracing.md) | Distributed tracing and OpenTelemetry conventions |
+| **Runtime Behavior** | [Configuration](hyperfleet/standards/configuration.md) | Environment variable naming, defaults, and configuration loading |
+| | [Graceful Shutdown](hyperfleet/standards/graceful-shutdown.md) | Signal handling, drain periods, and shutdown sequencing |
+| | [Health Endpoints](hyperfleet/standards/health-endpoints.md) | `/healthz` and `/readyz` endpoint contracts |
+| **Deployment** | [Container Image Standard](hyperfleet/standards/container-image-standard.md) | Base images, labels, and image build requirements |
+| | [Helm Chart Conventions](hyperfleet/standards/helm-chart-conventions.md) | Chart structure, values schema, and naming conventions |
+
+**When to update**: When a standard changes or a new cross-cutting rule is introduced
+
+---
+
+### 4. Implementation Guides (`docs/`)
 
 **Purpose**: Practical guides for developers and operators
 
