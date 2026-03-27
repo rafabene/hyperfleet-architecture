@@ -2,7 +2,7 @@
 
 
 **Metadata**
-- **Date:** 2026-01-27
+- **Date:** 2026-03-27
 - **Authors:** Ying Zhang
 
 
@@ -135,8 +135,8 @@ tests:
 
 To find and monitor running jobs on Prow:
 1. Navigate to the [Prow dashboard](https://prow.ci.openshift.org/).
-2. Use the filter bar to search for specific jobs:
-   - By job name: [`periodic-ci-openshift-hyperfleet-hyperfleet-e2e-main-e2e-hyperfleet-e2e-test-workflow-nightly`](https://prow.ci.openshift.org/?job=periodic-ci-openshift-hyperfleet-hyperfleet-e2e-main-e2e-hyperfleet-e2e-test-workflow-nightly)
+2. Use the filter bar to search for specific jobs, the jobs name can be got from [config file](https://github.com/openshift/release/blob/main/ci-operator/config/openshift-hyperfleet/hyperfleet-e2e/openshift-hyperfleet-hyperfleet-e2e-main__e2e.yaml)
+   - By job name: [`periodic-ci-openshift-hyperfleet-hyperfleet-e2e-<job_name>`](https://prow.ci.openshift.org/?job=periodic-ci-openshift-hyperfleet-hyperfleet-e2e-*)
    - By status: Add `&state=pending` or `&state=success` or `&state=failure` to the URL
 3. Click on any job to view detailed logs and execution information
 
@@ -219,7 +219,7 @@ To add another job based on the existing Hyperfleet E2E CI job:
 
 1. **Copy the existing job configuration** to add it in [`openshift-hyperfleet-hyperfleet-e2e-main__e2e.yaml`](https://github.com/openshift/release/blob/b968e721d74890587b15db562aa6138709543fa2/ci-operator/config/openshift-hyperfleet/hyperfleet-e2e/openshift-hyperfleet-hyperfleet-e2e-main__e2e.yaml#L16) Update the following:
    ```yaml
-   - as: hyperfleet-e2e-<specified_name> # Job name
+   - as: <specified_name> # Job name
      cron: 30 9 * * * # Job cron time
      steps:
        env: # All required env parameters, it depends on test step/chain/workflow requirements
