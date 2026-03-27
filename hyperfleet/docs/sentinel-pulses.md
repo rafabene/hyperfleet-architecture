@@ -1,4 +1,15 @@
+---
+Status: Active
+Owner: HyperFleet Architecture Team
+Last Updated: 2026-01-22
+---
+
 # Sentinel pulses, adapter behavior and API resource status
+
+
+---
+
+## Overview
 
 This document proposes changes to the current system design for how API and adapter behaves by introducing new API resource root conditions and detailing status reports by adapters and transitions.
 

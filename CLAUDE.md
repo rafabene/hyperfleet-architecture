@@ -11,19 +11,17 @@ All documents are **living documents** that evolve with design and implementatio
 ```
 ├── README.md                      # Main guide - required reading
 ├── hyperfleet/
-│   ├── architecture/              # System-level docs (30,000 feet view)
+│   ├── README.md                  # System overview (30,000 feet view)
 │   ├── components/                # Component design decisions
 │   │   ├── adapter/               # Adapter architecture
 │   │   ├── api-service/           # API service design
 │   │   ├── broker/                # Message broker design
 │   │   ├── claude-code-plugin/    # Claude Code plugin
 │   │   └── sentinel/              # Sentinel service design
-│   ├── deployment/                # Deployment configurations
+│   ├── adr/                       # Architecture Decision Records
+│   ├── deprecated/                # Archived documents (MVP, old adapters, deployment)
 │   ├── docs/                      # Implementation guides
-│   ├── e2e-testing/               # End-to-end testing
-│   ├── mvp/                       # MVP-specific decisions
 │   ├── standards/                 # Prescriptive standards (must follow)
-│   └── test-release/              # Test release configurations
 ```
 
 ## Document Status Values
@@ -32,18 +30,24 @@ All documents are **living documents** that evolve with design and implementatio
 - **Active**: Current implementation
 - **Deprecated**: No longer used (link to replacement)
 
+## Use only Active status pages
+
+Unless asked explicitly otherwise, discard any document with `Status` field different than `Active`
+
+Unless asked explicitly otherwise, discard any document with "deprecated" in the name or under a folder with "deprecated" in the name
+
 ## Document Header Format
 
-All documents must start with:
+All documents must start with metadata fields, at the beginning of the file
 
 ```markdown
-# Document Title
-
-**Status**: Active
-**Owner**: Team Name
-**Last Updated**: YYYY-MM-DD
-
 ---
+Status: Active
+Owner: Team Name
+Last Updated: YYYY-MM-DD
+---
+
+# Document Title
 ```
 
 Update "Last Updated" only for meaningful changes (design changes, new sections, trade-offs modified), not typos or formatting.
@@ -59,7 +63,7 @@ Use **Mermaid diagrams** in all architecture and component documents:
 
 | I want to...                    | Start here                                    |
 |---------------------------------|-----------------------------------------------|
-| Understand HyperFleet           | `hyperfleet/architecture/architecture-summary.md` |
+| Understand HyperFleet           | `hyperfleet/README.md` |
 | Design a new component          | `hyperfleet/components/` + see README         |
 | Write an implementation guide   | `hyperfleet/docs/`                            |
 | Find trade-offs                 | Component docs → "Trade-offs" section         |
@@ -69,12 +73,14 @@ Use **Mermaid diagrams** in all architecture and component documents:
 ## Commit Message Format
 
 ```
-HYPERFLEET-XXX - docs: brief description
+HYPERFLEET-XXX - <type>: <subject>
 ```
 
 Examples:
 - `HYPERFLEET-123 - docs: add sentinel component design`
 - `HYPERFLEET-456 - docs: update API trade-offs section`
+
+More info on [commit-standard.md](./hyperfleet/standards/commit-standard.md)
 
 ## What Claude Should NOT Do
 

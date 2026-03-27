@@ -1,8 +1,10 @@
-# HyperFleet Container Image Standard
-
-This document defines the standard conventions for Dockerfiles, base images, and container build practices across all HyperFleet service repositories.
-
 ---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-03-09
+---
+
+# HyperFleet Container Image Standard
 
 ## Table of Contents
 
@@ -19,6 +21,8 @@ This document defines the standard conventions for Dockerfiles, base images, and
 ---
 
 ## Overview
+
+This document defines the standard conventions for Dockerfiles, base images, and container build practices across all HyperFleet service repositories.
 
 ### Goals
 

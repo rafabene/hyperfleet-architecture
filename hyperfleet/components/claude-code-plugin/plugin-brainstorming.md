@@ -1,10 +1,14 @@
+---
+Status: Active
+Owner: HyperFleet Architecture Team
+Last Updated: 2025-12-02
+---
+
 # HyperFleet Claude Code Plugins - Brainstorming Proposal
 
-**Date**: 2025-11-27 (Initial), 2025-12-02 (Updated)
-**Status**: Updated with JIRA Enhancement Details
-**Goal**: Design practical Claude Code plugins for the HyperFleet project
+## Overview
 
----
+> Brainstorming document capturing initial ideas for Claude Code plugin use cases in HyperFleet. Covers potential plugin scenarios, workflow improvements, and areas where AI assistance could reduce developer toil. This document informed the more detailed spike report.
 
 ## Background
 

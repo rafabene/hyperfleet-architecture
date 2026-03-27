@@ -1,10 +1,15 @@
-# HyperFleet Error Model and Codes Standard
-
-This document defines the standard error model and error codes for all HyperFleet components (API, Sentinel, Adapters), following [RFC 9457 - Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html).
-
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-02
 ---
 
+# HyperFleet Error Model and Codes Standard
+
+
 ## Overview
+
+This document defines the standard error model and error codes for all HyperFleet components (API, Sentinel, Adapters), following [RFC 9457 - Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html).
 
 ### Goals
 
@@ -382,7 +387,7 @@ if err := db.GetCluster(id); err != nil {
 
 ### Adapters
 
-- Report errors via adapter status (see [Status Guide](./status-guide.md))
+- Report errors via adapter status (see [Status Guide](../docs/status-guide.md))
 - Distinguish between:
   - **Business logic failures**: `Health: True` (adapter worked, validation failed)
   - **Adapter errors**: `Health: False` (unexpected error in adapter)
@@ -527,6 +532,6 @@ Content-Type: application/problem+json
 - [RFC 7807 - Problem Details for HTTP APIs (obsoleted by RFC 9457)](https://www.rfc-editor.org/rfc/rfc7807.html)
 - [HyperFleet Logging Specification](./logging-specification.md)
 - [HyperFleet Tracing Standard](./tracing.md)
-- [HyperFleet Status Guide](./status-guide.md)
+- [HyperFleet Status Guide](../docs/status-guide.md)
 - [HyperFleet API Versioning](../components/api-service/api-versioning.md)
 - [Google Cloud API Design Guide - Errors](https://cloud.google.com/apis/design/errors)

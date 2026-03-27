@@ -1,15 +1,16 @@
-# HyperFleet Adapter Versioning Strategy
-
-## *Define versioning strategy for Adapters including binary versioning, config versioning, and compatibility with Sentinel and HyperFleet API*
-
-**Metadata**
-- **Date:** 2025-10-30
-- **Authors:** Alex Vulaj
-- **Related Jira(s):** [HYPERFLEET-65](https://issues.redhat.com/browse/HYPERFLEET-65)
-
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2025-11-05
 ---
 
+# HyperFleet Adapter Versioning Strategy
+- **Date:** 2025-10-30
+- **Related Jira(s):** [HYPERFLEET-65](https://issues.redhat.com/browse/HYPERFLEET-65)
+
 ## 1. Overview
+
+> Defines the versioning strategy for HyperFleet Adapters, covering binary versioning, configuration versioning, and compatibility guarantees with Sentinel and the HyperFleet API. Establishes how adapter versions are incremented, what constitutes a breaking change, and how backward compatibility is maintained during upgrades.
 
 **What are Adapters?**
 
@@ -183,7 +184,7 @@ Test Coverage:
 
 ## 4. Adapter ↔ Sentinel Compatibility (Event Consumption)
 
-**Adapters consume CloudEvents published by Sentinel** - see [Sentinel Versioning Strategy](./sentinel-versioning.md) for full details on event schema versioning.
+**Adapters consume CloudEvents published by Sentinel** - see [Sentinel Versioning Strategy](../sentinel/sentinel-versioning.md) for full details on event schema versioning.
 
 **Adapter implementation requirements:**
 - **AsyncAPI code generation**: Event structs are generated from AsyncAPI schema (similar to API client generation from OpenAPI)
@@ -320,8 +321,8 @@ Binary v1.3.x supports Config Schema 1.3
 
 ## References
 
-- [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md)
-- [Sentinel Versioning Strategy](./sentinel-versioning.md)
-- [API Versioning Strategy](./api-versioning.md)
+- [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/README.md)
+- [Sentinel Versioning Strategy](../sentinel/sentinel-versioning.md)
+- [API Versioning Strategy](../api-service/api-versioning.md)
 - [Semantic Versioning 2.0.0](https://semver.org/)
 - [Helm Chart Best Practices](https://helm.sh/docs/chart_best_practices/)

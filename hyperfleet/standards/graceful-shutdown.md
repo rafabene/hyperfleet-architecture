@@ -1,10 +1,15 @@
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-09
+---
+
 # HyperFleet Graceful Shutdown Standard
+
+## Overview
 
 This document defines the standard approach for graceful shutdown and drain behavior across all HyperFleet components (API, Sentinel, Adapters).
 
----
-
-## Overview
 
 ### Goals
 

@@ -1,10 +1,14 @@
-# HyperFleet Tracing and Telemetry Standard
-
-This document defines the standard approach for distributed tracing across all HyperFleet components (API, Sentinel, Adapters).
-
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-05
 ---
 
+# HyperFleet Tracing and Telemetry Standard
+
 ## Overview
+
+This document defines the standard approach for distributed tracing across all HyperFleet components (API, Sentinel, Adapters).
 
 ### Goals
 

@@ -1,15 +1,12 @@
-# Claude Code Plugins Spike
-
-## *Investigation of Claude Code plugin system for HyperFleet development workflow automation*
-
-**Metadata**
-- **Date:** 2025-10-30
-- **Authors:** Alex Vulaj
-- **Status:** Spike Complete - Recommend Proceeding
-
+---
+Status: Active
+Owner: HyperFleet Architecture Team
+Last Updated: 2025-11-05
 ---
 
-## Executive Summary
+# Claude Code Plugins Spike
+
+## Overview
 
 Claude Code plugins provide a mechanism to create team-shared, auto-updating extensions that can automate common development tasks within the Claude Code interface. After investigation and prototyping, **we recommend proceeding with adoption** via HYPERFLEET-119 epic.
 

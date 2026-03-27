@@ -1,12 +1,15 @@
-# HyperFleet Architecture Repository
+---
+Status: Active
+Owner: Architecture Team
+Last Updated: 2025-11-07
+---
 
-**Status**: Active  
-**Owner**: Architecture Team  
-**Last Updated**: 2025-10-22  
+# HyperFleet Architecture Repository
 
 ---
 
-## Purpose
+## Overview
+
 
 This repository serves as the **single source of truth** for all architectural documentation related to HyperFleet. All documents are **living documents** that evolve as the design and implementation progress.
 
@@ -46,30 +49,33 @@ This repository serves as the **single source of truth** for all architectural d
 ```
 architecture/
 ├── README.md                      # This file - repository guide
-├── hyperfleet/                    # HyperFleet-specific architecture
-│   ├── architecture/              # 30,000 feet view (system-level)
-│   │   ├── architecture-summary.md
-│   │   ├── component-diagram.md
-│   │   ├── data-flow-diagram.md
-│   │   └── deployment-architecture.md
-│   ├── components/                # Component-level design decisions
-│   │   ├── api.md
-│   │   ├── sentinel.md
-│   │   ├── message-broker.md
-│   │   ├── adapters.md
-│   │   └── database.md
-│   └── docs/                      # Implementation guides and features
-│       ├── status-guide.md
-│       ├── adapter-development-guide.md
-│       ├── deployment-guide.md
-│       └── monitoring-guide.md
+├── CONTRIBUTING.md                # How to contribute to this repository
+├── CLAUDE.md                      # Claude Code guidelines for AI-assisted workflows
+├── OWNERS                         # Repository ownership
+├── hack/                          # Utility scripts
+└── hyperfleet/                    # HyperFleet-specific architecture
+    ├── README.md                  # HyperFleet system overview and architecture summary
+    ├── components/                # Component-level design decisions
+    │   ├── CLAUDE.md              # Component document guidelines
+    │   ├── adapter/               # Adapter framework and implementations
+    │   │   ├── framework/         # Core adapter design docs
+    │   │   ├── maestro-integration/
+    │   │   ├── deprecated/        # Deprecated adapters
+    │   ├── api-service/           # HyperFleet API service design
+    │   ├── broker/                # Message broker design
+    │   ├── claude-code-plugin/    # Claude Code plugin spike
+    │   └── sentinel/              # Sentinel reconciliation service
+    ├── adr/                       # Architecture Decision Records
+    ├── docs/                      # Implementation guides and features
+    │   └── templates/             # Document templates
+    ├── standards/                 # Prescriptive engineering standards
 ```
 
 ---
 
 ## Document Types
 
-### 1. Architecture Documents (`architecture/`)
+### 1. Architecture Overview (`hyperfleet/README.md`)
 
 **Purpose**: High-level system architecture (30,000 feet view)
 
@@ -80,7 +86,7 @@ architecture/
 - Deployment topology
 - Cross-cutting concerns (security, scalability, observability)
 
-**When to create**: Major system redesigns, new architecture proposals
+**When to update**: Major system redesigns, new architecture proposals
 
 **Living Document**: Update as system architecture evolves
 
@@ -253,7 +259,7 @@ All HyperFleet team developers have approve and merge access. **Goal**: Move fas
 ### I want to...
 
 **Understand HyperFleet architecture**
-→ Start with `hyperfleet/architecture/architecture-summary.md`
+→ Start with `hyperfleet/README.md`
 
 **Design a new component**
 → Add document to `hyperfleet/components/` with required sections (see "Component Design Documents")
@@ -266,6 +272,12 @@ All HyperFleet team developers have approve and merge access. **Goal**: Move fas
 
 **Track technical debt**
 → Search all component docs for "Technical Debt Incurred"
+
+**Look up a HyperFleet term or acronym**
+→ See `hyperfleet/docs/glossary.md`
+
+**Find or record an architecture decision**
+→ See `hyperfleet/adr/` — follow the template in `hyperfleet/adr/README.md`
 
 ---
 
@@ -361,7 +373,7 @@ grep -r "Status: Deprecated" hyperfleet/
 
 ### Good Component Document
 
-See: `hyperfleet/components/sentinel.md`
+See: `hyperfleet/components/sentinel/sentinel.md`
 - Clear purpose and responsibilities
 - Detailed trade-offs section
 - Alternatives considered
@@ -425,8 +437,8 @@ Create new documents when:
 ## Contact
 
 **Questions or suggestions?**
-- Slack: //todo
-- Architecture Team: //todo
+- Slack: [#hcm-hyperfleet-team](https://redhat.enterprise.slack.com/archives/hcm-hyperfleet-team)
+- Architecture Team: Open a PR or post in the Slack channel above
 - Pull requests welcome for documentation updates
 
 ---

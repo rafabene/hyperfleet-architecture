@@ -1,10 +1,18 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2026-01-02
+---
+
 # HyperFleet Adapter Framework - Deployment Guide
+
+## Overview
 
 This document describes how to deploy the HyperFleet Adapter Framework in Kubernetes.
 
 **Related Documentation:**
 - [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
-- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
+- `adapter-config-template-MVP.yaml` - Configuration structure
 - [Adapter Design Decisions](./adapter-design-decisions.md) - Architecture decisions
 - [Logging Specification](../../../standards/logging-specification.md) - Logging configuration standards
 
@@ -838,7 +846,7 @@ Scale adapters based on message queue depth using KEDA (Kubernetes Event-Driven 
 ## References
 
 - [Adapter Framework Design](./adapter-frame-design.md)
-- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml)
+- `adapter-config-template-MVP.yaml`
 - [Adapter Design Decisions](./adapter-design-decisions.md)
 - [HyperFleet Tracing Standard](../../../standards/tracing.md)
 - [HyperFleet Logging Specification](../../../standards/logging-specification.md)

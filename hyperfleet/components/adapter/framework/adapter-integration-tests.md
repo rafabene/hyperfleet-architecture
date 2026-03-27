@@ -1,13 +1,11 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2025-12-09
+---
+
 # HyperFleet Adapter Framework - Integration Tests
 
-This document defines integration test scenarios and acceptance criteria for the HyperFleet Adapter Framework.
-
-**Related Documentation:**
-- [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
-- [Adapter Status Contract](./adapter-status-contract.md) - Status reporting contract
-- [Test Release MVP](../../test-release/test-release-MVP.md) - Testing strategy
-
----
 
 ## Table of Contents
 
@@ -20,6 +18,13 @@ This document defines integration test scenarios and acceptance criteria for the
 ---
 
 ## Overview
+
+This document defines integration test scenarios and acceptance criteria for the HyperFleet Adapter Framework.
+
+**Related Documentation:**
+- [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
+- [Adapter Status Contract](./adapter-status-contract.md) - Status reporting contract
+- [Test Release MVP](../../../docs/test-release/test-release-MVP.md) - Testing strategy
 
 ### Testing Strategy
 
