@@ -1,5 +1,5 @@
 ---
-Status: Pending
+Status: Draft
 Owner: HyperFleet Architecture Team
 Last Updated: 2025-10-30
 ---

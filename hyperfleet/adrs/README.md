@@ -41,7 +41,7 @@ Copy this into your new ADR file:
 
 ```markdown
 ---
-Status: Proposed | Active | Superseded by ADR-NNNN | Deprecated
+Status: Proposed | Active | Deprecated
 Owner: <team>
 Last Updated: YYYY-MM-DD
 ---
