@@ -1,4 +1,13 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2025-12-08
+---
+
 # Maestro Integration Guide for HyperFleet Adapters
+
+## Overview
+
 
 **Purpose**: This guide shows adapter developers how to use the Maestro SDK to create and manage resources in management
 clusters.

@@ -1,14 +1,10 @@
-# HyperFleet Versioning Trade-offs (Post-MVP)
-
-## *Versioning considerations that are OUT OF SCOPE for MVP but may be adopted in future iterations*
-
-**Metadata**
-- **Date:** 2025-10-30
-- **Authors:** Alex Vulaj
-- **Status:** Post-MVP - Not enforced for initial release
-- **Related Jira(s):** [HYPERFLEET-65](https://issues.redhat.com/browse/HYPERFLEET-65), [HYPERFLEET-69](https://issues.redhat.com/browse/HYPERFLEET-69), [HYPERFLEET-70](https://issues.redhat.com/browse/HYPERFLEET-70)
-
 ---
+Status: Draft
+Owner: HyperFleet Architecture Team
+Last Updated: 2025-10-30
+---
+
+# HyperFleet Versioning Trade-offs (Post-MVP)
 
 ## 1. Overview
 
@@ -25,6 +21,7 @@ This document captures versioning strategies and policies that are **intentional
 - API support policies and deprecation windows
 - Database migration and rollback procedures
 
+## *Versioning considerations that are OUT OF SCOPE for MVP but may be adopted in future iterations*
 ---
 
 ## 2. SDK Versioning (Post-MVP)

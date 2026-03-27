@@ -1,20 +1,16 @@
-# HyperFleet Generated Code Policy
-
-## *Policy for managing generated code in HyperFleet repositories*
-
-## Metadata
-
-- **Date:** 2025-12-26
-- **Authors:** Rafael Benevides
-- **Status:** Active
-- **Related Jira(s):** [HYPERFLEET-303](https://issues.redhat.com/browse/HYPERFLEET-303)
-- **Related Docs:** [Makefile Conventions](makefile-conventions.md)
-
 ---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-13
+---
+
+# HyperFleet Generated Code Policy
 
 ## 1. Overview
 
 This document establishes the policy for handling generated code in HyperFleet repositories.
+
+- **Related Docs:** [Makefile Conventions](makefile-conventions.md)
 
 ### What is Generated Code?
 

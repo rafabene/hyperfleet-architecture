@@ -1,3 +1,9 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2025-12-09
+---
+
 # HyperFleet Adapter Status Contract
 
 ## Overview
@@ -6,8 +12,8 @@ This document defines the contract between HyperFleet adapters and the HyperFlee
 
 **Related Documentation:**
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture and workflow
-- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
-- [Status Guide](../../docs/status-guide.md) - Comprehensive status guide
+- `adapter-config-template-MVP.yaml` - Configuration structure
+- [Status Guide](../../../docs/status-guide.md) - Comprehensive status guide
 
 ---
 
@@ -737,6 +743,6 @@ This contract is versioned with the HyperFleet API version. Adapters must use th
 ## References
 
 - [Kubernetes Conditions](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-conditions) - Inspiration for condition structure
-- [Status Guide](../../docs/status-guide.md) - Comprehensive status guide
+- [Status Guide](../../../docs/status-guide.md) - Comprehensive status guide
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture
 

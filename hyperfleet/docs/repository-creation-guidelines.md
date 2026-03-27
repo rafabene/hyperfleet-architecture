@@ -1,7 +1,10 @@
-# HyperFleet Repository Creation Guidelines
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2025-12-09
+---
 
-**Purpose**: Standardized conventions for creating and configuring new repositories in the HyperFleet project.  
-**Note**: This document provides the MVP baseline. More conventions will be introduced and refined after the MVP phase. 
+# HyperFleet Repository Creation Guidelines
 
 ---
 
@@ -14,6 +17,8 @@ This document outlines the mandatory configuration steps and conventions for cre
 2. Branch Protection Configuration
 3. Team Access Configuration
 
+**Purpose**: Standardized conventions for creating and configuring new repositories in the HyperFleet project.  
+**Note**: This document provides the MVP baseline. More conventions will be introduced and refined after the MVP phase. 
 ---
 
 ## Repository Naming and Initialization

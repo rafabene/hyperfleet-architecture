@@ -1,4 +1,14 @@
+---
+Status: Active
+Owner: HyperFleet Architecture Team
+Last Updated: 2026-03-02
+---
+
 # HyperFleet Pull Secret Service - Design Decision Record
+
+> Detailed Design Review (DDR) document for the HyperFleet pull secret management service. Covers the design decisions for how pull secrets are stored, distributed to adapter jobs, and rotated, including the security model and integration with GCP Secret Manager or Kubernetes Secrets.
+
+---
 
 ---
 
@@ -1261,7 +1271,7 @@ $ rhit-cli audit-logs --partner-code hyperfleet --since 7d
 |---------|--------------------------|
 | [Section2.3 RHIT Client](#23-support-for-privatecustomer-specific-registries) | RHITClient uses `/partners/hyperfleet/` namespace (not `/partners/ocm-service/`) |
 | [Section4 Deployment](#4-deployment-architecture) | Separate mTLS certificates deployed in HyperFleet namespace |
-| [Section5.1 Authentication](#51-authentication-flow) | HyperFleet-specific client certificates for RHIT mTLS |
+| [Section5.1 Authentication](#61-authentication-flow) | HyperFleet-specific client certificates for RHIT mTLS |
 | [Section6 Security](#6-security-architecture) | Independent certificate rotation schedule |
 
 **Trade-offs Accepted:**

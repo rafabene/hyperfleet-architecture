@@ -1,8 +1,10 @@
-# HyperFleet Directory Structure Standard
-
-This document defines the standard directory structure for all HyperFleet repositories to ensure consistency, improve developer experience, and enable automation.
-
 ---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-03-12
+---
+
+# HyperFleet Directory Structure Standard
 
 ## Table of Contents
 
@@ -16,6 +18,8 @@ This document defines the standard directory structure for all HyperFleet reposi
 ---
 
 ## Overview
+
+This document defines the standard directory structure for all HyperFleet repositories to ensure consistency, improve developer experience, and enable automation.
 
 ### Problem Statement
 

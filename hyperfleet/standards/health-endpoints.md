@@ -1,10 +1,16 @@
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-03-20
+---
+
 # HyperFleet Health and Readiness Endpoint Standard
+
+
+## Overview
 
 This document defines the standard contract for health and readiness endpoints across all HyperFleet components (API, Sentinel, Adapters).
 
----
-
-## Overview
 
 ### Goals
 

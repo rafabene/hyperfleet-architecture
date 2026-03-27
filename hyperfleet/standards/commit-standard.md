@@ -1,4 +1,14 @@
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-03-19
+---
+
 # HyperFleet Commit Message Standard
+
+> Defines the commit message format for all HyperFleet repositories, extending the Conventional Commits specification with a JIRA ticket prefix (`HYPERFLEET-XXX - <type>: <subject>`). Covers commit types, character limits, breaking change notation, and enforcement via CI linting. All HyperFleet repos — services, adapters, infrastructure, and this architecture repo — must follow this standard.
+
+---
 
 This guide defines the commit message format and conventions for all HyperFleet repositories.
 
@@ -201,4 +211,4 @@ Developers may optionally configure local commit hooks using [husky](https://typ
 ### Related HyperFleet Standards
 
 - [Makefile Conventions](./makefile-conventions.md)
-- [Linting Standard](./linting-standard.md)
+- [Linting Standard](./linting.md)

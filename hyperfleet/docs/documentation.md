@@ -1,12 +1,14 @@
-# HyperFleet Documentation Standard
+---
+Status: Active
+Owner: HyperFleet Team
+Last Updated: 2026-03-12
+---
 
-**Status**: Active
-**Owner**: HyperFleet Team
-**Last Updated**: 2026-03-12
+# HyperFleet Documentation Standard
 
 ---
 
-## Purpose
+## Overview
 
 This document establishes the standard approach for structuring documentation across all HyperFleet repositories. The goal is to create a homogeneous documentation structure that engineers can navigate consistently regardless of which repo they are working in.
 
@@ -82,8 +84,8 @@ Each piece of operational content has exactly one canonical location. Other docs
 
 | Content | Canonical Location | Other Docs |
 |---------|-------------------|------------|
-| Metric names, types, labels | `metrics.md` | Link: "See [metrics.md](metrics.md) for definitions" |
-| Health endpoint behavior | `runbook.md` (Health Checks section) | Link: "See [runbook.md#health-checks](runbook.md#health-checks)" |
+| Metric names, types, labels | `metrics.md` | Link: "See `metrics.md` for definitions" |
+| Health endpoint behavior | `runbook.md` (Health Checks section) | Link: "See `runbook.md#health-checks`" |
 | PromQL for alerting | `alerts.md` | Do not duplicate in `metrics.md` |
 | PromQL for "what does this metric look like" | `metrics.md` (Example Queries section) | Do not duplicate in `alerts.md` |
 | Config option defaults and types | `configuration.md` | Reference, do not repeat values |
@@ -301,9 +303,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ADRs are **optional** but recommended for complex components that require architectural decisions to be documented.
 
 ### ADR Location (if used)
-- **Location**: [architecture repository](https://github.com/openshift-hyperfleet/architecture) `docs/architecture/adr/` directory
+- **Location**: [`hyperfleet/adrs/`](../adrs/README.md) in this repository
 - **Naming**: `NNNN-title-of-decision.md` (e.g., `0001-use-openapi-for-api-specs.md`)
-- **Format**: Follow standard ADR template with Status, Context, Decision, Consequences
+- **Format**: Follow the template in [`hyperfleet/adrs/README.md`](../adrs/README.md)
 
 ### When to Use ADRs
 - Significant architectural decisions that affect multiple components

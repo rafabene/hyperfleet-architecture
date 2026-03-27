@@ -1,10 +1,14 @@
-# HyperFleet Metrics Standard
-
-This document defines the standard conventions for Prometheus metrics across all HyperFleet components (API, Sentinel, Adapters).
-
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-03-20
 ---
 
+# HyperFleet Metrics Standard
+
 ## Overview
+
+This document defines the standard conventions for Prometheus metrics across all HyperFleet components (API, Sentinel, Adapters).
 
 ### Goals
 

@@ -1,8 +1,10 @@
-# HyperFleet Makefile Conventions
-
-This guide provides a standardized set of Makefile targets and conventions applicable to all HyperFleet repositories.
-
 ---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-03-07
+---
+
+# HyperFleet Makefile Conventions
 
 ## Table of Contents
 

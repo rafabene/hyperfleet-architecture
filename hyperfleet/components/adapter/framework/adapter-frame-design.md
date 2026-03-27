@@ -1,3 +1,9 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2026-02-24
+---
+
 # HyperFleet Adapter Framework - Design Document
 
 ## Overview
@@ -6,8 +12,8 @@ This document describes the design of the HyperFleet Adapter Framework, a config
 
 **Related Documentation:**
 - [Adapter Flow Diagrams](./adapter-flow-diagrams.md) - **Complete system workflow, adapter lifecycle sequence, and event flow patterns**
-- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - MVP configuration template
-- [Adapter Config Template Post-MVP](./adapter-config-template-post-MVP.yaml) - Post-MVP configuration template with advanced features
+- `adapter-config-template-MVP.yaml` - MVP configuration template
+- `adapter-config-template-post-MVP.yaml` - Post-MVP configuration template with advanced features
 - [Adapter Status Contract](./adapter-status-contract.md) - Status reporting contract
 - [Adapter Metrics](./adapter-metrics.md) - Required metrics for observability and monitoring
 - [Adapter Design Decisions](./adapter-design-decisions.md) - Architecture decisions and trade-offs
@@ -1248,7 +1254,7 @@ Observability settings are managed via the **Observability ConfigMap** (`adapter
 - Health checks (enabled, port, paths)
 - Tracing (enabled, endpoint, sample rate)
 
-**See:** [adapter-observability-config-template.yaml](./adapter-observability-config-template.yaml)
+**See:** `adapter-observability-config-template.yaml`
 
 **Environment Variables (from ConfigMap):**
 ```yaml

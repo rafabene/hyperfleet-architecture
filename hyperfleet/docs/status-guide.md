@@ -1,10 +1,17 @@
+---
+Status: Active
+Owner: HyperFleet Architecture Team
+Last Updated: 2026-03-11
+---
+
 # HyperFleet Cluster Status JSON Guide
 
-**Purpose**: Comprehensive guide to understanding cluster status JSON structure and adapter status contract
 
 ---
 
 ## Overview
+
+Comprehensive guide to the HyperFleet cluster status JSON structure and the adapter status reporting contract. Explains the condition-based status model (Available, Applied, Health), how adapter statuses are aggregated into cluster-level status, and how Sentinel uses status to make reconciliation decisions. The authoritative reference for implementing status reporting in adapters.
 
 HyperFleet uses a **condition-based status reporting contract** where adapters report their progress through standardized Kubernetes-style conditions. This guide explains:
 

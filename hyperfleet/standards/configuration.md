@@ -1,3 +1,9 @@
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-05
+---
+
 # HyperFleet Configuration Standard
 
 ## Overview

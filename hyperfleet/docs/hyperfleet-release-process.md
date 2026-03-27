@@ -1,12 +1,14 @@
-# HyperFleet Release Process
+---
+Status: Draft
+Owner: HyperFleet Team
+Last Updated: 2026-03-20
+---
 
-**Status**: Draft
-**Owner**: HyperFleet Team
-**Last Updated**: 2026-03-20
+# HyperFleet Release Process
 
 ---
 
-## Executive Summary
+## Overview
 
 This documentation defines a comprehensive release process for HyperFleet (hyperfleet-api, hyperfleet-sentinel, and hyperfleet-adapter). The proposed process balances agility with stability, leveraging existing Prow infrastructure while establishing clear gates, workflows, and artifacts for production releases.
 

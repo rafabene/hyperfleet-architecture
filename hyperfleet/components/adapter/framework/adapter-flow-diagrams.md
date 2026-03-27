@@ -1,4 +1,12 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2026-03-20
+---
+
 # HyperFleet Reconciliation Flow
+
+## Overview
 
 This document provides visual diagrams to help understand the reconciliation flow in HyperFleet v2.
 

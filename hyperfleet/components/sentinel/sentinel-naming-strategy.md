@@ -1,4 +1,14 @@
+---
+Status: Active
+Owner: HyperFleet Sentinel Team
+Last Updated: 2025-12-04
+---
+
 # Naming Strategy for Multi-Tenant Isolation
+
+> Defines the naming strategy for multi-tenant isolation in HyperFleet, covering how Sentinel instances, Kubernetes resources, and namespaces are named to prevent conflicts between tenants. Documents the naming conventions for Sentinel deployments, ConfigMaps, and the resources they create.
+
+---
 
 ### Metadata
 - **Date:** 2025-12-03
