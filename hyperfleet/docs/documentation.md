@@ -303,9 +303,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ADRs are **optional** but recommended for complex components that require architectural decisions to be documented.
 
 ### ADR Location (if used)
-- **Location**: [`hyperfleet/adr/`](../adr/README.md) in this repository
+- **Location**: [`hyperfleet/adrs/`](../adrs/README.md) in this repository
 - **Naming**: `NNNN-title-of-decision.md` (e.g., `0001-use-openapi-for-api-specs.md`)
-- **Format**: Follow the template in [`hyperfleet/adr/README.md`](../adr/README.md)
+- **Format**: Follow the template in [`hyperfleet/adrs/README.md`](../adrs/README.md)
 
 ### When to Use ADRs
 - Significant architectural decisions that affect multiple components
