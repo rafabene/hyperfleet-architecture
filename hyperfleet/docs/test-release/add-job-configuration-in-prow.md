@@ -6,6 +6,27 @@ Last Updated: 2026-01-28
 
 # Adding CI Configuration for New Repositories
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Initial Setup](#initial-setup)
+- [Configuration File Structure](#configuration-file-structure)
+- [Configuration Examples](#configuration-examples)
+  - [Basic Unit and Lint Tests](#basic-unit-and-lint-tests)
+  - [Integration Tests](#integration-tests)
+  - [Image Build Jobs](#image-build-jobs)
+- [Generating Prow Job Files](#generating-prow-job-files)
+- [Setting Up Team Ownership](#setting-up-team-ownership)
+  - [Initial Setup](#initial-setup-1)
+  - [Automatic Synchronization](#automatic-synchronization)
+- [Run Podman in Prow](#run-podman-in-prow)
+  - [Base Image](#base-image)
+  - [Capability](#capability)
+  - [Enable the feature on a test](#enable-the-feature-on-a-test)
+- [Presubmit/Image jobs example PR](#presubmitimage-jobs-example-pr)
+- [Test Step Registry](#test-step-registry)
+- [Prow References](#prow-references)
+
 ## Overview
 
 This document provides guidance for adding pre-submit testing and image built-up pipelines for components to OpenShift CI. 

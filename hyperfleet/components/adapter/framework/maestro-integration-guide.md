@@ -6,6 +6,23 @@ Last Updated: 2025-12-08
 
 # Maestro Integration Guide for HyperFleet Adapters
 
+## Table of Contents
+
+- [Overview](#overview)
+- [What is Maestro?](#what-is-maestro)
+- [ManifestWork Structure](#manifestwork-structure)
+- [FeedbackRules Explained](#feedbackrules-explained)
+- [SDK Usage](#sdk-usage)
+- [Reading Resource Status from ManifestWork Feedback](#reading-resource-status-from-manifestwork-feedback)
+- [Authentication](#authentication)
+- [Error Handling](#error-handling)
+- [Consumer Targeting](#consumer-targeting)
+  - [Option 1: Static Configuration (MVP Approach)](#option-1-static-configuration-mvp-approach)
+  - [Option 2: From ConfigMap](#option-2-from-configmap)
+  - [Option 3: Dynamic Selection (Post-MVP)](#option-3-dynamic-selection-post-mvp)
+- [Complete End-to-End Example](#complete-end-to-end-example)
+- [References](#references)
+
 ## Overview
 
 

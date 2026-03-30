@@ -8,6 +8,26 @@ Last Updated: 2025-11-05
 - **Date:** 2025-10-30
 - **Related Jira(s):** [HYPERFLEET-65](https://issues.redhat.com/browse/HYPERFLEET-65)
 
+## Table of Contents
+
+- [1. Overview](#1-overview)
+- [2. Adapter Binary Versioning](#2-adapter-binary-versioning)
+  - [Versioning Scheme](#versioning-scheme)
+- [3. Adapter Config Versioning](#3-adapter-config-versioning)
+  - [Overview](#overview)
+  - [Config Schema Versioning](#config-schema-versioning)
+  - [Config Evolution Rules](#config-evolution-rules)
+  - [Config Packaging and Distribution](#config-packaging-and-distribution)
+  - [Version Independence Example](#version-independence-example)
+  - [Testing Matrix](#testing-matrix)
+- [4. Adapter ↔ Sentinel Compatibility (Event Consumption)](#4-adapter--sentinel-compatibility-event-consumption)
+- [5. Adapter ↔ HyperFleet API Compatibility](#5-adapter--hyperfleet-api-compatibility)
+- [6. Version Metadata Exposure](#6-version-metadata-exposure)
+- [7. Deployment Recommendations](#7-deployment-recommendations)
+  - [Config Version Bumping Guidelines](#config-version-bumping-guidelines)
+  - [Binary and Config Compatibility Matrix](#binary-and-config-compatibility-matrix)
+- [References](#references)
+
 ## 1. Overview
 
 > Defines the versioning strategy for HyperFleet Adapters, covering binary versioning, configuration versioning, and compatibility guarantees with Sentinel and the HyperFleet API. Establishes how adapter versions are incremented, what constitutes a breaking change, and how backward compatibility is maintained during upgrades.
