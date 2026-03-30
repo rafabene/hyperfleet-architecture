@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Platform Team
-Last Updated: 2026-01-05
+Last Updated: 2026-03-27
 ---
 
 # HyperFleet Tracing and Telemetry Standard
@@ -64,7 +64,7 @@ All components MUST support tracing configuration via **environment variables**.
 | `OTEL_TRACES_SAMPLER_ARG` | `1.0` | Sampler argument (ratio for ratio-based samplers) |
 | `OTEL_PROPAGATORS` | `tracecontext,baggage` | Context propagators |
 | `OTEL_RESOURCE_ATTRIBUTES` | - | Additional resource attributes |
-| `TRACING_ENABLED` | `true` | Enable/disable tracing |
+| `HYPERFLEET_TRACING_ENABLED` | `true` | Enable/disable tracing |
 
 ### Service Names
 
