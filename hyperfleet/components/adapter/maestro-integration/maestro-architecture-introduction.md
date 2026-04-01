@@ -1,4 +1,54 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2026-01-28
+---
+
 # Maestro Architecture Deep Dive
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Core Architecture](#core-architecture)
+  - [System Components](#system-components)
+  - [Key Design Principles](#key-design-principles)
+  - [Architectural Rationale](#architectural-rationale)
+  - [Deployment Modes](#deployment-modes)
+- [Maestro Event Flow and Processing Patterns](#maestro-event-flow-and-processing-patterns)
+  - [CloudEvents Data Flow Architecture](#cloudevents-data-flow-architecture)
+  - [Watch Processing Patterns](#watch-processing-patterns)
+  - [Event Processing Volume Analysis](#event-processing-volume-analysis)
+  - [Connection Management](#connection-management)
+  - [Event Deduplication and Filtering](#event-deduplication-and-filtering)
+- [Communication Protocols](#communication-protocols)
+  - [HTTP REST API](#http-rest-api)
+  - [gRPC Communication](#grpc-communication)
+  - [Subscription Pre-setup Requirements](#subscription-pre-setup-requirements)
+- [Event Consumption Patterns](#event-consumption-patterns)
+  - [Consumption Models by Broker](#consumption-models-by-broker)
+  - [Event Consumption Risks](#event-consumption-risks)
+- [API Capabilities](#api-capabilities)
+  - [API Endpoint Support Matrix](#api-endpoint-support-matrix)
+  - [API Design Rationale](#api-design-rationale)
+- [ManifestWork Integration](#manifestwork-integration)
+  - [Resource Model](#resource-model)
+  - [Resource vs ManifestWork Relationship](#resource-vs-manifestwork-relationship)
+- [Security Architecture](#security-architecture)
+  - [Authentication Layers](#authentication-layers)
+  - [Network Security](#network-security)
+- [Monitoring & Observability](#monitoring--observability)
+  - [Key Metrics](#key-metrics)
+  - [Logging Strategy](#logging-strategy)
+  - [Alerting Scenarios](#alerting-scenarios)
+- [Troubleshooting Guide](#troubleshooting-guide)
+  - [Connection Issues](#connection-issues)
+  - [Resource Delivery Issues](#resource-delivery-issues)
+
+## Overview
+
+Introduces the Maestro service architecture and explains how it fits into the HyperFleet system as the work orchestration layer. Covers Maestro's role in managing work items, its event-based communication model with adapters, and the design decisions behind choosing Maestro over alternative orchestration approaches.
+
+---
 
 ## Core Architecture
 

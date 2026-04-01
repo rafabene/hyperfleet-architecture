@@ -1,16 +1,60 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2026-02-24
+---
+
 # HyperFleet Adapter Metrics - MVP
+
+## Table of Contents
+
+- [Overview](#overview)
+- [CloudEvent Data Structure](#cloudevent-data-structure)
+- [Metrics Format](#metrics-format)
+- [Required Metrics (MVP)](#required-metrics-mvp)
+  - [1. Event Processing Metrics](#1-event-processing-metrics)
+  - [2. Resource Management Metrics](#2-resource-management-metrics)
+  - [3. API Call Metrics](#3-api-call-metrics)
+  - [4. Precondition Metrics](#4-precondition-metrics)
+  - [5. Status Reporting Metrics](#5-status-reporting-metrics)
+  - [6. Error Metrics](#6-error-metrics)
+  - [7. Workload Monitoring Metrics](#7-workload-monitoring-metrics)
+  - [8. Health Metrics](#8-health-metrics)
+- [Implementation Guidelines](#implementation-guidelines)
+  - [1. Metric Naming Convention](#1-metric-naming-convention)
+  - [2. Label Best Practices](#2-label-best-practices)
+  - [3. Metric Collection Points](#3-metric-collection-points)
+  - [4. Histogram Bucket Configuration](#4-histogram-bucket-configuration)
+  - [5. Metric Export](#5-metric-export)
+- [Metrics Endpoint](#metrics-endpoint)
+  - [Health and Metrics Endpoints](#health-and-metrics-endpoints)
+  - [Example Service Configuration](#example-service-configuration)
+  - [Example ServiceMonitor (Prometheus Operator)](#example-servicemonitor-prometheus-operator)
+- [Dashboard Queries (PromQL)](#dashboard-queries-promql)
+  - [Event Processing Rate](#event-processing-rate)
+  - [Event Processing Latency](#event-processing-latency)
+  - [Resource Creation Rate](#resource-creation-rate)
+  - [API Call Performance](#api-call-performance)
+  - [Precondition Pass Rate](#precondition-pass-rate)
+  - [Error Rate](#error-rate)
+- [Alerting Rules (Examples)](#alerting-rules-examples)
+  - [Silent Failure (Dead Man's Switch)](#silent-failure-dead-mans-switch)
+  - [High Error Rate](#high-error-rate)
+  - [Slow Event Processing](#slow-event-processing)
+  - [API Errors](#api-errors)
+- [Baseline Metrics (Expected Values)](#baseline-metrics-expected-values)
+- [Post-MVP Improvements](#post-mvp-improvements)
+- [Implementation Checklist](#implementation-checklist)
+- [References](#references)
 
 ## Overview
 
 This document defines the minimum set of metrics that all HyperFleet adapters must expose for observability. These metrics enable baseline measurement and identify areas for post-MVP improvement.
 
-**Status**: MVP  
-**Last Updated**: November 2025
-
 **Related Documentation:**
 - [HyperFleet Metrics Standard](../../../standards/metrics.md) - Cross-component metrics conventions
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture
-- [Adapter Observability Config](./adapter-observability-config-template.yaml) - Observability configuration template
+- `adapter-observability-config-template.yaml` - Observability configuration template
 - [Adapter Deployment Guide](./adapter-deployment.md) - Deployment and operations
 
 ---

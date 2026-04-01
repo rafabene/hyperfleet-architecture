@@ -1,4 +1,14 @@
+---
+Status: Active
+Owner: HyperFleet Sentinel Team
+Last Updated: 2025-12-03
+---
+
 # HyperFleet Sentinel Versioning Strategy
+
+> Defines the versioning strategy for the HyperFleet Sentinel service, covering binary versioning, configuration versioning, and compatibility guarantees with the HyperFleet API and Adapters. Establishes how Sentinel versions are incremented and how backward compatibility is maintained during upgrades.
+
+---
 
 ## *Define versioning strategy for Sentinel to enable independent evolution while maintaining compatibility with HyperFleet API and Adapters*
 
@@ -212,7 +222,7 @@ Sentinel includes `schemaversion` field in all published events:
 
 ## References
 
-- [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md)
+- [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/README.md)
 - [AsyncAPI Specification](https://www.asyncapi.com/docs/reference/specification)
 - [CloudEvents 1.0 Specification](https://cloudevents.io/)
 - [Semantic Versioning 2.0.0](https://semver.org/)

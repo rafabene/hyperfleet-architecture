@@ -1,4 +1,57 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2025-12-09
+---
+
 # HyperFleet Adapter Status Contract
+
+## Table of Contents
+
+- [Overview](#overview)
+- [API Endpoints](#api-endpoints)
+  - [Status Reporting Endpoint](#status-reporting-endpoint)
+  - [Upsert Pattern](#upsert-pattern)
+- [Status Payload Structure](#status-payload-structure)
+  - [POST Request (Upsert ClusterStatus)](#post-request-upsert-clusterstatus)
+- [Required Fields](#required-fields)
+  - [Adapter Status Request Fields](#adapter-status-request-fields)
+  - [Condition Request Fields](#condition-request-fields)
+- [Required Conditions](#required-conditions)
+  - [1. Applied](#1-applied)
+  - [2. Available](#2-available)
+  - [3. Health](#3-health)
+- [Status Reporting Patterns](#status-reporting-patterns)
+  - [Pattern 1: Preconditions NOT Met](#pattern-1-preconditions-not-met)
+  - [Pattern 2: Resources Created](#pattern-2-resources-created)
+  - [Pattern 3: Workload In Progress](#pattern-3-workload-in-progress)
+  - [Pattern 4: Workload Succeeded](#pattern-4-workload-succeeded)
+  - [Pattern 5: Workload Failed](#pattern-5-workload-failed)
+  - [Pattern 6: Adapter Error](#pattern-6-adapter-error)
+- [Optional Fields](#optional-fields)
+  - [Data Field](#data-field)
+  - [Metadata Field](#metadata-field)
+- [Framework Integration](#framework-integration)
+  - [Configuration-Based Status Building](#configuration-based-status-building)
+  - [Status Evaluation Flow](#status-evaluation-flow)
+- [HTTP Headers](#http-headers)
+  - [Required Headers](#required-headers)
+  - [Example Request](#example-request)
+- [Response Codes](#response-codes)
+  - [Success Responses](#success-responses)
+  - [Error Responses](#error-responses)
+- [Best Practices](#best-practices)
+  - [1. Always Include All Three Conditions](#1-always-include-all-three-conditions)
+  - [2. Use Meaningful Reasons](#2-use-meaningful-reasons)
+  - [3. Provide Clear Messages](#3-provide-clear-messages)
+  - [4. Let API Manage Timestamps](#4-let-api-manage-timestamps)
+  - [5. Always Report observed_generation and observed_time](#5-always-report-observed_generation-and-observed_time)
+  - [6. Use Data Field for Structured Information](#6-use-data-field-for-structured-information)
+  - [7. Handle Errors Gracefully](#7-handle-errors-gracefully)
+  - [8. Always Use POST](#8-always-use-post)
+  - [9. Conditions: reason and message Are Optional](#9-conditions-reason-and-message-are-optional)
+- [Versioning](#versioning)
+- [References](#references)
 
 ## Overview
 
@@ -6,8 +59,8 @@ This document defines the contract between HyperFleet adapters and the HyperFlee
 
 **Related Documentation:**
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture and workflow
-- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
-- [Status Guide](../../docs/status-guide.md) - Comprehensive status guide
+- `adapter-config-template-MVP.yaml` - Configuration structure
+- [Status Guide](../../../docs/status-guide.md) - Comprehensive status guide
 
 ---
 
@@ -737,6 +790,6 @@ This contract is versioned with the HyperFleet API version. Adapters must use th
 ## References
 
 - [Kubernetes Conditions](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-conditions) - Inspiration for condition structure
-- [Status Guide](../../docs/status-guide.md) - Comprehensive status guide
+- [Status Guide](../../../docs/status-guide.md) - Comprehensive status guide
 - [Adapter Framework Design](./adapter-frame-design.md) - Framework architecture
 

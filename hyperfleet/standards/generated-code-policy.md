@@ -1,20 +1,41 @@
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-13
+---
+
 # HyperFleet Generated Code Policy
 
-## *Policy for managing generated code in HyperFleet repositories*
+## Table of Contents
 
-## Metadata
-
-- **Date:** 2025-12-26
-- **Authors:** Rafael Benevides
-- **Status:** Active
-- **Related Jira(s):** [HYPERFLEET-303](https://issues.redhat.com/browse/HYPERFLEET-303)
-- **Related Docs:** [Makefile Conventions](makefile-conventions.md)
-
----
+- [1. Overview](#1-overview)
+  - [What is Generated Code?](#what-is-generated-code)
+- [2. Rationale](#2-rationale)
+  - [Why not commit generated code?](#why-not-commit-generated-code)
+  - [Benefits of on-demand generation](#benefits-of-on-demand-generation)
+- [3. Affected Repositories and File Patterns](#3-affected-repositories-and-file-patterns)
+  - [Repositories](#repositories)
+  - [File Patterns to Exclude](#file-patterns-to-exclude)
+- [4. Developer Workflow](#4-developer-workflow)
+  - [Prerequisites](#prerequisites)
+  - [First-time Setup](#first-time-setup)
+  - [Daily Workflow](#daily-workflow)
+  - [Important Notes](#important-notes)
+- [5. Makefile Requirements](#5-makefile-requirements)
+  - [Required Target](#required-target)
+  - [Target Dependencies](#target-dependencies)
+  - [Generation Characteristics](#generation-characteristics)
+- [6. CI/CD Pipeline Requirements](#6-cicd-pipeline-requirements)
+  - [Optional: Verify No Generated Files Committed](#optional-verify-no-generated-files-committed)
+- [7. Code generator tool](#7-code-generator-tool)
+  - [OpenAPI Code Generation Comparison](#openapi-code-generation-comparison)
+- [8. References](#8-references)
 
 ## 1. Overview
 
 This document establishes the policy for handling generated code in HyperFleet repositories.
+
+- **Related Docs:** [Makefile Conventions](makefile-conventions.md)
 
 ### What is Generated Code?
 

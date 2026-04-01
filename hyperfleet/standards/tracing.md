@@ -1,10 +1,64 @@
-# HyperFleet Tracing and Telemetry Standard
-
-This document defines the standard approach for distributed tracing across all HyperFleet components (API, Sentinel, Adapters).
-
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-03-27
 ---
 
+# HyperFleet Tracing and Telemetry Standard
+
+## Table of Contents
+
+- [Overview](#overview)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+- [OpenTelemetry Adoption](#opentelemetry-adoption)
+  - [Why OpenTelemetry](#why-opentelemetry)
+  - [SDK Requirements](#sdk-requirements)
+- [Configuration](#configuration)
+  - [Service Names](#service-names)
+  - [Resource Attributes](#resource-attributes)
+- [Trace Context Propagation](#trace-context-propagation)
+  - [HTTP Requests](#http-requests)
+  - [CloudEvents (Pub/Sub)](#cloudevents-pubsub)
+  - [Propagation Flow](#propagation-flow)
+- [Required Spans](#required-spans)
+  - [Span Naming Convention](#span-naming-convention)
+  - [All Components](#all-components)
+  - [API](#api)
+  - [Sentinel](#sentinel)
+  - [Adapters](#adapters)
+- [Standard Span Attributes](#standard-span-attributes)
+  - [Semantic Conventions](#semantic-conventions)
+  - [HTTP Spans](#http-spans)
+  - [Database Spans](#database-spans)
+  - [Messaging Spans (Pub/Sub)](#messaging-spans-pubsub)
+  - [Cloud Provider Spans](#cloud-provider-spans)
+  - [HyperFleet-Specific Attributes](#hyperfleet-specific-attributes)
+  - [Attribute Best Practices](#attribute-best-practices)
+- [Sampling Strategy](#sampling-strategy)
+  - [Head-Based vs Tail-Based Sampling](#head-based-vs-tail-based-sampling)
+  - [Default: Parent-Based Trace ID Ratio](#default-parent-based-trace-id-ratio)
+  - [Environment-Specific Sampling Rates](#environment-specific-sampling-rates)
+  - [Configuration Example](#configuration-example)
+  - [Always Sample Specific Operations](#always-sample-specific-operations)
+- [Exporter Configuration](#exporter-configuration)
+  - [OTLP Exporter (Default)](#otlp-exporter-default)
+  - [Kubernetes Deployment](#kubernetes-deployment)
+  - [Local Development](#local-development)
+- [Integration with Logging](#integration-with-logging)
+  - [Adding Trace Context to Logs](#adding-trace-context-to-logs)
+  - [Log Output Example](#log-output-example)
+- [Error Handling in Spans](#error-handling-in-spans)
+  - [Recording Errors](#recording-errors)
+  - [Error Attributes](#error-attributes)
+- [Span Lifecycle Best Practices](#span-lifecycle-best-practices)
+  - [Starting and Ending Spans](#starting-and-ending-spans)
+  - [Context Propagation](#context-propagation)
+- [References](#references)
+
 ## Overview
+
+This document defines the standard approach for distributed tracing across all HyperFleet components (API, Sentinel, Adapters).
 
 ### Goals
 
@@ -60,7 +114,7 @@ All components MUST support tracing configuration via **environment variables**.
 | `OTEL_TRACES_SAMPLER_ARG` | `1.0` | Sampler argument (ratio for ratio-based samplers) |
 | `OTEL_PROPAGATORS` | `tracecontext,baggage` | Context propagators |
 | `OTEL_RESOURCE_ATTRIBUTES` | - | Additional resource attributes |
-| `TRACING_ENABLED` | `true` | Enable/disable tracing |
+| `HYPERFLEET_TRACING_ENABLED` | `true` | Enable/disable tracing |
 
 ### Service Names
 

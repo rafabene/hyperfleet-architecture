@@ -1,10 +1,65 @@
-# HyperFleet Error Model and Codes Standard
-
-This document defines the standard error model and error codes for all HyperFleet components (API, Sentinel, Adapters), following [RFC 9457 - Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html).
-
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-02
 ---
 
+# HyperFleet Error Model and Codes Standard
+
+## Table of Contents
+
+- [Overview](#overview)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+  - [Reference Implementation](#reference-implementation)
+- [RFC 9457 Problem Details](#rfc-9457-problem-details)
+  - [Basic Structure](#basic-structure)
+  - [Standard Fields (RFC 9457)](#standard-fields-rfc-9457)
+  - [HyperFleet Extension Fields](#hyperfleet-extension-fields)
+  - [Complete Example](#complete-example)
+- [Problem Types](#problem-types)
+  - [Type URI Format](#type-uri-format)
+  - [Registered Problem Types](#registered-problem-types)
+- [Error Code Format](#error-code-format)
+  - [Format](#format)
+  - [Error Categories](#error-categories)
+- [HTTP Status Code Mapping](#http-status-code-mapping)
+  - [Client Errors (4xx)](#client-errors-4xx)
+  - [Server Errors (5xx)](#server-errors-5xx)
+  - [Mapping Policy](#mapping-policy)
+- [Validation Errors](#validation-errors)
+  - [Single Validation Error](#single-validation-error)
+  - [Multiple Validation Errors](#multiple-validation-errors)
+  - [Validation Constraint Types](#validation-constraint-types)
+- [Standard Error Codes](#standard-error-codes)
+  - [Validation Errors (VAL)](#validation-errors-val)
+  - [Authentication Errors (AUT)](#authentication-errors-aut)
+  - [Authorization Errors (AUZ)](#authorization-errors-auz)
+  - [Not Found Errors (NTF)](#not-found-errors-ntf)
+  - [Conflict Errors (CNF)](#conflict-errors-cnf)
+  - [Rate Limit Errors (LMT)](#rate-limit-errors-lmt)
+  - [Internal Errors (INT)](#internal-errors-int)
+  - [Service Errors (SVC)](#service-errors-svc)
+- [Error Wrapping and Propagation](#error-wrapping-and-propagation)
+  - [Internal Error Handling](#internal-error-handling)
+  - [Security Considerations](#security-considerations)
+- [Component-Specific Guidelines](#component-specific-guidelines)
+  - [API Service](#api-service)
+  - [Sentinel](#sentinel)
+  - [Adapters](#adapters)
+- [Error Logging Integration](#error-logging-integration)
+- [Example Error Responses](#example-error-responses)
+  - [Validation Error](#validation-error)
+  - [Resource Not Found](#resource-not-found)
+  - [Version Conflict](#version-conflict)
+  - [Rate Limit Exceeded](#rate-limit-exceeded)
+  - [Internal Server Error](#internal-server-error)
+- [References](#references)
+
+
 ## Overview
+
+This document defines the standard error model and error codes for all HyperFleet components (API, Sentinel, Adapters), following [RFC 9457 - Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html).
 
 ### Goals
 
@@ -382,7 +437,7 @@ if err := db.GetCluster(id); err != nil {
 
 ### Adapters
 
-- Report errors via adapter status (see [Status Guide](./status-guide.md))
+- Report errors via adapter status (see [Status Guide](../docs/status-guide.md))
 - Distinguish between:
   - **Business logic failures**: `Health: True` (adapter worked, validation failed)
   - **Adapter errors**: `Health: False` (unexpected error in adapter)
@@ -527,6 +582,6 @@ Content-Type: application/problem+json
 - [RFC 7807 - Problem Details for HTTP APIs (obsoleted by RFC 9457)](https://www.rfc-editor.org/rfc/rfc7807.html)
 - [HyperFleet Logging Specification](./logging-specification.md)
 - [HyperFleet Tracing Standard](./tracing.md)
-- [HyperFleet Status Guide](./status-guide.md)
+- [HyperFleet Status Guide](../docs/status-guide.md)
 - [HyperFleet API Versioning](../components/api-service/api-versioning.md)
 - [Google Cloud API Design Guide - Errors](https://cloud.google.com/apis/design/errors)

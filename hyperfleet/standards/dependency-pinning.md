@@ -1,4 +1,50 @@
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-26
+---
+
 # Dependency and Tool Version Pinning Standard
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Problem](#problem)
+- [Solution: Bingo](#solution-bingo)
+- [Directory Structure and File Naming](#directory-structure-and-file-naming)
+  - [Standard Directory Layout](#standard-directory-layout)
+  - [File Naming Conventions](#file-naming-conventions)
+- [Quick Start](#quick-start)
+  - [Initialize in a Repository](#initialize-in-a-repository)
+- [How to Add New Tools](#how-to-add-new-tools)
+  - [Basic Command](#basic-command)
+  - [Complete Workflow](#complete-workflow)
+  - [Version Options](#version-options)
+  - [Common Tools Quick Reference](#common-tools-quick-reference)
+  - [Makefile Variable Mapping](#makefile-variable-mapping)
+- [Common Operations](#common-operations)
+  - [Upgrade Tool](#upgrade-tool)
+  - [Remove Tool](#remove-tool)
+  - [List Tools](#list-tools)
+- [Makefile Targets for Tool Installation](#makefile-targets-for-tool-installation)
+  - [Required Targets](#required-targets)
+  - [Target Descriptions](#target-descriptions)
+  - [How It Works](#how-it-works)
+- [CI Integration Pattern](#ci-integration-pattern)
+  - [GitHub Actions Example](#github-actions-example)
+- [Template .bingo Directory](#template-bingo-directory)
+  - [.bingo/.gitignore](#bingogitignore)
+  - [Makefile Integration](#makefile-integration)
+  - [GitHub Actions Integration](#github-actions-integration)
+- [References](#references)
+  - [Documentation](#documentation)
+  - [Related HyperFleet Standards](#related-hyperfleet-standards)
+
+## Overview
+
+ Prescribes how dependencies must be pinned for reproducible builds across all HyperFleet repositories. Covers Go module pinning, container image digest pinning, and tooling version management. Ensures that builds are deterministic and that supply chain risks from floating dependency versions are minimized.
+
+---
 
 All HyperFleet repositories **containing Go code** MUST use [Bingo](https://github.com/bwplotka/bingo) to pin development tool versions for reproducible builds across all environments.
 

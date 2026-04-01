@@ -1,12 +1,54 @@
+---
+Status: Active
+Owner: HyperFleet Team
+Last Updated: 2026-03-12
+---
+
 # HyperFleet Documentation Standard
 
-**Status**: Active
-**Owner**: HyperFleet Team
-**Last Updated**: 2026-03-12
+## Table of Contents
+
+- [Overview](#overview)
+- [Standard Documentation Structure](#standard-documentation-structure)
+  - [Directory Descriptions](#directory-descriptions)
+  - [Notes on Structure](#notes-on-structure)
+- [Operational Documentation Structure](#operational-documentation-structure)
+  - [Content Ownership Rules](#content-ownership-rules)
+  - [Audience Headers](#audience-headers)
+  - [Where Operational Docs Live](#where-operational-docs-live)
+- [README.md Required Sections](#readmemd-required-sections)
+  - [1. Title & Description](#1-title--description)
+  - [2. Quick Start](#2-quick-start)
+  - [3. Prerequisites](#3-prerequisites)
+  - [4. Installation](#4-installation)
+  - [5. Usage/Core Features](#5-usagecore-features)
+  - [6. Architecture Repository Link](#6-architecture-repository-link)
+  - [7. Additional Documentation (if docs/ directory exists)](#7-additional-documentation-if-docs-directory-exists)
+  - [Repository-Specific Sections](#repository-specific-sections)
+- [CONTRIBUTING.md Required Sections](#contributingmd-required-sections)
+  - [1. Development Setup](#1-development-setup)
+  - [2. Repository Structure](#2-repository-structure)
+  - [3. Testing](#3-testing)
+  - [4. Common Development Tasks](#4-common-development-tasks)
+  - [5. Commit Standards](#5-commit-standards)
+  - [6. Release Process (if applicable)](#6-release-process-if-applicable)
+- [Changelog Format](#changelog-format)
+  - [Template Structure](#template-structure)
+- [API Documentation Approach](#api-documentation-approach)
+  - [REST APIs](#rest-apis)
+  - [Go Packages](#go-packages)
+  - [API Documentation Location](#api-documentation-location)
+- [Architecture Decision Records (ADRs)](#architecture-decision-records-adrs)
+  - [ADR Location (if used)](#adr-location-if-used)
+  - [When to Use ADRs](#when-to-use-adrs)
+- [Template Files](#template-files)
+  - [Using Templates](#using-templates)
+- [Related Standards](#related-standards)
+- [Changelog](#changelog)
 
 ---
 
-## Purpose
+## Overview
 
 This document establishes the standard approach for structuring documentation across all HyperFleet repositories. The goal is to create a homogeneous documentation structure that engineers can navigate consistently regardless of which repo they are working in.
 
@@ -82,8 +124,8 @@ Each piece of operational content has exactly one canonical location. Other docs
 
 | Content | Canonical Location | Other Docs |
 |---------|-------------------|------------|
-| Metric names, types, labels | `metrics.md` | Link: "See [metrics.md](metrics.md) for definitions" |
-| Health endpoint behavior | `runbook.md` (Health Checks section) | Link: "See [runbook.md#health-checks](runbook.md#health-checks)" |
+| Metric names, types, labels | `metrics.md` | Link: "See `metrics.md` for definitions" |
+| Health endpoint behavior | `runbook.md` (Health Checks section) | Link: "See `runbook.md#health-checks`" |
 | PromQL for alerting | `alerts.md` | Do not duplicate in `metrics.md` |
 | PromQL for "what does this metric look like" | `metrics.md` (Example Queries section) | Do not duplicate in `alerts.md` |
 | Config option defaults and types | `configuration.md` | Reference, do not repeat values |
@@ -301,9 +343,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ADRs are **optional** but recommended for complex components that require architectural decisions to be documented.
 
 ### ADR Location (if used)
-- **Location**: [architecture repository](https://github.com/openshift-hyperfleet/architecture) `docs/architecture/adr/` directory
+- **Location**: [`hyperfleet/adrs/`](../adrs/README.md) in this repository
 - **Naming**: `NNNN-title-of-decision.md` (e.g., `0001-use-openapi-for-api-specs.md`)
-- **Format**: Follow standard ADR template with Status, Context, Decision, Consequences
+- **Format**: Follow the template in [`hyperfleet/adrs/README.md`](../adrs/README.md)
 
 ### When to Use ADRs
 - Significant architectural decisions that affect multiple components

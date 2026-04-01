@@ -1,11 +1,19 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2025-12-30
+---
+
 # HyperFleet Adapter Framework - Design Decisions
+
+## Overview
 
 This document captures the key design decisions, trade-offs, and rationale behind the HyperFleet Adapter Framework architecture.
 
 **Related Documentation:**
 - [Adapter Framework Design](./adapter-frame-design.md) - Architecture overview
 - [Adapter Status Contract](./adapter-status-contract.md) - Status reporting contract
-- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - Configuration structure
+- `adapter-config-template-MVP.yaml` - Configuration structure
 
 ---
 

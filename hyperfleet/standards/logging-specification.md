@@ -1,10 +1,15 @@
+---
+Status: Active
+Owner: HyperFleet Platform Team
+Last Updated: 2026-01-28
+---
+
 # HyperFleet Logging Specification
+
+## Overview
 
 This document defines the standard logging approach for all HyperFleet components (API, Sentinel, Adapters).
 
----
-
-## Overview
 
 ### Goals
 

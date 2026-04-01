@@ -1,13 +1,12 @@
-# HyperFleet API Versioning Strategy
-
-## *Define versioning strategy for the HyperFleet REST API to enable safe upgrades, backwards compatibility, and clear partner contracts*
-
-**Metadata**
-- **Date:** 2025-10-30
-- **Authors:** Alex Vulaj
-- **Related Jira(s):** [HYPERFLEET-65](https://issues.redhat.com/browse/HYPERFLEET-65)
-
 ---
+Status: Active
+Owner: HyperFleet API Team
+Last Updated: 2025-12-30
+---
+
+# HyperFleet API Versioning Strategy
+- **Date:** 2025-10-30
+- **Related Jira(s):** [HYPERFLEET-65](https://issues.redhat.com/browse/HYPERFLEET-65)
 
 ## 1. Overview & Principles
 
@@ -33,7 +32,7 @@ The HyperFleet API uses semantic versioning (MAJOR.MINOR.PATCH):
 - Changing field types
 - Changing endpoint behavior in non-backwards-compatible ways
 
-**Note:** For container image tagging strategy and release management, see [Git and Release Strategy](./git-and-release-strategy.md).
+**Note:** For container image tagging strategy and release management, see [Git and Release Strategy](../../docs/test-release/git-and-release-strategy.md).
 
 ---
 
@@ -180,6 +179,6 @@ v2.0.0: Remove deprecated field, make "metadata" required, change "status" from 
 
 ## References
 
-- [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/architecture/architecture-summary.md)
+- [HyperFleet Architecture Summary](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/README.md)
 - [HyperFleet Error Model and Codes Standard](../../standards/error-model.md)
 - [Semantic Versioning 2.0.0](https://semver.org/)

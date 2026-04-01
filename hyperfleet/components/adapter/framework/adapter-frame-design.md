@@ -1,4 +1,59 @@
+---
+Status: Active
+Owner: HyperFleet Adapter Team
+Last Updated: 2026-02-24
+---
+
 # HyperFleet Adapter Framework - Design Document
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Components](#components)
+  - [Code Structure](#code-structure)
+  - [1. Config Loader and Criteria Evaluator](#1-config-loader-and-criteria-evaluator)
+  - [2. HyperFleet API Client](#2-hyperfleet-api-client)
+  - [3. Message Broker Consumer and Event Handler](#3-message-broker-consumer-and-event-handler)
+  - [4. Kubernetes Client and Resource Management](#4-kubernetes-client-and-resource-management)
+  - [5. Status Reporter Utilities](#5-status-reporter-utilities)
+  - [6. Main Service Implementation](#6-main-service-implementation)
+  - [Event Processing Flow](#event-processing-flow)
+- [Data Flow](#data-flow)
+  - [Configuration Lifecycle](#configuration-lifecycle)
+- [Key Patterns](#key-patterns)
+  - [Anemic Events Pattern](#anemic-events-pattern)
+  - [Status Upsert Pattern](#status-upsert-pattern)
+  - [Idempotency Pattern](#idempotency-pattern)
+  - [Reconciliation Loop](#reconciliation-loop)
+- [Configuration Processing](#configuration-processing)
+  - [Parameter Resolution Order](#parameter-resolution-order)
+  - [Expression Evaluation Context](#expression-evaluation-context)
+- [Memory Management](#memory-management)
+  - [Memory Footprint Analysis](#memory-footprint-analysis)
+  - [Potential Memory Issues](#potential-memory-issues)
+  - [Memory Management Strategy](#memory-management-strategy)
+  - [Post-MVP Optimizations](#post-mvp-optimizations)
+  - [Best Practices](#best-practices)
+  - [Memory Safety Characteristics](#memory-safety-characteristics)
+- [Error Handling Strategy](#error-handling-strategy)
+- [Observability](#observability)
+  - [Configuration](#configuration)
+  - [Metrics (Prometheus)](#metrics-prometheus)
+  - [Logging](#logging)
+  - [Tracing (OpenTelemetry)](#tracing-opentelemetry)
+  - [Health Checks](#health-checks)
+- [Dependencies](#dependencies)
+  - [External Libraries](#external-libraries)
+- [MVP vs Post-MVP Features](#mvp-vs-post-mvp-features)
+  - [MVP Scope](#mvp-scope)
+  - [Post-MVP Enhancements](#post-mvp-enhancements)
+- [Testing Strategy](#testing-strategy)
+  - [Unit Tests](#unit-tests)
+  - [Integration Tests](#integration-tests)
+  - [Test Coverage](#test-coverage)
+  - [Expression Tests](#expression-tests)
+  - [Template Tests](#template-tests)
 
 ## Overview
 
@@ -6,8 +61,8 @@ This document describes the design of the HyperFleet Adapter Framework, a config
 
 **Related Documentation:**
 - [Adapter Flow Diagrams](./adapter-flow-diagrams.md) - **Complete system workflow, adapter lifecycle sequence, and event flow patterns**
-- [Adapter Config Template MVP](./adapter-config-template-MVP.yaml) - MVP configuration template
-- [Adapter Config Template Post-MVP](./adapter-config-template-post-MVP.yaml) - Post-MVP configuration template with advanced features
+- `adapter-config-template-MVP.yaml` - MVP configuration template
+- `adapter-config-template-post-MVP.yaml` - Post-MVP configuration template with advanced features
 - [Adapter Status Contract](./adapter-status-contract.md) - Status reporting contract
 - [Adapter Metrics](./adapter-metrics.md) - Required metrics for observability and monitoring
 - [Adapter Design Decisions](./adapter-design-decisions.md) - Architecture decisions and trade-offs
@@ -1248,7 +1303,7 @@ Observability settings are managed via the **Observability ConfigMap** (`adapter
 - Health checks (enabled, port, paths)
 - Tracing (enabled, endpoint, sample rate)
 
-**See:** [adapter-observability-config-template.yaml](./adapter-observability-config-template.yaml)
+**See:** `adapter-observability-config-template.yaml`
 
 **Environment Variables (from ConfigMap):**
 ```yaml

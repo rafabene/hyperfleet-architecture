@@ -1,12 +1,51 @@
+---
+Status: Active
+Owner: Architecture Team
+Last Updated: 2025-11-07
+---
+
 # HyperFleet Architecture Repository
 
-**Status**: Active  
-**Owner**: Architecture Team  
-**Last Updated**: 2025-10-22  
+## Table of Contents
+
+- [Overview](#overview)
+- [Repository Access & MVP Process](#repository-access--mvp-process)
+- [Repository Structure](#repository-structure)
+- [Document Types](#document-types)
+  - [1. Architecture Overview (`hyperfleet/README.md`)](#1-architecture-overview-hyperfleetreadmemd)
+  - [2. Component Design Documents (`components/`)](#2-component-design-documents-components)
+  - [3. Engineering Standards (`standards/`)](#3-engineering-standards-standards)
+  - [4. Implementation Guides (`docs/`)](#4-implementation-guides-docs)
+- [Tracking Trade-offs and Technical Debt](#tracking-trade-offs-and-technical-debt)
+  - [Trade-offs Template](#trade-offs-template)
+  - [Example: Sentinel Direct Broker Publishing](#example-sentinel-direct-broker-publishing)
+- [Living Documents](#living-documents)
+  - [Document Status](#document-status)
+  - [Updating Documents](#updating-documents)
+  - [Review and Merge Process](#review-and-merge-process)
+- [Navigation Guide](#navigation-guide)
+  - [I want to...](#i-want-to)
+- [Writing Guidelines](#writing-guidelines)
+  - [Trade-offs and Alternatives Are Required](#trade-offs-and-alternatives-are-required)
+  - [Be Specific](#be-specific)
+  - [Quantify Impact](#quantify-impact)
+  - [Document Trade-offs Honestly](#document-trade-offs-honestly)
+  - [Include Diagrams](#include-diagrams)
+- [Diagram Guidelines](#diagram-guidelines)
+  - [Use Mermaid for Diagrams](#use-mermaid-for-diagrams)
+- [Quality Standards](#quality-standards)
+  - [Component Design Documents Must Have](#component-design-documents-must-have)
+  - [Guides Must Have](#guides-must-have)
+- [Searching for Technical Debt](#searching-for-technical-debt)
+- [Examples](#examples)
+- [FAQ](#faq)
+- [Related Resources](#related-resources)
+- [Contact](#contact)
 
 ---
 
-## Purpose
+## Overview
+
 
 This repository serves as the **single source of truth** for all architectural documentation related to HyperFleet. All documents are **living documents** that evolve as the design and implementation progress.
 
@@ -46,30 +85,30 @@ This repository serves as the **single source of truth** for all architectural d
 ```
 architecture/
 ├── README.md                      # This file - repository guide
-├── hyperfleet/                    # HyperFleet-specific architecture
-│   ├── architecture/              # 30,000 feet view (system-level)
-│   │   ├── architecture-summary.md
-│   │   ├── component-diagram.md
-│   │   ├── data-flow-diagram.md
-│   │   └── deployment-architecture.md
-│   ├── components/                # Component-level design decisions
-│   │   ├── api.md
-│   │   ├── sentinel.md
-│   │   ├── message-broker.md
-│   │   ├── adapters.md
-│   │   └── database.md
-│   └── docs/                      # Implementation guides and features
-│       ├── status-guide.md
-│       ├── adapter-development-guide.md
-│       ├── deployment-guide.md
-│       └── monitoring-guide.md
+├── CONTRIBUTING.md                # How to contribute to this repository
+├── CLAUDE.md                      # Claude Code guidelines for AI-assisted workflows
+├── OWNERS                         # Repository ownership
+├── hack/                          # Utility scripts
+└── hyperfleet/                    # HyperFleet-specific architecture
+    ├── README.md                  # HyperFleet system overview and architecture summary
+    ├── components/                # Component-level design decisions
+    │   ├── adapter/               # Adapter framework and implementations
+    │   ├── api-service/           # HyperFleet API service design
+    │   ├── broker/                # Message broker design
+    │   ├── claude-code-plugin/    # Claude Code plugin spike
+    │   └── sentinel/              # Sentinel reconciliation service
+    ├── adrs/                      # Architecture Decision Records
+    ├── docs/                      # Implementation guides and features
+    │   └── templates/             # Document templates
+    │   deprecated/                # Deprecated documents
+    ├── standards/                 # Prescriptive engineering standards
 ```
 
 ---
 
 ## Document Types
 
-### 1. Architecture Documents (`architecture/`)
+### 1. Architecture Overview (`hyperfleet/README.md`)
 
 **Purpose**: High-level system architecture (30,000 feet view)
 
@@ -80,7 +119,7 @@ architecture/
 - Deployment topology
 - Cross-cutting concerns (security, scalability, observability)
 
-**When to create**: Major system redesigns, new architecture proposals
+**When to update**: Major system redesigns, new architecture proposals
 
 **Living Document**: Update as system architecture evolves
 
@@ -106,7 +145,35 @@ architecture/
 
 ---
 
-### 3. Implementation Guides (`docs/`)
+### 3. Engineering Standards (`standards/`)
+
+**Purpose**: Prescriptive, cross-cutting rules that apply to all HyperFleet repositories
+
+**Standards are mandatory** — they are not guidelines. Every HyperFleet service, adapter, and infrastructure component must comply.
+
+| Category | Standard | Description |
+|---|---|---|
+| **Code Quality** | [Linting](hyperfleet/standards/linting.md) | Static analysis rules and tooling configuration |
+| | [Error Model](hyperfleet/standards/error-model.md) | Error codes, error response structure, and error handling patterns |
+| | [Generated Code Policy](hyperfleet/standards/generated-code-policy.md) | Rules for checking in and managing generated code |
+| | [Dependency Pinning](hyperfleet/standards/dependency-pinning.md) | How to pin dependencies and tool versions for reproducible builds |
+| **Project Structure** | [Directory Structure](hyperfleet/standards/directory-structure.md) | Required layout for HyperFleet component repositories |
+| | [Makefile Conventions](hyperfleet/standards/makefile-conventions.md) | Standard Makefile targets and conventions |
+| | [Commit Standard](hyperfleet/standards/commit-standard.md) | Commit message format (`HYPERFLEET-XXX - <type>: <subject>`) |
+| **Observability** | [Logging Specification](hyperfleet/standards/logging-specification.md) | Log levels, structured logging format, and required fields |
+| | [Metrics](hyperfleet/standards/metrics.md) | Prometheus metrics naming, labels, and required metrics |
+| | [Tracing](hyperfleet/standards/tracing.md) | Distributed tracing and OpenTelemetry conventions |
+| **Runtime Behavior** | [Configuration](hyperfleet/standards/configuration.md) | Environment variable naming, defaults, and configuration loading |
+| | [Graceful Shutdown](hyperfleet/standards/graceful-shutdown.md) | Signal handling, drain periods, and shutdown sequencing |
+| | [Health Endpoints](hyperfleet/standards/health-endpoints.md) | `/healthz` and `/readyz` endpoint contracts |
+| **Deployment** | [Container Image Standard](hyperfleet/standards/container-image-standard.md) | Base images, labels, and image build requirements |
+| | [Helm Chart Conventions](hyperfleet/standards/helm-chart-conventions.md) | Chart structure, values schema, and naming conventions |
+
+**When to update**: When a standard changes or a new cross-cutting rule is introduced
+
+---
+
+### 4. Implementation Guides (`docs/`)
 
 **Purpose**: Practical guides for developers and operators
 
@@ -253,7 +320,7 @@ All HyperFleet team developers have approve and merge access. **Goal**: Move fas
 ### I want to...
 
 **Understand HyperFleet architecture**
-→ Start with `hyperfleet/architecture/architecture-summary.md`
+→ Start with `hyperfleet/README.md`
 
 **Design a new component**
 → Add document to `hyperfleet/components/` with required sections (see "Component Design Documents")
@@ -266,6 +333,12 @@ All HyperFleet team developers have approve and merge access. **Goal**: Move fas
 
 **Track technical debt**
 → Search all component docs for "Technical Debt Incurred"
+
+**Look up a HyperFleet term or acronym**
+→ See `hyperfleet/docs/glossary.md`
+
+**Find or record an architecture decision**
+→ See `hyperfleet/adr/` — follow the template in `hyperfleet/adr/README.md`
 
 ---
 
@@ -361,7 +434,7 @@ grep -r "Status: Deprecated" hyperfleet/
 
 ### Good Component Document
 
-See: `hyperfleet/components/sentinel.md`
+See: `hyperfleet/components/sentinel/sentinel.md`
 - Clear purpose and responsibilities
 - Detailed trade-offs section
 - Alternatives considered
@@ -425,8 +498,8 @@ Create new documents when:
 ## Contact
 
 **Questions or suggestions?**
-- Slack: //todo
-- Architecture Team: //todo
+- Slack: [#hcm-hyperfleet-team](https://redhat.enterprise.slack.com/archives/hcm-hyperfleet-team)
+- Architecture Team: Open a PR or post in the Slack channel above
 - Pull requests welcome for documentation updates
 
 ---
