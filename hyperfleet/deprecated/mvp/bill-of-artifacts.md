@@ -22,8 +22,7 @@ This bill of artifacts serves as both a single reference for external stakeholde
 - [4. Infrastructure and Deployment](#4-infrastructure-and-deployment)
 - [5. Testing](#5-testing)
 - [6. CI/CD and Release Infrastructure](#6-cicd-and-release-infrastructure)
-- [7. Architecture Documentation](#7-architecture-documentation)
-- [8. Integration Points](#8-integration-points)
+- [7. Integration Points](#7-integration-points)
 
 ---
 
@@ -215,23 +214,7 @@ Hybrid cadence with independent component versioning. Release branches with forw
 
 ---
 
-## 7. Architecture Documentation
-
-All documentation lives in [openshift-hyperfleet/architecture](https://github.com/openshift-hyperfleet/architecture):
-
-| Category | Location | Contents |
-|----------|----------|----------|
-| System Architecture | `hyperfleet/architecture/` | architecture summary, component diagrams, data flows |
-| Component Designs | `hyperfleet/components/` | Sentinel, Adapter, API Service, Broker, Claude Code Plugin — includes key architectural decisions and trade-offs |
-| Implementation Guides | `hyperfleet/docs/` | release process, Prow CI/CD, versioning, sentinel pulses, status guide, repo creation, documentation, WIF spike |
-| Engineering Standards | `hyperfleet/standards/` | prescriptive standards: logging, metrics, tracing, error model, health endpoints, graceful shutdown, commits, directory structure, configuration, container images, dependency pinning, generated code, Helm charts, linting, Makefiles |
-| MVP Documents | `hyperfleet/mvp/` | [MVP scope](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/mvp/mvp-scope.md) (delivery milestones and phasing), working agreement |
-| Deployment Guides | `hyperfleet/deployment/GKE/` | GKE quickstart, cluster creation/deletion scripts |
-| Templates | `hyperfleet/docs/templates/` | CHANGELOG, CONTRIBUTING, README templates |
-
----
-
-## 8. Integration Points
+## 7. Integration Points
 
 | Consumer Team | Status | Integration Details |
 |---------------|--------|---------------------|
