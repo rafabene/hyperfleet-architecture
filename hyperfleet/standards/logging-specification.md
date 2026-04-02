@@ -60,7 +60,7 @@ All components MUST support configuration via **command-line flags** and **envir
 | Option | Flag | Environment Variable | Default | Description |
 |--------|------|---------------------|---------|-------------|
 | Log Level | `--log-level` | `HYPERFLEET_LOG_LEVEL` | `info` | Minimum level: `debug`, `info`, `warn`, `error` |
-| Log Format | `--log-format` | `HYPERFLEET_LOG_FORMAT` | `text` | Output format: `text` or `json` |
+| Log Format | `--log-format` | `HYPERFLEET_LOG_FORMAT` | `json` | Output format: `text` or `json` |
 | Log Output | `--log-output` | `HYPERFLEET_LOG_OUTPUT` | `stdout` | Destination: `stdout` or `stderr` |
 
 **Precedence** (highest to lowest): flags → environment variables → config file → defaults
@@ -138,7 +138,7 @@ Include when logging errors:
 
 ## Log Formats
 
-### Text Format (Default)
+### Text Format
 
 For local development:
 
@@ -154,7 +154,7 @@ For local development:
     main.reconcileLoop() loop.go:45
 ```
 
-### JSON Format (Production)
+### JSON Format (Production, Default)
 
 For log aggregation:
 
