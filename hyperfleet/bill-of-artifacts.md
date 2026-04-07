@@ -42,7 +42,7 @@ The platform follows an event-driven architecture: the API stores data, the Sent
 
 Stateless REST API serving as the pure CRUD data layer for cluster lifecycle management. Intentionally contains no business logic or event creation — separation of concerns is a core design principle.
 
-- REST operations covering Cluster and NodePool resources
+- REST operations covering Cluster, NodePool, and Status resources (supported operations: CREATE, GET, LIST)
 - PostgreSQL database with GORM ORM, generation-aware status aggregation
 - Kubernetes-style conditions (`Ready`, `Available`) aggregated from adapter reports
 - Label-based search and filtering via TSL (Tree Search Language)
@@ -61,7 +61,7 @@ Stateless REST API serving as the pure CRUD data layer for cluster lifecycle man
 
 Stateless reconciliation trigger service implementing a poll-decide-publish loop. The orchestration brain of HyperFleet.
 
-- CEL-based configurable decision engine with generation-based (immediate on spec change), time-based (max age for periodic reconciliation), and new-resource detection logic
+- CEL-based configurable decision engine with three-part decision strategy: never-processed (immediate for new resources), state-based (immediate on unprocessed spec changes), and time-based reconciliation (periodic max age intervals)
 - Publishes CloudEvents v1 with CEL (Common Expression Language) for both decision logic and dynamic payload building, plus W3C trace propagation
 - Horizontal scaling via config-driven label selectors for workload partitioning — no leader election needed
 - Broker abstraction: GCP Pub/Sub, RabbitMQ, and Stub backends via the [`hyperfleet-broker`](https://github.com/openshift-hyperfleet/hyperfleet-broker) library
@@ -81,9 +81,9 @@ Stateless reconciliation trigger service implementing a poll-decide-publish loop
 
 Configuration-driven framework for executing provisioning tasks. Single binary, infinite configurations — you write YAML, not Go code.
 
-- Four-phase execution pipeline: Param Extraction, Precondition Evaluation (structured conditions or CEL), Resource Application, Post Actions (API calls including status reporting)
+- Four-phase execution pipeline: Param Extraction, Precondition Evaluation (structured conditions or CEL), Resource Application, Post Actions (CEL-driven API calls including status reporting)
 - Two-config architecture: AdapterConfig (infrastructure) + AdapterTaskConfig (business logic)
-- Dual transport backends: Kubernetes direct (client-go) and Maestro/OCM (Open Cluster Management) ManifestWork (gRPC + HTTP to Maestro server for remote cluster delivery)
+- Dual transport backends: Kubernetes (client-go for in-cluster) and Maestro (gRPC + HTTP to Maestro server for remote cluster delivery via ManifestWork)
 - Generation-based idempotent reconciliation (CREATE / UPDATE / SKIP / RECREATE)
 - Dry-run mode for local development without infrastructure dependencies
 - Helm chart v2.0.0 with auto-generated RBAC, HPA, PDB, ServiceMonitor
@@ -110,7 +110,6 @@ Shared Go library providing a unified pub/sub messaging abstraction with built-i
 | Repository | Description | Language | Used by |
 |-----------|-------------|----------|---------|
 | [maestro-cli](https://github.com/openshift-hyperfleet/maestro-cli) | CLI for ManifestWork lifecycle management through Maestro (apply, delete, get, list, watch). Dual-protocol: gRPC + HTTP. | Go 1.25 | Adapter (Maestro transport), developers for debugging |
-| [hyperfleet-credential-provider](https://github.com/openshift-hyperfleet/hyperfleet-credential-provider) | Multi-cloud Kubernetes ExecCredential plugin for GCP/GKE, AWS/EKS, Azure/AKS authentication. Pure Go, no cloud CLI dependencies. | Go 1.24 | E2E test pipeline (Prow CI cluster authentication) |
 
 ---
 
@@ -203,14 +202,6 @@ All core services use testcontainers-go for integration testing and golangci-lin
 ### 6.1 Prow CI
 
 Primary CI system for core services. Presubmit and postsubmit jobs across all core repositories covering unit tests, integration tests, linting, and Helm chart validation. Job definitions are externally managed. Dedicated Prow CI cluster provisioned on GCP.
-
-### 6.2 Konflux/RHTAP
-
-Tekton-based CI/CD pipelines for registry-credentials-service.
-
-### 6.3 Release Process
-
-Hybrid cadence with independent component versioning. Release branches with forward-port workflow, multi-gate readiness criteria. Validated releases represent compatibility-tested version combinations across all core services.
 
 ---
 
