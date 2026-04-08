@@ -295,7 +295,7 @@ The adapter configuration uses a **dual-syntax approach** for flexibility and cl
    - Consistent syntax for all value substitution
    - Example: `"{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"`
    - Structural directives: `{{ if }}` / `{{ else }}` for conditionals, `{{ range }}` for iterating over lists
-   - Custom template functions: `lower`, `upper`, `title`, `trim`, `replace`, `contains`, `quote`, `now`, `date`, `default`, `int`, `float`, `string`
+   - Custom template functions: `lower`, `upper`, `title`, `trim`, `trimPrefix`, `trimSuffix`, `replace`, `contains`, `hasPrefix`, `hasSuffix`, `quote`, `now`, `date`, `dateFormat`, `default`, `int`, `int64`, `float`, `float64`, `string`
 
 2. **`field` (Simple Path)**: For straightforward JSON path extraction
    - Example: `field: "status.phase"` or `field: "name"`
