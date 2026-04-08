@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Adapter Team
-Last Updated: 2026-02-24
+Last Updated: 2026-04-03
 ---
 
 # HyperFleet Adapter Framework - Design Document
@@ -291,10 +291,11 @@ spec:
 
 The adapter configuration uses a **dual-syntax approach** for flexibility and clarity:
 
-1. **Go Templates (`{{ .var }}`)**: Used throughout for variable interpolation
+1. **Go Templates (`{{ .var }}`)**: Used throughout for variable interpolation and structural logic
    - Consistent syntax for all value substitution
    - Example: `"{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"`
-   - Supports Sprig template functions (date, lower, random, string manipulation)
+   - Structural directives: `{{ if }}` / `{{ else }}` for conditionals, `{{ range }}` for iterating over lists
+   - Custom template functions: `lower`, `upper`, `title`, `trim`, `trimPrefix`, `trimSuffix`, `replace`, `contains`, `hasPrefix`, `hasSuffix`, `quote`, `now`, `date`, `dateFormat`, `default`, `int`, `int64`, `float`, `float64`, `string`
 
 2. **`field` (Simple Path)**: For straightforward JSON path extraction
    - Example: `field: "status.phase"` or `field: "name"`
@@ -1436,7 +1437,7 @@ readinessProbe:
 - `k8s.io/api`: Kubernetes API types
 - `k8s.io/apimachinery`: Kubernetes API machinery
 - `gopkg.in/yaml.v3`: YAML parsing
-- `github.com/Masterminds/sprig/v3`: Template functions (date, random, regex, string manipulation)
+- Custom template functions (`pkg/utils/template.go`): string manipulation (`lower`, `upper`, `trim`, `replace`), type conversion (`int`, `float`, `string`), date formatting (`now`, `date`), and utility (`default`, `quote`)
 
 **Logging and Observability:**
 - `go.uber.org/zap`: Structured logging (implemented in `pkg/logger`)
