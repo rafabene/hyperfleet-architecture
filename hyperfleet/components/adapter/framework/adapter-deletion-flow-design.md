@@ -1,7 +1,7 @@
 ---
 Status: Draft
 Owner: HyperFleet Team
-Last Updated: 2026-04-02
+Last Updated: 2026-04-12
 ---
 
 # Adapter Deletion Flow Design
@@ -125,7 +125,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterJob == nil"
+          expression: "deleted_at != null && !resources.?clusterJob.hasValue()"
 
   - name: clusterNamespace
     manifest: ...
@@ -133,7 +133,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterConfigMap == nil && resources.clusterJob == nil"
+          expression: "deleted_at != null && !resources.?clusterConfigMap.hasValue() && !resources.?clusterJob.hasValue()"
 ```
 
 **Fields:**
@@ -141,14 +141,14 @@ resources:
 | Field | Required | Type | Default | Description |
 |-------|----------|------|---------|-------------|
 | `lifecycle.delete.propagationPolicy` | NO | string | `Background` | Kubernetes propagation policy: `Background`, `Foreground`, or `Orphan` |
-| `lifecycle.delete.when.expression` | NO | string (CEL) | `"deleted_at != null"` | CEL expression evaluated each reconciliation loop. Resource is deleted only when expression evaluates to `true`. |
+| `lifecycle.delete.when.expression` | NO | string (CEL) | `false` | CEL expression evaluated each reconciliation loop. Resource is deleted only when expression evaluates to `true`. |
 
 - Evaluated after parameter extraction and preconditions (needs captured variables)
 - When `lifecycle.delete.when.expression` is `true`: executor discovers and deletes the resource
 - When `lifecycle.delete.when.expression` is `false`: executor runs normal apply flow (resource is not being deleted yet)
 - If `lifecycle` is not specified on a resource: normal apply flow (backward compatible)
 
-**Important**: `lifecycle.delete.when.expression` should be driven by `deleted_at`, not derived status fields. `deleted_at` is the canonical deletion trigger. Ordering conditions (e.g., `resources.clusterJob == nil`) are combined with the deletion trigger in a single expression.
+**Important**: `lifecycle.delete.when.expression` should be driven by `deleted_at`, not derived status fields. `deleted_at` is the canonical deletion trigger. Ordering conditions (e.g., `!resources.?clusterJob.hasValue()`) are combined with the deletion trigger in a single expression.
 
 ```yaml
 # Precondition captures deletion timestamp for lifecycle expressions
@@ -197,7 +197,7 @@ flowchart TD
 
 #### Deletion Ordering
 
-Deletion ordering is controlled by the `when.expression` CEL expression in `lifecycle.delete`. The expression combines the deletion trigger (`deleted_at != null`) with ordering conditions (e.g., `resources.clusterJob == nil`). Resources are deleted only when their full expression evaluates to `true`.
+Deletion ordering is controlled by the `when.expression` CEL expression in `lifecycle.delete`. The expression combines the deletion trigger (`deleted_at != null`) with ordering conditions (e.g., `!resources.?clusterJob.hasValue()`). Resources are deleted only when their full expression evaluates to `true`.
 
 Example ordering for a typical adapter:
 
@@ -214,15 +214,15 @@ resources:
     lifecycle:
       delete:
         when:
-          expression: "deleted_at != null && resources.clusterJob == nil"    # wait for Job to be gone
+          expression: "deleted_at != null && !resources.?clusterJob.hasValue()"    # wait for Job to be gone
   - name: clusterNamespace
     lifecycle:
       delete:
         when:
-          expression: "deleted_at != null && resources.clusterConfigMap == nil && resources.clusterJob == nil"  # wait for all to be gone
+          expression: "deleted_at != null && !resources.?clusterConfigMap.hasValue() && !resources.?clusterJob.hasValue()"  # wait for all to be gone
 ```
 
-The `when.expression` is evaluated each reconciliation loop. Once a resource is deleted and discovery returns nil, dependent resources' ordering conditions become true and they are deleted on the next loop iteration.
+The `when.expression` is evaluated each reconciliation loop. Once a resource is deleted and discovery stores a nil value for it, `!resources.?clusterJob.hasValue()` evaluates to `true`, unblocking dependent resources on the next loop iteration. Use `!resources.?X.hasValue()` rather than `has()` or direct access — see the CEL note in the example task config for details.
 
 ### Executor Behavior Change
 
@@ -432,16 +432,14 @@ flowchart LR
 
 | Applied | Available | Health | Finalized | Meaning | API Action |
 |---------|-----------|--------|-----------|---------|------------|
-| `False` | `False` | `True` | `True` | Cleanup confirmed for this adapter | Contributes to deletion `Reconciled=True` |
-| `False` | `Any` | `True` | `False` | Not finalized yet — adapter has not confirmed cleanup | **Wait** for retry/reconciliation |
-| `Any` | `Any` | `False` | `False` | Adapter unhealthy; resource state unreliable | **Wait** for retry/reconciliation |
-| `True` | `Any` | `True` | `False` | Deletion in progress; resources still exist | **Wait** |
+| `Any` | `Any` | `Any` | `True` | Cleanup confirmed for this adapter | Contributes to deletion `Reconciled=True` |
+| `Any` | `Any` | `Any` | `False` | Not finalized yet — adapter has not confirmed cleanup | **Wait** for retry/reconciliation |
 
 **Finalized contract**: `Finalized` is reported by adapters and used by API aggregation to compute `Reconciled` when `deleted_at` is set.
 
-**Finalized rule**: When `Health=False`, `Finalized` must be `False` — the adapter cannot reliably determine whether resources have been cleaned up, so it cannot confirm finalization. Only when `Health=True` can the adapter report `Finalized=True`.
+If `deleted_at` is not set in an API resource, `Finalized` value is meaningless for computing `Reconciled`.
 
-**Note on `Available`**: During deletion, `Available` is informational for operators and does not participate in hard-delete gating. The API gates on `Reconciled=True`.
+During deletion, `Available`, `Heatlh`, `Applied` are informational for operators and does not participate in hard-delete gating. The API gates on `Reconciled=True`.
 
 ### Example Task Config with Deletion
 
@@ -484,7 +482,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterConfigMap == nil && resources.clusterJob == nil"
+          expression: "deleted_at != null && !resources.?clusterConfigMap.hasValue() && !resources.?clusterJob.hasValue()"
 
   - name: clusterConfigMap
     manifest:
@@ -500,7 +498,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterJob == nil"
+          expression: "deleted_at != null && !resources.?clusterJob.hasValue()"
 
   - name: clusterJob
     manifest:
@@ -547,20 +545,26 @@ post:
           - type: Finalized
             status:
               expression: |
-                is_deleting
-                  ? (!(has(resources.clusterNamespace) || has(resources.clusterConfigMap) || has(resources.clusterJob))
+                is_deleting && adapter.?executionStatus.orValue("") == "success"
+                  ? (!resources.?clusterNamespace.hasValue()
+                      && !resources.?clusterConfigMap.hasValue()
+                      && !resources.?clusterJob.hasValue()
                     ? "True" : "False")
                   : "False"
             reason:
               expression: |
-                is_deleting
-                  ? (!(has(resources.clusterNamespace) || has(resources.clusterConfigMap) || has(resources.clusterJob))
+                is_deleting && adapter.?executionStatus.orValue("") == "success"
+                  ? (!resources.?clusterNamespace.hasValue()
+                      && !resources.?clusterConfigMap.hasValue()
+                      && !resources.?clusterJob.hasValue()
                     ? "CleanupConfirmed" : "CleanupInProgress")
                   : ""
             message:
               expression: |
-                is_deleting
-                  ? (!(has(resources.clusterNamespace) || has(resources.clusterConfigMap) || has(resources.clusterJob))
+                is_deleting && adapter.?executionStatus.orValue("") == "success"
+                  ? (!resources.?clusterNamespace.hasValue()
+                      && !resources.?clusterConfigMap.hasValue()
+                      && !resources.?clusterJob.hasValue()
                     ? "All managed resources deleted and verified" : "Resource cleanup in progress")
                   : ""
           - type: Health
@@ -587,6 +591,14 @@ post:
 ```
 
 **Note on CEL complexity**: The `is_deleting` ternary branching adds complexity to post-processing expressions. The `is_deleting` variable is captured in preconditions from `deleted_at != null`. Mitigate with descriptive `reason` values and testing both creation/deletion paths.
+
+**CEL resource presence pattern — use `!resources.?X.hasValue()`, not `has()`**: When checking whether a managed resource has been deleted, always use `!resources.?resourceName.hasValue()`, not `has(resources.resourceName)` or `resources.resourceName == null`.
+
+- **`has()` is wrong**: When the executor discovers a deleted resource and stores `NotFound`, it records `execCtx.Resources[name] = nil` — the map key exists with a nil value. CEL's `has()` on a dynamic map tests key existence only, not whether the value is nil. So `has(resources.clusterJob)` returns `true` even after the resource is deleted, causing `Finalized` to be permanently stuck at `"False"`.
+- **Direct access is unsafe**: `resources.clusterJob == null` fails with an error if the key was never added to the map — for example when the executor fails before reaching that resource in the loop (resource #3 of 3, failure on #2).
+- **`!resources.?X.hasValue()` is correct**: The optional `?` operator safely accesses the map without erroring on a missing key, and `.hasValue()` checks whether the value is non-nil. Negating gives a clean "resource is absent" check that handles all states: key missing (never processed → `true`), key present with nil (deleted → `true`), key present with object (exists → `false`).
+
+**Health guard in `Finalized` — required**: The `adapter.?executionStatus.orValue("") == "success"` guard prevents a false `Finalized=True` when the executor failed before processing some resources. If a resource was never processed (key absent from map), optional chaining returns `null == null → true`, making it appear deleted. The health guard ensures `Finalized=True` is only reported when the full execution loop completed successfully.
 
 **Required test cases for `lifecycle.delete.when`**: `deleted_at` null/missing → `false`, valid timestamp → `true`. The framework must treat null/missing `deleted_at` as not-deleting.
 
@@ -839,14 +851,14 @@ The following field must be added to the adapter framework's `AdapterTaskConfig`
 
 The field is optional with backward-compatible defaults:
 - `lifecycle` not set → apply-only behavior (existing adapters unchanged)
-- `lifecycle.delete.when` not set → defaults to `"deleted_at != null"`
+- `lifecycle.delete.when` not set → defaults to `false`
 - `lifecycle.delete.propagationPolicy` not set → defaults to `Background`
 
 ### Status Contract Change
 
 The `Finalized` condition is a **new required field** in adapter status reports. This is a contract change:
 - All adapters must include `Finalized` in their status conditions
-- When not deleting: `Finalized=False` with empty reason/message
+- When not deleting: `Finalized=False` reason/message is meaningless, you can send empty message or `"NotDeleting"`
 - When deleting: `Finalized=True` after cleanup confirmed, `Finalized=False` while in progress or unhealthy
 - The API must accept and store `Finalized` as a new condition type
 - Existing adapters must be updated to include `Finalized` before the deletion feature is enabled
