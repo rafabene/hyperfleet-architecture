@@ -439,7 +439,7 @@ flowchart LR
 
 If `deleted_time` is not set in an API resource, `Finalized` value is meaningless for computing `Reconciled`.
 
-During deletion, `Available`, `Heatlh`, `Applied` are informational for operators and does not participate in hard-delete gating. The API gates on `Reconciled=True`.
+During deletion, `Available`, `Health`, `Applied` are informational for operators and does not participate in hard-delete gating. The API gates on `Reconciled=True`.
 
 ### Example Task Config with Deletion
 

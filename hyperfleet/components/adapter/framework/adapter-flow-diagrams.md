@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Adapter Team
-Last Updated: 2026-04-01
+Last Updated: 2026-04-13
 ---
 
 # HyperFleet Reconciliation Flow
@@ -341,8 +341,8 @@ sequenceDiagram
     Note over User, K8s: Phase 1 - User Requests Deletion
 
     User->>API: DELETE /resources/{id}
-    API->>DB: Mark resource for deletion (set deleted_at)
-    API->>DB: Mark ALL subresources for deletion (set deleted_at)
+    API->>DB: Mark resource for deletion (set deleted_time)
+    API->>DB: Mark ALL subresources for deletion (set deleted_time)
     API->>API: Derive customer-facing state -> Finalizing
     API->>API: Increment generation (Reconciled=False)
     API-->>User: 202 Accepted
@@ -377,8 +377,8 @@ sequenceDiagram
     rect rgb(255, 248, 240)
         Note over Adapter: Preconditions
         Adapter->>API: GET /resources/{id}
-        API-->>Adapter: Resource object (deleted_at set)
-        Adapter->>Adapter: Capture deleted_at, is_deleting
+        API-->>Adapter: Resource object (deleted_time set)
+        Adapter->>Adapter: Capture deleted_time, is_deleting
     end
 
     rect rgb(255, 240, 240)
@@ -488,8 +488,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[DELETE /resources/id] --> B[Set deleted_at on resource]
-    B --> B2[Set deleted_at on all subresources]
+    A[DELETE /resources/id] --> B[Set deleted_time on resource]
+    B --> B2[Set deleted_time on all subresources]
     B2 --> C[Derive customer-facing state -> Finalizing]
     C --> C2[Increment generation<br/>Reconciled=False]
     C2 --> D[Return 202 Accepted]
@@ -516,18 +516,18 @@ sequenceDiagram
     participant Res_Adapter as Resource Adapters
 
     User->>API: DELETE /resources/{id}
-    API->>API: Set deleted_at on resource
-    API->>API: Set deleted_at on ALL subresources
+    API->>API: Set deleted_time on resource
+    API->>API: Set deleted_time on ALL subresources
     API-->>User: 202 Accepted
 
     par Subresource cleanup
         Sentinel->>Sub_Adapter: CloudEvent (subresource)
-        Sub_Adapter->>Sub_Adapter: Capture deleted_at, evaluate lifecycle.delete
+        Sub_Adapter->>Sub_Adapter: Capture deleted_time, evaluate lifecycle.delete
         Sub_Adapter->>Sub_Adapter: Clean up subresource resources (per-resource ordering)
         Sub_Adapter->>API: POST status (Applied=False, Health=True, Finalized=True)
     and Resource cleanup (in parallel)
         Sentinel->>Res_Adapter: CloudEvent (resource)
-        Res_Adapter->>Res_Adapter: Capture deleted_at, evaluate lifecycle.delete
+        Res_Adapter->>Res_Adapter: Capture deleted_time, evaluate lifecycle.delete
         Res_Adapter->>Res_Adapter: Clean up resource resources (per-resource ordering)
         Res_Adapter->>API: POST status (Applied=False, Health=True, Finalized=True)
     end
@@ -544,14 +544,14 @@ sequenceDiagram
 
 | Applied | Available | Health | Finalized | Meaning | API Action |
 |---------|-----------|--------|-----------|---------|------------|
-| `False` | `False` | `True` | `True` | Cleanup confirmed for this adapter | Contributes to deletion `Reconciled=True` |
-| `False` | `Any` | `True` | `False` | Not finalized yet | **Wait** for retry/reconciliation |
-| `Any` | `Any` | `False` | `False` | Adapter unhealthy; resource state unreliable | **Wait** for retry/reconciliation |
-| `True` | `Any` | `True` | `False` | Deletion in progress; resources still exist | **Wait** |
+| `Any` | `Any` | `Any` | `True` | Cleanup confirmed for this adapter | Contributes to deletion `Reconciled=True` |
+| `Any` | `Any` | `Any` | `False` | Not finalized yet — adapter has not confirmed cleanup | **Wait** for retry/reconciliation |
 
-**Finalized rule**: `Health=False` → `Finalized=False`. Only `Health=True` allows `Finalized=True`.
+If `deleted_time` is not set in an API resource, `Finalized` value is meaningless for computing `Reconciled`.
 
-All adapters participate in deletion `Reconciled`. Resource-owning adapters report `Finalized=True` after cleanup; non-resource-owning adapters report `Finalized=True` immediately. The API gates DB deletion on `deleted_at` set + `Reconciled=True`.
+During deletion, `Available`, `Health`, and `Applied` are informational for operators and do not participate in hard-delete gating. The API gates on `Reconciled=True`.
+
+All adapters participate in deletion `Reconciled`. Resource-owning adapters report `Finalized=True` after cleanup; non-resource-owning adapters report `Finalized=True` immediately. The API gates DB deletion on `deleted_time` set + `Reconciled=True`.
 
 ### Deletion Status Reporting Pattern
 
