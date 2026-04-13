@@ -1,7 +1,7 @@
 ---
 Status: Draft
 Owner: HyperFleet Team
-Last Updated: 2026-04-02
+Last Updated: 2026-04-12
 ---
 
 # Adapter Deletion Flow Design
@@ -13,16 +13,16 @@ Last Updated: 2026-04-02
 | Term | Definition | In HyperFleet |
 |------|-----------|---------------|
 | **Soft Delete** | Add a column (e.g., `is_deleted`) to mark records as deleted. Records stay in the DB permanently and are filtered from normal queries. A data retention pattern. | Not used in HyperFleet. We don't retain deleted records permanently — records are removed from the DB after cleanup is confirmed. |
-| **Pending Deletion** | Set `deleted_at` to signal deletion intent. Records remain in the DB while dependents are cleaned up, then are permanently removed. | API sets `deleted_at` on the resource and subresources. Records stay in the DB while adapters clean up Kubernetes resources, then are hard-deleted once cleanup is confirmed. |
-| **Hard Delete** | Permanently remove records from the database. The data is gone and cannot be recovered. | API removes the resource, subresource, and adapter status rows from the DB when `deleted_at` is set and deletion `Reconciled=True`. |
+| **Pending Deletion** | Set `deleted_time` to signal deletion intent. Records remain in the DB while dependents are cleaned up, then are permanently removed. | API sets `deleted_time` on the resource and subresources. Records stay in the DB while adapters clean up Kubernetes resources, then are hard-deleted once cleanup is confirmed. |
+| **Hard Delete** | Permanently remove records from the database. The data is gone and cannot be recovered. | API removes the resource, subresource, and adapter status rows from the DB when `deleted_time` is set and deletion `Reconciled=True`. |
 
-**In short:** HyperFleet deletion uses **pending deletion** — set `deleted_at` to signal intent, let adapters clean up Kubernetes resources, then **hard delete** the DB records once cleanup is confirmed.
+**In short:** HyperFleet deletion uses **pending deletion** — set `deleted_time` to signal intent, let adapters clean up Kubernetes resources, then **hard delete** the DB records once cleanup is confirmed.
 
 ---
 
 ## What & Why
 
-**What**: Design the deletion workflow for resources and subresources, defining how the adapter framework handles resource cleanup when an API resource is marked for deletion (`deleted_at` set).
+**What**: Design the deletion workflow for resources and subresources, defining how the adapter framework handles resource cleanup when an API resource is marked for deletion (`deleted_time` set).
 
 **Why**: The adapter framework currently supports resource creation but has no mechanism for resource cleanup during deletion. Without a clear deletion flow:
 - Adapters don't know when to clean up Kubernetes resources they created
@@ -61,37 +61,37 @@ Last Updated: 2026-04-02
 
 ### Overview
 
-Deletion is a two-step process: **mark for deletion** (set `deleted_at`), then **hard delete** (remove DB records after cleanup). The existing Sentinel polling and adapter event flow handles everything in between — no new event types or Sentinel changes needed.
+Deletion is a two-step process: **mark for deletion** (set `deleted_time`), then **hard delete** (remove DB records after cleanup). The existing Sentinel polling and adapter event flow handles everything in between — no new event types or Sentinel changes needed.
 
 See the [End-to-End Deletion Sequence diagram](./adapter-flow-diagrams.md#end-to-end-deletion-sequence) for the full 4-phase visual walkthrough:
 
-1. **Mark for deletion** — User calls `DELETE /resources/{id}`, API sets `deleted_at` on resource + subresources, increments `generation`
+1. **Mark for deletion** — User calls `DELETE /resources/{id}`, API sets `deleted_time` on resource + subresources, increments `generation`
 2. **Event propagation** — Sentinels detect the generation change and publish CloudEvents (same format as creation)
-3. **Adapter cleanup** — Adapter receives event, sees `deleted_at`, evaluates each resource's `lifecycle.delete.when`, deletes Kubernetes resources in dependency order
-4. **Hard delete** — API computes `Reconciled` from adapter-reported `Finalized`, then removes records from DB when `deleted_at` is set and `Reconciled=True`
+3. **Adapter cleanup** — Adapter receives event, sees `deleted_time`, evaluates each resource's `lifecycle.delete.when`, deletes Kubernetes resources in dependency order
+4. **Hard delete** — API computes `Reconciled` from adapter-reported `Finalized`, then removes records from DB when `deleted_time` is set and `Reconciled=True`
 
 ### API Deletion Handling
 
 #### Step 1: Mark for Deletion
 
-On `DELETE /resources/{id}`, the API sets `deleted_at` on the resource **and all its subresources**, and increments `generation`. Records remain in the database and are still queryable.
+On `DELETE /resources/{id}`, the API sets `deleted_time` on the resource **and all its subresources**, and increments `generation`. Records remain in the database and are still queryable.
 
-- `deleted_at` is the canonical delete intent signal — customer-facing `Finalizing` state is derived from it at read time
+- `deleted_time` is the canonical delete intent signal — customer-facing `Finalizing` state is derived from it at read time
 - The generation increment is intended to trigger Sentinel reconciliation (`observed_generation < generation` → `Reconciled=False`) with current Sentinel behavior.
 - Validate this contract in integration testing during rollout; if deployment-specific Sentinel filters diverge, add an explicit deletion-selector query as a fallback.
-- The `Reconciled` condition adapts based on resource lifecycle: calculates from `Available` normally, and from adapter-reported `Finalized` when `deleted_at` is set. See [Reconciled Condition and Finalized](#reconciled-condition-and-finalized)
+- The `Reconciled` condition adapts based on resource lifecycle: calculates from `Available` normally, and from adapter-reported `Finalized` when `deleted_time` is set. See [Reconciled Condition and Finalized](#reconciled-condition-and-finalized)
 
 #### Step 2: Hard Delete (Hierarchical)
 
 The API hard-deletes records bottom-up:
-- **Subresource records**: deleted when `deleted_at` is set and subresource `Reconciled=True`
-- **Resource record**: deleted when `deleted_at` is set, resource `Reconciled=True`, and all subresource records are already gone
+- **Subresource records**: deleted when `deleted_time` is set and subresource `Reconciled=True`
+- **Resource record**: deleted when `deleted_time` is set, resource `Reconciled=True`, and all subresource records are already gone
 
 See the [API Delete Signal diagram](./adapter-flow-diagrams.md#api-delete-signal-hierarchical) for the full flowchart.
 
 ### Sentinel Behavior
 
-No Sentinel code or event-format changes are required. Sentinel continues to publish the same CloudEvent format regardless of resource state — the adapter decides what to do based on `deleted_at`.
+No Sentinel code or event-format changes are required. Sentinel continues to publish the same CloudEvent format regardless of resource state — the adapter decides what to do based on `deleted_time`.
 
 **Config change required**: The API replaces the `Ready` condition with `Reconciled`. Sentinel `message_decision` configs must be updated to reference `condition("Reconciled")` instead of `condition("Ready")`.
 
@@ -117,7 +117,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null"
+          expression: "deleted_time != null"
 
   - name: clusterConfigMap
     manifest: ...
@@ -125,7 +125,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterJob == nil"
+          expression: "deleted_time != null && !resources.?clusterJob.hasValue()"
 
   - name: clusterNamespace
     manifest: ...
@@ -133,7 +133,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterConfigMap == nil && resources.clusterJob == nil"
+          expression: "deleted_time != null && !resources.?clusterConfigMap.hasValue() && !resources.?clusterJob.hasValue()"
 ```
 
 **Fields:**
@@ -141,20 +141,20 @@ resources:
 | Field | Required | Type | Default | Description |
 |-------|----------|------|---------|-------------|
 | `lifecycle.delete.propagationPolicy` | NO | string | `Background` | Kubernetes propagation policy: `Background`, `Foreground`, or `Orphan` |
-| `lifecycle.delete.when.expression` | NO | string (CEL) | `"deleted_at != null"` | CEL expression evaluated each reconciliation loop. Resource is deleted only when expression evaluates to `true`. |
+| `lifecycle.delete.when.expression` | NO | string (CEL) | `false` | CEL expression evaluated each reconciliation loop. Resource is deleted only when expression evaluates to `true`. |
 
 - Evaluated after parameter extraction and preconditions (needs captured variables)
 - When `lifecycle.delete.when.expression` is `true`: executor discovers and deletes the resource
 - When `lifecycle.delete.when.expression` is `false`: executor runs normal apply flow (resource is not being deleted yet)
 - If `lifecycle` is not specified on a resource: normal apply flow (backward compatible)
 
-**Important**: `lifecycle.delete.when.expression` should be driven by `deleted_at`, not derived status fields. `deleted_at` is the canonical deletion trigger. Ordering conditions (e.g., `resources.clusterJob == nil`) are combined with the deletion trigger in a single expression.
+**Important**: `lifecycle.delete.when.expression` should be driven by `deleted_time`, not derived status fields. `deleted_time` is the canonical deletion trigger. Ordering conditions (e.g., `!resources.?clusterJob.hasValue()`) are combined with the deletion trigger in a single expression.
 
 ```yaml
 # Precondition captures deletion timestamp for lifecycle expressions
 capture:
-  - name: deleted_at
-    field: deleted_at
+  - name: deleted_time
+    field: deleted_time
 ```
 
 **Evaluation order in the executor:**
@@ -197,7 +197,7 @@ flowchart TD
 
 #### Deletion Ordering
 
-Deletion ordering is controlled by the `when.expression` CEL expression in `lifecycle.delete`. The expression combines the deletion trigger (`deleted_at != null`) with ordering conditions (e.g., `resources.clusterJob == nil`). Resources are deleted only when their full expression evaluates to `true`.
+Deletion ordering is controlled by the `when.expression` CEL expression in `lifecycle.delete`. The expression combines the deletion trigger (`deleted_time != null`) with ordering conditions (e.g., `!resources.?clusterJob.hasValue()`). Resources are deleted only when their full expression evaluates to `true`.
 
 Example ordering for a typical adapter:
 
@@ -209,20 +209,20 @@ resources:
     lifecycle:
       delete:
         when:
-          expression: "deleted_at != null"                                   # deleted first
+          expression: "deleted_time != null"                                   # deleted first
   - name: clusterConfigMap
     lifecycle:
       delete:
         when:
-          expression: "deleted_at != null && resources.clusterJob == nil"    # wait for Job to be gone
+          expression: "deleted_time != null && !resources.?clusterJob.hasValue()"    # wait for Job to be gone
   - name: clusterNamespace
     lifecycle:
       delete:
         when:
-          expression: "deleted_at != null && resources.clusterConfigMap == nil && resources.clusterJob == nil"  # wait for all to be gone
+          expression: "deleted_time != null && !resources.?clusterConfigMap.hasValue() && !resources.?clusterJob.hasValue()"  # wait for all to be gone
 ```
 
-The `when.expression` is evaluated each reconciliation loop. Once a resource is deleted and discovery returns nil, dependent resources' ordering conditions become true and they are deleted on the next loop iteration.
+The `when.expression` is evaluated each reconciliation loop. Once a resource is deleted and discovery stores a nil value for it, `!resources.?clusterJob.hasValue()` evaluates to `true`, unblocking dependent resources on the next loop iteration. Use `!resources.?X.hasValue()` rather than `has()` or direct access — see the CEL note in the example task config for details.
 
 ### Executor Behavior Change
 
@@ -262,14 +262,14 @@ flowchart TD
 
 `Reconciled` is a single aggregate condition that adapts its meaning based on lifecycle:
 
-| `deleted_at` | `Reconciled` calculates | Meaning |
+| `deleted_time` | `Reconciled` calculates | Meaning |
 |---|---|---|
 | Not set | **Available** — all adapters `Available=True` at current generation | Resource is provisioned and operational |
 | Set | **Adapter-reported Finalized** — all adapters report `Finalized=True` | All adapter cleanup is complete |
 
 ```mermaid
 flowchart TD
-    R[Reconciled Condition] --> D{deleted_at set?}
+    R[Reconciled Condition] --> D{deleted_time set?}
     D -->|No| A[Calculates Available<br/>All adapters Available=True<br/>at current generation]
     D -->|Yes| F[Calculates from adapter-reported Finalized<br/>All adapters report Finalized=True]
     A -->|All True| RT[Reconciled = True]
@@ -289,11 +289,11 @@ Before deletion:  resource.generation = 5, adapter.observed_generation = 5
 After DELETE:     resource.generation = 6, adapter.observed_generation = 6
 ```
 
-The generation increment triggers Sentinel (`observed_generation < generation` → `Reconciled=False`). The adapter receives the event, sees `deleted_at`, cleans up resources, and reports `observed_generation = 6` with the new status.
+The generation increment triggers Sentinel (`observed_generation < generation` → `Reconciled=False`). The adapter receives the event, sees `deleted_time`, cleans up resources, and reports `observed_generation = 6` with the new status.
 
 ### Status Reporting During Deletion
 
-The existing status contract is unchanged — `Applied`, `Available`, and `Health` reflect the real state of managed resources as observed by the adapter, regardless of whether `deleted_at` is set. They are not deletion-aware and do not use deletion-specific reasons. Only `Finalized` is deletion-specific. The adapter always reports `observed_generation` equal to the current API `generation` (see [Generation Behavior During Deletion](#generation-behavior-during-deletion)). The `is_deleting` variable used in post-processing is captured from `deleted_at != null` during preconditions.
+The existing status contract is unchanged — `Applied`, `Available`, and `Health` reflect the real state of managed resources as observed by the adapter, regardless of whether `deleted_time` is set. They are not deletion-aware and do not use deletion-specific reasons. Only `Finalized` is deletion-specific. The adapter always reports `observed_generation` equal to the current API `generation` (see [Generation Behavior During Deletion](#generation-behavior-during-deletion)). The `is_deleting` variable used in post-processing is captured from `deleted_time != null` during preconditions.
 
 #### Pattern: Deletion In Progress
 
@@ -399,7 +399,7 @@ Example with optional conditions (resources still exist, deletion in progress):
 }
 ```
 
-The hard-delete gate is always: `deleted_at` set + `Reconciled=True`. Optional conditions don't change this.
+The hard-delete gate is always: `deleted_time` set + `Reconciled=True`. Optional conditions don't change this.
 
 ### API Hard-Delete Signal
 
@@ -407,9 +407,9 @@ This section defines **when** hard deletion happens (the gate conditions). **How
 
 The API hard-deletes records hierarchically — subresources first, then the resource.
 
-**Subresource hard-delete** when: `deleted_at` set + subresource `Reconciled=True`. Each subresource is evaluated independently.
+**Subresource hard-delete** when: `deleted_time` set + subresource `Reconciled=True`. Each subresource is evaluated independently.
 
-**Resource hard-delete** when: `deleted_at` set + resource `Reconciled=True` + **all subresource records already hard-deleted**.
+**Resource hard-delete** when: `deleted_time` set + resource `Reconciled=True` + **all subresource records already hard-deleted**.
 
 **Why `Reconciled=True` as the API gate?** The API should gate on one lifecycle-level signal (`Reconciled`) and let aggregation map lifecycle semantics (`Available` in create/update, adapter-reported `Finalized` in deletion).
 
@@ -432,16 +432,14 @@ flowchart LR
 
 | Applied | Available | Health | Finalized | Meaning | API Action |
 |---------|-----------|--------|-----------|---------|------------|
-| `False` | `False` | `True` | `True` | Cleanup confirmed for this adapter | Contributes to deletion `Reconciled=True` |
-| `False` | `Any` | `True` | `False` | Not finalized yet — adapter has not confirmed cleanup | **Wait** for retry/reconciliation |
-| `Any` | `Any` | `False` | `False` | Adapter unhealthy; resource state unreliable | **Wait** for retry/reconciliation |
-| `True` | `Any` | `True` | `False` | Deletion in progress; resources still exist | **Wait** |
+| `Any` | `Any` | `Any` | `True` | Cleanup confirmed for this adapter | Contributes to deletion `Reconciled=True` |
+| `Any` | `Any` | `Any` | `False` | Not finalized yet — adapter has not confirmed cleanup | **Wait** for retry/reconciliation |
 
-**Finalized contract**: `Finalized` is reported by adapters and used by API aggregation to compute `Reconciled` when `deleted_at` is set.
+**Finalized contract**: `Finalized` is reported by adapters and used by API aggregation to compute `Reconciled` when `deleted_time` is set.
 
-**Finalized rule**: When `Health=False`, `Finalized` must be `False` — the adapter cannot reliably determine whether resources have been cleaned up, so it cannot confirm finalization. Only when `Health=True` can the adapter report `Finalized=True`.
+If `deleted_time` is not set in an API resource, `Finalized` value is meaningless for computing `Reconciled`.
 
-**Note on `Available`**: During deletion, `Available` is informational for operators and does not participate in hard-delete gating. The API gates on `Reconciled=True`.
+During deletion, `Available`, `Health`, `Applied` are informational for operators and does not participate in hard-delete gating. The API gates on `Reconciled=True`.
 
 ### Example Task Config with Deletion
 
@@ -459,10 +457,10 @@ preconditions:
       url: /clusters/{{ .clusterId }}
       timeout: 10s
     capture:
-      - name: deleted_at
-        field: deleted_at
+      - name: deleted_time
+        field: deleted_time
       - name: is_deleting
-        expression: "deleted_at != null"
+        expression: "deleted_time != null"
       - name: clusterName
         field: name
       - name: generation
@@ -484,7 +482,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterConfigMap == nil && resources.clusterJob == nil"
+          expression: "deleted_time != null && !resources.?clusterConfigMap.hasValue() && !resources.?clusterJob.hasValue()"
 
   - name: clusterConfigMap
     manifest:
@@ -500,7 +498,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null && resources.clusterJob == nil"
+          expression: "deleted_time != null && !resources.?clusterJob.hasValue()"
 
   - name: clusterJob
     manifest:
@@ -516,7 +514,7 @@ resources:
       delete:
         propagationPolicy: Background
         when:
-          expression: "deleted_at != null"
+          expression: "deleted_time != null"
 
 post:
   payloads:
@@ -547,20 +545,26 @@ post:
           - type: Finalized
             status:
               expression: |
-                is_deleting
-                  ? (!(has(resources.clusterNamespace) || has(resources.clusterConfigMap) || has(resources.clusterJob))
+                is_deleting && adapter.?executionStatus.orValue("") == "success"
+                  ? (!resources.?clusterNamespace.hasValue()
+                      && !resources.?clusterConfigMap.hasValue()
+                      && !resources.?clusterJob.hasValue()
                     ? "True" : "False")
                   : "False"
             reason:
               expression: |
-                is_deleting
-                  ? (!(has(resources.clusterNamespace) || has(resources.clusterConfigMap) || has(resources.clusterJob))
+                is_deleting && adapter.?executionStatus.orValue("") == "success"
+                  ? (!resources.?clusterNamespace.hasValue()
+                      && !resources.?clusterConfigMap.hasValue()
+                      && !resources.?clusterJob.hasValue()
                     ? "CleanupConfirmed" : "CleanupInProgress")
                   : ""
             message:
               expression: |
-                is_deleting
-                  ? (!(has(resources.clusterNamespace) || has(resources.clusterConfigMap) || has(resources.clusterJob))
+                is_deleting && adapter.?executionStatus.orValue("") == "success"
+                  ? (!resources.?clusterNamespace.hasValue()
+                      && !resources.?clusterConfigMap.hasValue()
+                      && !resources.?clusterJob.hasValue()
                     ? "All managed resources deleted and verified" : "Resource cleanup in progress")
                   : ""
           - type: Health
@@ -586,15 +590,23 @@ post:
         body: '{{ .clusterStatusPayload }}'
 ```
 
-**Note on CEL complexity**: The `is_deleting` ternary branching adds complexity to post-processing expressions. The `is_deleting` variable is captured in preconditions from `deleted_at != null`. Mitigate with descriptive `reason` values and testing both creation/deletion paths.
+**Note on CEL complexity**: The `is_deleting` ternary branching adds complexity to post-processing expressions. The `is_deleting` variable is captured in preconditions from `deleted_time != null`. Mitigate with descriptive `reason` values and testing both creation/deletion paths.
 
-**Required test cases for `lifecycle.delete.when`**: `deleted_at` null/missing → `false`, valid timestamp → `true`. The framework must treat null/missing `deleted_at` as not-deleting.
+**CEL resource presence pattern — use `!resources.?X.hasValue()`, not `has()`**: When checking whether a managed resource has been deleted, always use `!resources.?resourceName.hasValue()`, not `has(resources.resourceName)` or `resources.resourceName == null`.
+
+- **`has()` is wrong**: When the executor discovers a deleted resource and stores `NotFound`, it records `execCtx.Resources[name] = nil` — the map key exists with a nil value. CEL's `has()` on a dynamic map tests key existence only, not whether the value is nil. So `has(resources.clusterJob)` returns `true` even after the resource is deleted, causing `Finalized` to be permanently stuck at `"False"`.
+- **Direct access is unsafe**: `resources.clusterJob == null` fails with an error if the key was never added to the map — for example when the executor fails before reaching that resource in the loop (resource #3 of 3, failure on #2).
+- **`!resources.?X.hasValue()` is correct**: The optional `?` operator safely accesses the map without erroring on a missing key, and `.hasValue()` checks whether the value is non-nil. Negating gives a clean "resource is absent" check that handles all states: key missing (never processed → `true`), key present with nil (deleted → `true`), key present with object (exists → `false`).
+
+**Health guard in `Finalized` — required**: The `adapter.?executionStatus.orValue("") == "success"` guard prevents a false `Finalized=True` when the executor failed before processing some resources. If a resource was never processed (key absent from map), optional chaining returns `null == null → true`, making it appear deleted. The health guard ensures `Finalized=True` is only reported when the full execution loop completed successfully.
+
+**Required test cases for `lifecycle.delete.when`**: `deleted_time` null/missing → `false`, valid timestamp → `true`. The framework must treat null/missing `deleted_time` as not-deleting.
 
 ### Subresource Deletion
 
 Subresources are cleaned up before the resource (hierarchical hard-delete). See [Resource + Subresource Deletion Flow diagram](./adapter-flow-diagrams.md#resource--subresource-deletion-flow).
 
-1. API marks resource AND all subresources for deletion simultaneously (sets `deleted_at`)
+1. API marks resource AND all subresources for deletion simultaneously (sets `deleted_time`)
 2. Resource-level and subresource-level adapters clean up **in parallel**
 3. API hard-deletes each subresource record as its adapters confirm cleanup
 4. API hard-deletes resource record only after resource adapters confirm **AND** all subresource records are gone
@@ -605,7 +617,7 @@ Deletion introduces new observable states that should be tracked alongside exist
 
 Key areas to instrument:
 - **Adapter-level**: deletion operation counts, duration, and in-progress gauges
-- **API-level**: resources in Finalizing state, time from `deleted_at` to hard delete, stuck deletion gauges
+- **API-level**: resources in Finalizing state, time from `deleted_time` to hard delete, stuck deletion gauges
 
 Detailed metric naming, labels, alert thresholds, and SLO/SLI definitions will be specified in a separate document — these require their own design discussion.
 
@@ -618,12 +630,12 @@ Detailed metric naming, labels, alert thresholds, and SLO/SLI definitions will b
 | # | Edge Case | Decision | Impact |
 |---|-----------|----------|--------|
 | 1 | Resource already gone | Treat "not found" as success | Low |
-| 2 | **Stale Applied=False before `deleted_at`** | **API gates on aggregate `Reconciled` (computed from adapter `Finalized`), never on individual adapter `Applied`** | **Critical** |
+| 2 | **Stale Applied=False before `deleted_time`** | **API gates on aggregate `Reconciled` (computed from adapter `Finalized`), never on individual adapter `Applied`** | **Critical** |
 | 3 | Creation in-flight when deletion starts | Discovery handles naturally on next event | Low |
 | 4 | Which adapters must confirm? | Only adapters with existing status entries | Medium |
-| 5 | Stuck in Finalizing (`deleted_at` set but can't hard-delete) | Configurable timeout + alerting (force deletion covered separately) | Medium |
+| 5 | Stuck in Finalizing (`deleted_time` set but can't hard-delete) | Configurable timeout + alerting (force deletion covered separately) | Medium |
 | 6 | Concurrent deletion events | Idempotent operations, K8s handles safely | Low |
-| 7 | Independent subresource deletion | Same pattern, check subresource `deleted_at` | Low |
+| 7 | Independent subresource deletion | Same pattern, check subresource `deleted_time` | Low |
 | 8 | Cancel deletion | Not cancellable in 1.0.0 | Low |
 | 9 | Maestro-managed resources | Transport layer handles transparently | Low |
 | 10 | Multi-generation resources | Use label selectors to discover all | Medium |
@@ -635,7 +647,7 @@ Detailed metric naming, labels, alert thresholds, and SLO/SLI definitions will b
 
 #### Stale Applied=False Before Pending Deletion (#2)
 
-An adapter whose preconditions were never met already reports `Applied=False`. Without safeguards, if the API were to gate directly on individual adapter `Applied` status, it could see `deleted_at` + `Applied=False` and hard-delete immediately — before the adapter processes the deletion event.
+An adapter whose preconditions were never met already reports `Applied=False`. Without safeguards, if the API were to gate directly on individual adapter `Applied` status, it could see `deleted_time` + `Applied=False` and hard-delete immediately — before the adapter processes the deletion event.
 
 **Decision**: The API never gates directly on individual adapter conditions (`Applied`, `Available`). It gates on the aggregate `Reconciled=True` condition, which during deletion is computed from adapter-reported `Finalized` across all adapters. This eliminates the stale-status risk entirely.
 
@@ -673,7 +685,7 @@ In both failure modes, `Finalized=False` prevents the aggregate `Reconciled` fro
 
 #### API Rejects Mutations During Finalizing (#12)
 
-The API **must reject** all mutations (PUT, PATCH) to resources/subresources marked for deletion (`deleted_at` set) with `409 Conflict`. This prevents new generation events from triggering resource creation while deletion cleanup is in progress. Reads (GET, LIST) remain allowed.
+The API **must reject** all mutations (PUT, PATCH) to resources/subresources marked for deletion (`deleted_time` set) with `409 Conflict`. This prevents new generation events from triggering resource creation while deletion cleanup is in progress. Reads (GET, LIST) remain allowed.
 
 ### Other Edge Cases
 
@@ -693,7 +705,7 @@ Handled naturally. The adapter processes events sequentially per resource. On th
 All adapters participate in deletion `Reconciled`. The API waits for `Reconciled=True` on the target object, which requires every adapter to report `Finalized=True`.
 
 - **Resource-owning adapters** report `Finalized=True` after confirming all managed resources are deleted.
-- **Non-resource-owning adapters** (e.g., validation-only adapters) report `Finalized=True` immediately upon receiving a deletion event (`deleted_at` set), since they have nothing to clean up.
+- **Non-resource-owning adapters** (e.g., validation-only adapters) report `Finalized=True` immediately upon receiving a deletion event (`deleted_time` set), since they have nothing to clean up.
 
 This eliminates the need for a separate "participating set" computation in the API. Every adapter is expected to report `Finalized`; the distinction is only in how quickly they can confirm it.
 
@@ -701,7 +713,7 @@ No grace period is needed — deletion `Reconciled` remains `False` until all ad
 
 #### Stuck in Finalizing (#5)
 
-If a resource stays in Finalizing (`deleted_at` set) beyond a configurable timeout (e.g., 30 minutes): log which adapters haven't confirmed and expose stuck state via API. Force deletion behavior is out of scope for this design and requires a separate spike. The approach (e.g., immediate hard delete, graceful escalation, or manual intervention) depends on peer team requirements and has not been decided yet.
+If a resource stays in Finalizing (`deleted_time` set) beyond a configurable timeout (e.g., 30 minutes): log which adapters haven't confirmed and expose stuck state via API. Force deletion behavior is out of scope for this design and requires a separate spike. The approach (e.g., immediate hard delete, graceful escalation, or manual intervention) depends on peer team requirements and has not been decided yet.
 
 #### Concurrent Events During Deletion (#6)
 
@@ -711,24 +723,24 @@ Deletion operations are idempotent. Multiple delete calls for the same K8s resou
 
 #### Independent Subresource Deletion (#7)
 
-Same pattern as resource deletion. The API marks just the subresource for deletion (sets `deleted_at`), subresource-level adapters handle cleanup.
+Same pattern as resource deletion. The API marks just the subresource for deletion (sets `deleted_time`), subresource-level adapters handle cleanup.
 
-**Trigger contract**: Subresource deletion must be keyed off `deleted_at` (the canonical delete intent) in each resource's `lifecycle.delete.when.expression`:
+**Trigger contract**: Subresource deletion must be keyed off `deleted_time` (the canonical delete intent) in each resource's `lifecycle.delete.when.expression`:
 
 ```yaml
 # Canonical delete signal per resource
 lifecycle:
   delete:
     when:
-      expression: "deleted_at != null"
+      expression: "deleted_time != null"
 ```
 
 #### Customer-Visible Deletion State
 
-For customers, the API should indicate a resource/subresource is being deleted when `deleted_at` is set.
+For customers, the API should indicate a resource/subresource is being deleted when `deleted_time` is set.
 
-- **Control-plane signal**: `deleted_at` (authoritative)
-- **Presentation signal**: `deleted_at` presence in GET responses indicates the resource is being deleted
+- **Control-plane signal**: `deleted_time` (authoritative)
+- **Presentation signal**: `deleted_time` presence in GET responses indicates the resource is being deleted
 - **Progress signal**: adapter statuses (`Applied`, `Health`, `observed_time`) indicate deletion progress
 
 #### Cancel Deletion (#8)
@@ -778,7 +790,7 @@ Not required. Each adapter only cleans up its own resources. Unlike creation (wh
 - Resources phase executor becomes more complex (per-resource lifecycle evaluation)
 - Post-processing CEL expressions become more complex (must handle both creation and deletion states via `is_deleting`)
 - `lifecycle.delete.when` expressions are evaluated each reconciliation loop to determine deletion readiness
-- Each resource's `lifecycle.delete.when` must include the deletion trigger (`deleted_at != null`), leading to some repetition across resources
+- Each resource's `lifecycle.delete.when` must include the deletion trigger (`deleted_time != null`), leading to some repetition across resources
 - Adapter config authors must think about deletion when designing adapters
 
 ---
@@ -787,7 +799,7 @@ Not required. Each adapter only cleans up its own resources. Unlike creation (wh
 
 ### Separate Deletion Adapter
 
-**What**: Deploy a dedicated deletion adapter per adapter type. Both creation and deletion adapters subscribe to the same broker topic via separate subscriptions, each using preconditions to filter by `deleted_at` presence.
+**What**: Deploy a dedicated deletion adapter per adapter type. Both creation and deletion adapters subscribe to the same broker topic via separate subscriptions, each using preconditions to filter by `deleted_time` presence.
 
 **Why Not Chosen**:
 - Both approaches require framework changes — the executor doesn't support deletion today either way
@@ -799,11 +811,11 @@ Not required. Each adapter only cleans up its own resources. Unlike creation (wh
 
 **What**: Adapters register finalizers on resource objects in the HyperFleet API. The API won't delete until all finalizers are removed.
 
-**Why Not Chosen**: HyperFleet API resources are stored in a relational database, not as Kubernetes objects. Implementing a finalizer pattern on database records adds complexity without clear benefit over the current pending deletion + `Reconciled` gate model. Maestro follows the same `deleted_at` two-phase pattern without finalizers.
+**Why Not Chosen**: HyperFleet API resources are stored in a relational database, not as Kubernetes objects. Implementing a finalizer pattern on database records adds complexity without clear benefit over the current pending deletion + `Reconciled` gate model. Maestro follows the same `deleted_time` two-phase pattern without finalizers.
 
 ### Sentinel Publishes Different Event Type for Deletion
 
-**What**: Sentinel detects `deleted_at` and publishes a `DeleteEventType` event (separate from creation events), routed to a different topic.
+**What**: Sentinel detects `deleted_time` and publishes a `DeleteEventType` event (separate from creation events), routed to a different topic.
 
 **Why Not Chosen**: This requires Sentinel changes and complicates the event model. The current design keeps Sentinel simple - it publishes the same event format regardless of resource state. The adapter is the right place to evaluate resource state and decide on action, consistent with the existing precondition evaluation pattern.
 
@@ -839,14 +851,14 @@ The following field must be added to the adapter framework's `AdapterTaskConfig`
 
 The field is optional with backward-compatible defaults:
 - `lifecycle` not set → apply-only behavior (existing adapters unchanged)
-- `lifecycle.delete.when` not set → defaults to `"deleted_at != null"`
+- `lifecycle.delete.when` not set → defaults to `false`
 - `lifecycle.delete.propagationPolicy` not set → defaults to `Background`
 
 ### Status Contract Change
 
 The `Finalized` condition is a **new required field** in adapter status reports. This is a contract change:
 - All adapters must include `Finalized` in their status conditions
-- When not deleting: `Finalized=False` with empty reason/message
+- When not deleting: `Finalized=False` reason/message is meaningless, you can send empty message or `"NotDeleting"`
 - When deleting: `Finalized=True` after cleanup confirmed, `Finalized=False` while in progress or unhealthy
 - The API must accept and store `Finalized` as a new condition type
 - Existing adapters must be updated to include `Finalized` before the deletion feature is enabled
@@ -854,8 +866,8 @@ The `Finalized` condition is a **new required field** in adapter status reports.
 ### API Changes Required
 
 The `DELETE /resources/{id}` endpoint must be implemented (currently returns `NotImplemented`). Required changes:
-1. Pending deletion handler: set `deleted_at`, cascade to subresources, increment `generation`
-2. `Reconciled` status aggregation: compute `Reconciled` from adapter `Finalized` signals when `deleted_at` is set (distinct from normal `Reconciled` which aggregates `Available`)
+1. Pending deletion handler: set `deleted_time`, cascade to subresources, increment `generation`
+2. `Reconciled` status aggregation: compute `Reconciled` from adapter `Finalized` signals when `deleted_time` is set (distinct from normal `Reconciled` which aggregates `Available`)
 3. Hard-delete signal: trigger hard-delete when deletion `Reconciled=True` (all adapters report `Finalized=True`)
 4. `409 Conflict` rejection for mutations on resources/subresources marked for deletion
 
@@ -864,7 +876,7 @@ The `DELETE /resources/{id}` endpoint must be implemented (currently returns `No
 1. **Adapter framework**: Add `lifecycle.delete` to resource config types and executor
 2. **Adapter configs**: Update individual adapter task configs to include deletion fields and verify deletion status behavior
 3. **Sentinel**: Deploy separate instance for each subresource `resource_type` (if subresource deletion is needed)
-4. **API**: Implement `DELETE` endpoint (set `deleted_at` + hard-delete signal) behind a rollout gate
+4. **API**: Implement `DELETE` endpoint (set `deleted_time` + hard-delete signal) behind a rollout gate
 5. **Enable DELETE** only after steps 1-3 are live in the target environment
 
 Existing adapters continue to work unchanged during rollout — deletion support is opt-in per adapter config.
