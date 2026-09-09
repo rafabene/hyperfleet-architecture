@@ -73,7 +73,7 @@ Don't expose Postgres directly. Put a gRPC/REST service on the hub in front of t
   - Desire store interface must be reimplemented as REST/gRPC endpoints
   - API becomes a single point of failure for both resource CRUD and desire delivery (if endpoints are added to existing API)
 
-**Partition isolation**: enforced in the API layer. Partition scope is derived from the caller's verified service identity (JWT via Envoy + Authorino), not from any client-supplied partition parameter. Mismatched or override attempts are rejected. No RLS, per-cluster DB credentials, or credential-brokering service needed on the DB side.
+**Partition isolation**: enforced in the API layer. Envoy strips caller-supplied identity/tenant headers; Authorino validates the JWT and injects trusted identity headers. The API derives partition scope only from those injected headers (not from JWT claims or any client-supplied partition parameter). Mismatched or override attempts are rejected. No RLS, per-cluster DB credentials, or credential-brokering service needed on the DB side.
 
 **Client authentication** (adapter/applier → API): JWT through Envoy + Authorino (same as Sentinel today).
 
