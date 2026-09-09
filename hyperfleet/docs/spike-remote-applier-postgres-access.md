@@ -73,11 +73,11 @@ Don't expose Postgres directly. Put a gRPC/REST service on the hub in front of t
   - Desire store interface must be reimplemented as REST/gRPC endpoints
   - API becomes a single point of failure for both resource CRUD and desire delivery (if endpoints are added to existing API)
 
-**Partition isolation**: enforced in the API layer's application code. No RLS, per-cluster DB credentials, or credential-brokering service needed on the DB side.
+**Partition isolation**: enforced in the API layer. Partition scope is derived from the caller's verified service identity (JWT via Envoy + Authorino), not from any client-supplied partition parameter. Mismatched or override attempts are rejected. No RLS, per-cluster DB credentials, or credential-brokering service needed on the DB side.
 
-**Authentication**: clients authenticate via JWT through Envoy + Authorino (same as Sentinel today).
+**Client authentication** (adapter/applier → API): JWT through Envoy + Authorino (same as Sentinel today).
 
-**Credential lifecycle**: handled by existing infrastructure. Tokens are short-lived and auto-rotated via the K8s TokenRequest API. No manual provisioning or revocation workflow needed. Decommissioning a management cluster means deleting its service account; tokens become invalid immediately.
+**Client credential lifecycle**: handled by existing infrastructure. Tokens are short-lived and auto-rotated via the K8s TokenRequest API. No manual provisioning or rotation workflow needed. Decommissioning a management cluster means deleting its service account; bound tokens then fail TokenReview after a short invalidation window (Kubernetes typically allows up to ~60s after `metadata.deletionTimestamp`), and any remaining lifetime ends at token expiry.
 
 ---
 
@@ -117,13 +117,13 @@ How a client is restricted to its own management cluster's rows.
 
 The poll interval is 5s (assumed from [HYPERFLEET-1432](https://redhat.atlassian.net/browse/HYPERFLEET-1432) load modeling, configurable). Each poll does a partition read and status writes. This applies regardless of which path (API-mediated or direct DB) is chosen.
 
-Clients connect from separate OCI clusters. Same-cloud, same-region round-trip latency is expected to be low. The 5s poll interval provides a large budget; the extra network hop from API-mediated access is not a concern.
+Clients connect from separate OCI clusters. Same-cloud, same-region round-trip latency is expected to be low. Against a 5s poll interval, the extra network hop from API-mediated access is expected to fit the budget; this should be confirmed with load testing during implementation if production concurrency is a concern.
 
 ---
 
 ## Decision
 
-**API-mediated access**, for the reasons above: it reuses existing auth infrastructure, avoids three additional decision dimensions that direct DB access requires (network exposure, authentication, partition scoping), and the 5s poll interval makes the extra network hop negligible. See [Trade-offs](#trade-offs) below for what this costs.
+**API-mediated access**, for the reasons above: it reuses existing auth infrastructure, avoids three additional decision dimensions that direct DB access requires (network exposure, authentication, partition scoping), and the 5s poll interval is expected to leave headroom for the extra network hop. See [Trade-offs](#trade-offs) below for what this costs.
 
 ---
 
@@ -133,7 +133,7 @@ Clients connect from separate OCI clusters. Same-cloud, same-region round-trip l
 
 - Postgres is never exposed outside the hub cluster; no DB-level network exposure, authentication, or partition-scoping decisions to make
 - Partition isolation is application code, testable with unit tests, no RLS or per-cluster DB credentials
-- Credential lifecycle is already solved: JWT via K8s TokenRequest API, auto-rotated, revocable by deleting a service account
+- Client credential lifecycle is already solved: JWT via K8s TokenRequest API, auto-rotated, revocable by deleting a service account (short invalidation window, then token expiry)
 - Reuses Envoy + Authorino auth infrastructure already planned for the hub
 - Adapter and applier use the same auth path as Sentinel, reducing the number of auth mechanisms in the system
 
@@ -147,9 +147,9 @@ Clients connect from separate OCI clusters. Same-cloud, same-region round-trip l
 ### Acceptable Because
 
 - The desire store interface is small and well-defined (partition read, status write, desire write); the endpoint surface area is bounded
-- The 5s poll interval makes the extra network hop negligible
+- The 5s poll interval is expected to leave headroom for the extra network hop
 - API-mediated access eliminates three entire categories of decisions (network exposure, authentication, partition scoping) and their associated operational overhead
-- The API is already a hard dependency for the control plane (Sentinel already depends on it for cluster/nodepool state); routing desire store traffic through it adds load to an already-critical path, not a new failure mode
+- Remote appliers gain an API dependency for partition reads and status writes (unlike direct DB access, which would depend on Postgres availability instead). That still lands on the same hub failure domain Sentinel already relies on for cluster/nodepool state; client timeout/retry/degraded behavior is left to implementation
 
 ---
 
