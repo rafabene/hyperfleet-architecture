@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Team
-Last Updated: 2026-09-10
+Last Updated: 2026-09-11
 ---
 
 # SPIKE: Remote Applier Connectivity and Partition-Scoped Access to Postgres
@@ -54,5 +54,6 @@ Adopt API-mediated desire-store access. The resulting architectural decision and
 
 ## Open Questions
 
+The remaining service-design questions, including cross-cluster identity, partition binding, endpoint semantics, availability behavior, hosting, transport, gateway capacity, and defense in depth, are tracked in [HYPERFLEET-1645: Design the desire-store API service and cross-cluster Applier identity](https://redhat.atlassian.net/browse/HYPERFLEET-1645).
+
 - **OCI security constraints**: Confirm OCI-specific restrictions that affect the hub cluster's internal Postgres deployment. This does not block the API-mediated path.
-- **Client failure behavior**: Define timeout, retry, and degraded-mode behavior when the API service is unavailable as part of the implementation work.

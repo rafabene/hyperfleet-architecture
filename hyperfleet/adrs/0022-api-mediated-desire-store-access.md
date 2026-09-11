@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Architecture Team
-Last Updated: 2026-09-10
+Last Updated: 2026-09-11
 ---
 
 # 0022 - API-Mediated Desire Store Access
@@ -18,7 +18,9 @@ Adapters and Appliers access the desire store through an authenticated, hub-host
 
 The service exposes the bounded desire-store operations: partition reads, desire writes, and status writes. Partition enforcement is mandatory and cannot be disabled by an optional server configuration flag. The service configuration must declare the partition dimension, and startup must fail if that dimension or its enforcement configuration is missing. Envoy removes caller-supplied identity and tenant headers. The gateway validates each remote Applier through a trusted cross-cluster identity mechanism and maps the validated identity to exactly one partition before injecting trusted identity headers. Every request must resolve a non-empty partition scope exclusively from those injected headers before reaching the data layer; missing or invalid tenant context is rejected, requested scope that does not match the caller is rejected, and no unscoped query is permitted. The service never derives scope from client-supplied parameters or untrusted JWT claims.
 
-The transport (REST or gRPC) and whether the endpoints run in the existing API or a dedicated hub service are implementation decisions. Both options must use the gateway and partition-scoping contract defined here.
+This extends ADR-0020's gateway caller model with a third caller type: remote, partition-scoped machines. The issuer trust and credential lifecycle for this caller type are follow-up design decisions in [HYPERFLEET-1645: Design the desire-store API service and cross-cluster Applier identity](https://redhat.atlassian.net/browse/HYPERFLEET-1645).
+
+The transport (REST or gRPC) and whether the endpoints run in the existing API or a dedicated hub service are follow-up design decisions, not implementation details. They must be recorded before implementation in [HYPERFLEET-1645: Design the desire-store API service and cross-cluster Applier identity](https://redhat.atlassian.net/browse/HYPERFLEET-1645). The design must evaluate end-to-end capacity across the gateway, service, and Postgres. Both options must use the gateway and partition-scoping contract defined here.
 
 ## Consequences
 
@@ -35,6 +37,7 @@ The transport (REST or gRPC) and whether the endpoints run in the existing API o
 - HyperFleet must implement and version the desire-store endpoints. Clients now have an API compatibility dependency rather than a database dependency.
 - Hosting the endpoints in the existing API shares its failure domain. A dedicated service can isolate that risk but adds deployment complexity.
 - The cross-cluster identity mechanism, including its issuer trust, credential lifecycle, revocation behavior, and Authorino configuration, requires a follow-up design.
+- Partition isolation resides in the service layer. A defect in partition-scope resolution could expose multiple partitions, and all remote Appliers share the hub service and Postgres capacity. Postgres row-level security and per-caller gateway quotas can be added as defense in depth without changing this decision; their evaluation is follow-up design work in [HYPERFLEET-1645: Design the desire-store API service and cross-cluster Applier identity](https://redhat.atlassian.net/browse/HYPERFLEET-1645).
 
 ## Alternatives Considered
 
