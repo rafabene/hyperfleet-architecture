@@ -97,3 +97,4 @@ What did we decide? State it plainly.
 | [0019](0019-package-hyperfleet-as-operator.md) | Package HyperFleet as a Kubernetes Operator | Proposed | 2026-08-11 |
 | [0020](0020-envoy-authorino-api-gateway.md) | Envoy and Authorino as the API Authentication Gateway | Active | 2026-08-11 |
 | [0021](0021-oci-external-platform.md) | External Platform for the Guest in OCI Hosted Clusters | Active | 2026-09-01 |
+| [0022](0022-api-mediated-desire-store-access.md) | API-Mediated Desire Store Access | Active | 2026-09-10 |
