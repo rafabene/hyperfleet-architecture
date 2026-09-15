@@ -18,6 +18,25 @@ Two components would then be writing to the same security list: Terraform (decla
 
 HyperFleet configures each OKE-managed `LoadBalancer` service with `oci.oraclecloud.com/security-rule-management-mode: "NSG"`. This tells the OCI CCM to create and fully own a dedicated **frontend NSG** for that load balancer: the CCM provisions the NSG, adds the ingress rules the service needs, and removes both the NSG and its rules when the service is deleted. Terraform never creates, owns, or references this NSG — it does not exist in Terraform state, so it cannot appear in a `terraform plan` diff.
 
+```mermaid
+graph LR
+    subgraph TF["Terraform-owned"]
+        IAM["IAM Policy<br/>manage network-security-groups,<br/>manage virtual-network-family"]
+        SL["Shared Security List<br/>node + control-plane rules"]
+    end
+
+    subgraph CCMOWN["OCI CCM-owned (per LoadBalancer service)"]
+        NSG["Frontend NSG<br/>created + rules managed + destroyed by CCM"]
+        LB["OCI Load Balancer"]
+    end
+
+    IAM -->|"grants permission to"| CCM(("OCI CCM"))
+    CCM -->|"creates, adds rules to,<br/>and deletes"| NSG
+    CCM -->|"provisions"| LB
+    NSG -->|"secures ingress to"| LB
+    SL -.->|"never written to by CCM<br/>when annotation is set"| CCM
+```
+
 This is a different mechanism from attaching an existing NSG via the `oci.oraclecloud.com/oci-network-security-groups` annotation. That annotation only attaches already-existing NSGs to the load balancer; the CCM does not manage rules inside them. Using it with a Terraform-created NSG would still leave Terraform responsible for every ingress rule, one dedicated NSG at a time — the same per-service maintenance burden as the `None` alternative below, just against a smaller blast radius.
 
 The only Terraform-managed change this decision requires is an IAM policy granting the cluster's dynamic group permission to manage NSGs and either VCNs or the virtual-network family in the target compartment:
