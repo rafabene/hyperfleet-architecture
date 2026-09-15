@@ -16,30 +16,42 @@ Two components would then be writing to the same security list: Terraform (decla
 
 ## Decision
 
-HyperFleet assigns each OKE-managed load balancer a **dedicated Network Security Group (NSG)**, separate from the security list(s) Terraform owns for node and control-plane traffic. The NSG is attached to load balancer services via the `oci.oraclecloud.com/oci-network-security-groups` service annotation.
+HyperFleet configures each OKE-managed `LoadBalancer` service with `oci.oraclecloud.com/security-rule-management-mode: "NSG"`. This tells the OCI CCM to create and fully own a dedicated **frontend NSG** for that load balancer: the CCM provisions the NSG, adds the ingress rules the service needs, and removes both the NSG and its rules when the service is deleted. Terraform never creates, owns, or references this NSG — it does not exist in Terraform state, so it cannot appear in a `terraform plan` diff.
 
-Terraform creates the NSG as an empty container resource and owns its existence. The OCI CCM associates annotated `LoadBalancer` services with the NSG through `oci.oraclecloud.com/oci-network-security-groups` — an NSG in OCI applies to the VNICs of the resources placed into it, not to a subnet, so this association happens per load balancer, not through Terraform. Terraform does not declare or track the ingress/egress rules inside the NSG. This isolates the two writers to disjoint resources: Terraform never reconciles rules inside the LB-dedicated NSG, and the CCM never touches the security list(s) Terraform manages for everything else.
+This is a different mechanism from attaching an existing NSG via the `oci.oraclecloud.com/oci-network-security-groups` annotation. That annotation only attaches already-existing NSGs to the load balancer; the CCM does not manage rules inside them. Using it with a Terraform-created NSG would still leave Terraform responsible for every ingress rule, one dedicated NSG at a time — the same per-service maintenance burden as the `None` alternative below, just against a smaller blast radius.
 
-The alternative was `security-list-management-mode: None`, which turns the CCM's automatic rule management off entirely and puts every load-balancer rule under Terraform. That was rejected: the CCM does not just open a static, known port — it computes the health-check port, protocol, and `loadBalancerSourceRanges` per service from the service spec, and OKE clusters in this environment have `LoadBalancer` services created and destroyed continuously by CI/e2e runs. Fully-Terraform-owned rules would mean hand-writing that logic and updating Terraform for every new or changed service, which both defeats the "no plan diff" acceptance criteria and is a standing maintenance burden the dedicated-NSG approach avoids entirely by letting the CCM keep doing what it already does, just in a resource Terraform doesn't touch.
+The only Terraform-managed change this decision requires is an IAM policy granting the cluster's dynamic group permission to manage NSGs and either VCNs or the virtual-network family in the target compartment:
+
+```text
+Allow any-user to manage network-security-groups in compartment <compartment-name> where request.principal.type = 'cluster'
+Allow any-user to manage virtual-network-family in compartment <compartment-name> where request.principal.type = 'cluster'
+```
+
+This ADR covers frontend (load-balancer ingress) rules only, which is where the observed drift occurred. Backend/node-port and health-check rules on the worker subnet are unaffected by this decision; if they need the same isolation later, an existing NSG can be pre-created and referenced via `oci.oraclecloud.com/oci-backend-network-security-group`, and the CCM will manage rules there too — that is out of scope here.
+
+The alternative was `security-rule-management-mode: "None"` (equivalent to the legacy `security-list-management-mode: None`), which turns off the CCM's automatic rule management entirely and puts every load-balancer rule under Terraform. That was rejected: the CCM does not just open a static, known port — it computes the health-check port, protocol, and `loadBalancerSourceRanges` per service from the service spec, and OKE clusters in this environment have `LoadBalancer` services created and destroyed continuously by CI/e2e runs. Fully-Terraform-owned rules would mean hand-writing that logic and updating Terraform for every new or changed service, which both defeats the "no plan diff" acceptance criteria and is a standing maintenance burden the CCM-managed NSG avoids entirely by letting the CCM keep doing what it already does, just in a resource Terraform doesn't touch.
 
 ## Consequences
 
 **Gains:**
 
-- Creating and deleting a `LoadBalancer` service produces no `terraform plan` diff — the CCM's rule changes land in a resource Terraform does not inspect.
+- Creating and deleting a `LoadBalancer` service produces no `terraform plan` diff — the frontend NSG and its rules are created, managed, and destroyed entirely by the CCM, outside Terraform state.
 - The CCM's existing per-service rule logic (health-check port, protocol, `loadBalancerSourceRanges`) keeps working automatically; HyperFleet does not need to replicate it.
 - Scales to the dynamic create/destroy pattern of the CI and e2e environment, where `LoadBalancer` services come and go per test run without any Terraform change.
 
 **Trade-offs:**
 
-- The rules inside the LB NSG are not visible in `terraform plan`/`terraform show` — auditing them requires querying OCI directly (console or CLI), not the Terraform state.
-- Every `LoadBalancer` service manifest must carry the `oci.oraclecloud.com/oci-network-security-groups` annotation pointing at the dedicated NSG; a service missing the annotation falls back to the CCM's default behavior against the shared security list, reintroducing drift risk for that one service.
+- The frontend NSG's OCID is not known until the CCM creates it at service-creation time (visible via `kubectl describe service` or the OCI console), so no other Terraform-managed resource can reference it by a static OCID.
+- Requires a Terraform-managed IAM policy change granting the cluster's dynamic group `manage network-security-groups` and `manage vcns`/`manage virtual-network-family` — a one-time addition, not a per-service one.
+- Only frontend (load-balancer ingress) rules are covered; backend/node-port and health-check rules on the worker subnet still depend on whatever security-list or NSG mechanism already governs that subnet, and are not addressed by this ADR.
+- Every `LoadBalancer` service manifest must carry the `oci.oraclecloud.com/security-rule-management-mode: "NSG"` annotation; a service missing it falls back to the CCM's default mode against the shared security list, reintroducing drift risk for that one service. This ADR does not name an enforcement owner or mechanism (e.g., a Helm chart default, or CI/admission-time validation) for every `LoadBalancer`-producing manifest in the stack — that is a delivery-story detail for the `hyperfleet-infra` implementation.
 
 ## Alternatives Considered
 
 | Alternative | Why Rejected |
 |-------------|--------------|
-| **`security-list-management-mode: None`, rules fully owned by Terraform** | Requires reimplementing the CCM's per-service rule logic (health-check port, protocol, source ranges) by hand in Terraform for every `LoadBalancer` service. In an environment where services are created and destroyed dynamically by CI/e2e runs, this means a Terraform change on every new service — the opposite of the "no plan diff" goal — and is brittle to service-spec changes. |
+| **`security-rule-management-mode: "None"`, rules fully owned by Terraform** | Requires reimplementing the CCM's per-service rule logic (health-check port, protocol, source ranges) by hand in Terraform for every `LoadBalancer` service. In an environment where services are created and destroyed dynamically by CI/e2e runs, this means a Terraform change on every new service — the opposite of the "no plan diff" goal — and is brittle to service-spec changes. |
+| **Attach an existing, Terraform-created NSG via `oci.oraclecloud.com/oci-network-security-groups`** | This annotation only attaches an NSG to the load balancer; the CCM does not manage rules inside it. Terraform would still own every ingress rule for that NSG, one load balancer at a time — the same per-service maintenance burden as the `None` alternative, just scoped to a smaller, dedicated resource instead of the shared security list. |
 | **Leave default behavior, tolerate drift** | Fails the acceptance criteria directly; a Terraform-owned rule was already observed being removed by the CCM during validation, and repeated drift undermines confidence in `terraform plan` as a source of truth. |
 
 ---
@@ -50,3 +62,4 @@ The alternative was `security-list-management-mode: None`, which turns the CCM's
 - **Epic:** [HYPERFLEET-1542 — OCI Deployment Infrastructure and CI Environment](https://redhat.atlassian.net/browse/HYPERFLEET-1542)
 - **External resources:**
   - [OCI Container Engine for Kubernetes — Security Best Practices](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengbestpractices_topic-Security-best-practices.htm) — Oracle's own guidance recommends dedicated NSGs over shared security lists for workload traffic, which this ADR follows.
+  - [Specifying Security Rule Management Options for Load Balancers and Network Load Balancers](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm) — defines `oci.oraclecloud.com/security-rule-management-mode`, the frontend/backend NSG behavior, and the required IAM policies this ADR's Decision is based on.
