@@ -1,5 +1,5 @@
 ---
-Status: Proposed
+Status: Active
 Owner: HyperFleet Engineering
 Last Updated: 2026-09-15
 ---
@@ -46,7 +46,7 @@ Allow any-user to manage network-security-groups in compartment <compartment-nam
 Allow any-user to manage virtual-network-family in compartment <compartment-name> where request.principal.type = 'cluster'
 ```
 
-This ADR covers frontend (load-balancer ingress) rules only, which is where the observed drift occurred. Backend/node-port and health-check rules on the worker subnet are unaffected by this decision; if they need the same isolation later, an existing NSG can be pre-created and referenced via `oci.oraclecloud.com/oci-backend-network-security-group`, and the CCM will manage rules there too — that is out of scope here.
+This ADR covers frontend (load-balancer ingress) rules only, which is where the observed drift occurred. Backend/node-port and health-check rules on the worker subnet are out of scope here, and today's permissive, POC-grade rules on that subnet mean this decision has no visible effect on them; that holds only as long as those backend rules stay loose. If the worker-subnet rules need the same isolation once they are tightened, an existing NSG can be pre-created and referenced via `oci.oraclecloud.com/oci-backend-network-security-group`, and the CCM will manage rules there too.
 
 The alternative was `security-rule-management-mode: "None"` (equivalent to the legacy `security-list-management-mode: None`), which turns off the CCM's automatic rule management entirely and puts every load-balancer rule under Terraform. That was rejected: the CCM does not just open a static, known port — it computes the health-check port, protocol, and `loadBalancerSourceRanges` per service from the service spec, and OKE clusters in this environment have `LoadBalancer` services created and destroyed continuously by CI/e2e runs. Fully-Terraform-owned rules would mean hand-writing that logic and updating Terraform for every new or changed service, which both defeats the "no plan diff" acceptance criteria and is a standing maintenance burden the CCM-managed NSG avoids entirely by letting the CCM keep doing what it already does, just in a resource Terraform doesn't touch.
 
@@ -63,7 +63,9 @@ The alternative was `security-rule-management-mode: "None"` (equivalent to the l
 - The frontend NSG's OCID is not known until the CCM creates it at service-creation time (visible via `kubectl describe service` or the OCI console), so no other Terraform-managed resource can reference it by a static OCID.
 - Requires a Terraform-managed IAM policy change granting the cluster's dynamic group `manage network-security-groups` and `manage vcns`/`manage virtual-network-family` — a one-time addition, not a per-service one.
 - Only frontend (load-balancer ingress) rules are covered; backend/node-port and health-check rules on the worker subnet still depend on whatever security-list or NSG mechanism already governs that subnet, and are not addressed by this ADR.
+- **Dependency:** the claim that backend/node-port rules are unaffected holds only while the worker-subnet security rules stay permissive (current POC state). This mirrors a pattern already present elsewhere in the OCI stack — e.g. the managed PostgreSQL module defaults `nsg_ids`/`postgresql_nsg_ids` to an empty list, leaving the private endpoint unrestricted by NSGs until someone tightens it (`hyperfleet-infra#89`). Once the worker-subnet rules are tightened, this ADR's frontend-only scope should be revisited — the same NSG-based pattern (via `oci-backend-network-security-group`) likely needs to extend to the backend to avoid reintroducing drift there.
 - Every `LoadBalancer` service manifest must carry the `oci.oraclecloud.com/security-rule-management-mode: "NSG"` annotation; a service missing it falls back to the CCM's default mode against the shared security list, reintroducing drift risk for that one service. This ADR does not name an enforcement owner or mechanism (e.g., a Helm chart default, or CI/admission-time validation) for every `LoadBalancer`-producing manifest in the stack — that is a delivery-story detail for the `hyperfleet-infra` implementation.
+- **Orphaned NSG risk:** the CCM only removes the frontend NSG when the `LoadBalancer` service is deleted through Kubernetes — cleanup is finalizer-driven, triggered by the `Service` object's deletion. Anything that removes the underlying OCI load balancer out-of-band, bypassing `kubectl delete svc`, leaves the frontend NSG orphaned with nothing left to clean it up. This is not hypothetical here: the CI compartment's sweep function (`hyperfleet-infra#87`, `functions/oci-ci-sweep`) already deletes stale classic load balancers directly via the OCI API on an hourly schedule as a teardown backstop, and its documented scope does not include NSGs. Until the sweep (or a dedicated NSG sweep) accounts for this, orphaned frontend NSGs can accumulate in the CI compartment.
 
 ## Alternatives Considered
 
