@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Architecture Team
-Last Updated: 2026-09-17
+Last Updated: 2026-09-18
 ---
 
 # 0025 — Image Delivery for the CAPOCI Controller and the OCI Cloud Controller Manager
@@ -53,7 +53,8 @@ For disconnected OCI installations, customers must mirror both the CAPOCI and OC
 
 - For the OCI cloud controller manager image, customers can either configure HyperShift's existing registry-rewrite path or set an explicit image override. If a registry rewrite is configured, it applies to this image.
 - For the CAPOCI image, customers must set an explicit image override to the mirrored pullspec. Registry rewrite is not the contract for this image.
-- Any HyperFleet install artifact that can deploy these OCI operands must list both images by digest in its image inventory so disconnected users know exactly which images to mirror.
+- Any explicit override used for disconnected installation must itself be a digest-pinned pullspec.
+- Any HyperFleet install artifact that can deploy these OCI operands must list the shipped default images by digest in its image inventory so disconnected users know exactly which images to mirror. Customer-selected override images are additional installation inputs and are not inferred from that inventory.
 
 The current OCI management-cluster path targets OKE rather than an OpenShift management cluster ([HYPERFLEET-1540](https://redhat.atlassian.net/browse/HYPERFLEET-1540), prototype evidence in [HYPERFLEET-1592](https://redhat.atlassian.net/browse/HYPERFLEET-1592)), so HyperFleet cannot make OpenShift-node-specific image redirection the general disconnected contract for both images.
 
