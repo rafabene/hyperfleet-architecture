@@ -14,12 +14,12 @@ This ADR answers one question: where does each image come from in a HyperShift d
 
 ## Decision
 
-HyperFleet treats both OCI images as non-payload operands. HyperFleet ships a compiled digest-pinned default for each image and allows explicit installation-time overrides when needed. The source contract is:
+HyperFleet treats both OCI images as non-payload operands. HyperFleet ships a compiled digest-pinned default for each image and allows explicit installation-time overrides when needed. This ADR fixes the source, compatibility, and disconnected-installation contract for those images; the exact HyperShift resolution mechanism is deferred to a follow-up ADR. The source contract is:
 
 | Image | First shipped default | GA default | Additional contract |
 |-------|-----------------------|------------|---------------------|
-| CAPOCI controller | Oracle-published CAPOCI image, pinned by manifest-list digest | HyperFleet-owned Konflux build from the same upstream source, pinned by manifest-list digest | The default image, vendored CAPOCI version, and shipped CAPOCI CRDs must stay aligned. Bumping any one requires bumping the other two. |
-| OCI cloud controller manager | Oracle-published OCI cloud controller manager image, pinned by manifest-list digest | HyperFleet-owned Konflux build from the same upstream source, pinned by manifest-list digest | The default image must track the Kubernetes minor of the hosted OpenShift release. OpenShift 4.20 uses Kubernetes 1.33, so the first default pin is `v1.33.x`. |
+| CAPOCI controller | Oracle-published CAPOCI image, pinned by manifest-list digest | HyperFleet-owned Konflux build from the same upstream source, pinned by manifest-list digest | The selected image, vendored CAPOCI version, and shipped CAPOCI CRDs must stay aligned. Installation-time overrides are limited to digest-pinned mirrors of that aligned image; they must not change the CAPOCI version independently. |
+| OCI cloud controller manager | Oracle-published OCI cloud controller manager image, pinned by manifest-list digest | HyperFleet-owned Konflux build from the same upstream source, pinned by manifest-list digest | The selected image must remain compatible with the Kubernetes minor of the hosted OpenShift release. OpenShift 4.20 uses Kubernetes 1.33, so the first default pin is `v1.33.x`. |
 
 Moving from the first shipped defaults to the GA defaults changes only who publishes the compiled digests, not the fact that both images remain outside the OpenShift release payload.
 
@@ -38,6 +38,8 @@ Released OCI support still needs an explicitly owned follow-up that defines whic
 
 For disconnected OCI installations, customers must mirror both the CAPOCI and OCI cloud controller manager images to a registry they can reach. HyperFleet does not infer those mirror locations; the install path must provide them through the existing override mechanisms when the shipped defaults are not directly reachable.
 
+- If the shipped CAPOCI default is unreachable, the install path must provide an explicit digest-pinned mirrored CAPOCI pullspec.
+- If the shipped OCI cloud controller manager default is unreachable, the install path may provide either HyperShift registry rewriting for that image or an explicit digest-pinned override.
 - Any explicit override used for disconnected installation must itself be a digest-pinned pullspec.
 - Any HyperFleet install artifact that can deploy these OCI operands must list the shipped default images by digest in its image inventory so disconnected users know exactly which images to mirror. Customer-selected override images are additional installation inputs and are not inferred from that inventory.
 
@@ -45,8 +47,8 @@ The current OCI management-cluster path targets OKE rather than an OpenShift man
 
 ### Bump validation contract
 
-- A CAPOCI image bump is valid only if the vendored CAPOCI version, the shipped CAPOCI CRDs, and the default image digest stay aligned.
-- An OCI cloud controller manager image bump is valid only if the selected OCI cloud controller manager minor remains compatible with the hosted cluster's Kubernetes minor and tests still prove worker initialization plus `LoadBalancer` service behavior.
+- A CAPOCI image bump or override is valid only if the selected image, the vendored CAPOCI version, and the shipped CAPOCI CRDs stay aligned.
+- An OCI cloud controller manager image bump or override is valid only if the selected image remains compatible with the hosted cluster's Kubernetes minor and tests still prove worker initialization plus `LoadBalancer` service behavior.
 - Any default digest change must preserve the same disconnected behavior and image-inventory requirements.
 - The implementing stories and release artifacts own the exact digests and test evidence. This ADR owns the rule for choosing and validating them.
 
