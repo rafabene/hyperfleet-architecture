@@ -4,24 +4,20 @@ Owner: HyperFleet Architecture Team
 Last Updated: 2026-09-18
 ---
 
-# 0025 — Image Delivery for the CAPOCI Controller and the OCI Cloud Controller Manager
+# 0025 — Image Sourcing and Supply Chain for the OCI Operands
 
 ## Context
 
 HyperFleet's OCI HostedCluster work needs two images that the OpenShift release payload does not supply: the CAPOCI controller image on the management cluster and the OCI cloud controller manager image in the hosted control plane namespace. [ADR-0021](0021-oci-external-platform.md) deliberately left their delivery open; [HYPERFLEET-1582](https://redhat.atlassian.net/browse/HYPERFLEET-1582) closes that gap so [HYPERFLEET-1547](https://redhat.atlassian.net/browse/HYPERFLEET-1547) and [HYPERFLEET-1552](https://redhat.atlassian.net/browse/HYPERFLEET-1552) can implement it.
 
-This ADR answers one question: where does each image come from in a HyperShift deployment on OCI? The answer must also preserve existing HyperShift override behavior, state the disconnected and mirroring contract for the current OKE management-cluster path, and distinguish the pre-GA source of the defaults from the GA source of the defaults.
+This ADR answers one question: where does each image come from in a HyperShift deployment on OCI? It records the source, supply-chain phase split, disconnected-installation contract, and bump-validation rules for those two images. The exact HyperShift resolution mechanism is deliberately deferred to a follow-up ADR while the broader OCI approach is paused.
 
 ## Decision
 
-HyperFleet treats both OCI images as non-payload operands. HyperFleet ships a compiled digest-pinned default for each image and allows explicit installation-time overrides when needed. This ADR fixes the source, compatibility, and disconnected-installation contract for those images; the exact HyperShift resolution mechanism is deferred to a follow-up ADR. The source contract is:
+HyperFleet treats both OCI images as non-payload operands. HyperFleet ships a compiled digest-pinned default for each image. For first shipped support, those defaults are Oracle-published manifest-list digests. For GA / released OCI support, those defaults must move to HyperFleet-owned Konflux builds from the same upstream sources. Both images remain outside the OpenShift release payload in either phase.
 
-| Image | First shipped default | GA default | Additional contract |
-|-------|-----------------------|------------|---------------------|
-| CAPOCI controller | Oracle-published CAPOCI image, pinned by manifest-list digest | HyperFleet-owned Konflux build from the same upstream source, pinned by manifest-list digest | The selected image, vendored CAPOCI version, and shipped CAPOCI CRDs must stay aligned. Installation-time overrides are limited to digest-pinned mirrors of that aligned image; they must not change the CAPOCI version independently. |
-| OCI cloud controller manager | Oracle-published OCI cloud controller manager image, pinned by manifest-list digest | HyperFleet-owned Konflux build from the same upstream source, pinned by manifest-list digest | The selected image must remain compatible with the Kubernetes minor of the hosted OpenShift release. OpenShift 4.20 uses Kubernetes 1.33, so the first default pin is `v1.33.x`. |
-
-Moving from the first shipped defaults to the GA defaults changes only who publishes the compiled digests, not the fact that both images remain outside the OpenShift release payload.
+- CAPOCI controller: the selected image, vendored CAPOCI version, and shipped CAPOCI CRDs must stay aligned. Installation-time overrides are limited to digest-pinned mirrors of that aligned image; they must not change the CAPOCI version independently.
+- OCI cloud controller manager: the selected image must remain compatible with the Kubernetes minor of the hosted OpenShift release. OpenShift 4.20 uses Kubernetes 1.33, so the first default pin is `v1.33.x`.
 
 ### Delivery phases
 
@@ -36,10 +32,8 @@ Released OCI support still needs an explicitly owned follow-up that defines whic
 
 ### Disconnected install contract
 
-For disconnected OCI installations, customers must mirror both the CAPOCI and OCI cloud controller manager images to a registry they can reach. HyperFleet does not infer those mirror locations; the install path must provide them through the existing override mechanisms when the shipped defaults are not directly reachable.
+For disconnected OCI installations, customers must mirror both the CAPOCI and OCI cloud controller manager images to a registry they can reach. HyperFleet does not infer those mirror locations; the install path must provide those mirrored pullspecs when the shipped defaults are not directly reachable.
 
-- If the shipped CAPOCI default is unreachable, the install path must provide an explicit digest-pinned mirrored CAPOCI pullspec.
-- If the shipped OCI cloud controller manager default is unreachable, the install path may provide either HyperShift registry rewriting for that image or an explicit digest-pinned override.
 - Any explicit override used for disconnected installation must itself be a digest-pinned pullspec.
 - Any HyperFleet install artifact that can deploy these OCI operands must list the shipped default images by digest in its image inventory so disconnected users know exactly which images to mirror. Customer-selected override images are additional installation inputs and are not inferred from that inventory.
 
@@ -57,7 +51,6 @@ The current OCI management-cluster path targets OKE rather than an OpenShift man
 **Gains:**
 
 - Answers the spike directly: both OCI images have an explicit source contract instead of an implied "not in the payload" exception.
-- Preserves existing HyperShift override surfaces instead of inventing OCI-specific public API.
 - Decouples CAPOCI and OCI cloud controller manager image bumps from the OpenShift release payload while still requiring digest-pinned defaults.
 - Lets delivery start with Oracle-published digests now and move to HyperFleet-owned Konflux digests before GA without reopening the decision.
 
