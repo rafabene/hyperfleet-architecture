@@ -4,7 +4,7 @@ Owner: HyperFleet Architecture Team
 Last Updated: 2026-09-17
 ---
 
-# 0023 — Image Delivery for the CAPOCI Controller and the OCI Cloud Controller Manager
+# 0025 — Image Delivery for the CAPOCI Controller and the OCI Cloud Controller Manager
 
 ## Context
 
