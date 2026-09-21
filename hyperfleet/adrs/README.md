@@ -100,3 +100,4 @@ What did we decide? State it plainly.
 | [0022](0022-api-mediated-desire-store-access.md) | API-Mediated Desire Store Access | Active | 2026-09-10 |
 | [0023](0023-oci-managed-postgresql.md) | OCI Database with PostgreSQL as the Managed Instance for the Oracle Deployment Path | Active | 2026-09-09 |
 | [0024](0024-oke-load-balancer-security-nsg.md) | Dedicated Network Security Group for OKE Load Balancer Traffic | Active | 2026-09-15 |
+| [0025](0025-oci-operand-image-delivery.md) | Image Sourcing and Supply Chain for the OCI Operands | Active | 2026-09-18 |
