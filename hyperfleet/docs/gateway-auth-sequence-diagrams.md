@@ -34,7 +34,7 @@ que está à frente dos ADRs commitados em dois pontos:
   [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668)
   (In Progress); o lado da API (ler tenancy de claims) é o
   [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669)
-  (New, bloqueado pelo 1668).
+  (New, bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668)).
 
 Trate os fluxos abaixo como o design-alvo, e o ADR-0020 mais o design doc de
 tenancy como o estado atualmente commitado.
@@ -197,7 +197,9 @@ sequenceDiagram
 
 A API reaproveita o middleware JWT existente com **um único issuer** (o
 Authorino). Como a API rejeita issuer e JWKS em `http` a menos que seja loopback
-(`requireHTTPSURL`, desde HYPERFLEET-1327), há duas rotas:
+(`requireHTTPSURL`, desde
+[HYPERFLEET-1327](https://redhat.atlassian.net/browse/HYPERFLEET-1327)), há duas
+rotas:
 
 - **JWKS local em arquivo** (`jwk_cert_file` com o JWKS público montado). O
   issuer é apenas comparado, nada é buscado, então o servidor OIDC do Authorino
@@ -206,8 +208,9 @@ Authorino). Como a API rejeita issuer e JWKS em `http` a menos que seja loopback
   `jwk_cert_ca_file`). Exige TLS no servidor OIDC; a rotação é gratuita porque a
   API atualiza em um intervalo.
 
-Comece pela rota 1 e migre para a 2 quando HYPERFLEET-1648 chegar. O wristband
-não está bloqueado no TLS.
+Comece pela rota 1 e migre para a 2 quando o
+[HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) chegar. O
+wristband não está bloqueado no TLS.
 
 ### Onde o `AUTH_MODE` é definido
 
@@ -219,17 +222,18 @@ substitui as duas flags booleanas atuais (`EXT_AUTHZ_ENABLED` e
 O guard do helmfile que rejeita JWT com o issuer mock passa a ser ciente do modo
 (correto para `api`, não aplicado em `edge+api`).
 
-| `AUTH_MODE` | Gateway | JWT na API | Quem usa |
-|-------------|---------|------------|----------|
-| `none` | off | off | dev local puro |
-| `edge` | on | off | gateway atual; a API confia nos headers |
-| `api` | off | on | caminho operator (até HYPERFLEET-1530), kind/GKE sem gateway |
-| `edge+api` | on | on | única postura de produção documentada |
+| `AUTH_MODE` | Gateway | JWT na API | Clientes enviam | A API valida | Quando usar |
+|-------------|---------|------------|-----------------|--------------|-------------|
+| `none` | off | off | nada | nada | Dev local: rodar a API direto, sem gateway e sem wiring de JWT. O loop local mais rápido para trabalho que não tem a ver com auth. Nunca deployado em ambiente real |
+| `edge` | on | off | `ServiceAccount <token>` | nada; confia nos headers | Deployments de gateway atuais e prova do fluxo gateway/Authorino/tenancy end-to-end. Ponto fraco: a API confia incondicionalmente nos headers, então só é tão forte quanto a NetworkPolicy realmente aplicada em frente à API |
+| `api` | off | on | `Bearer <token>` | issuer do cluster e IdP humano direto | Onde não há gateway porque o cluster alvo não é nosso para moldar (caminho operator até o [HYPERFLEET-1530](https://redhat.atlassian.net/browse/HYPERFLEET-1530); kind e GKE sem gateway) |
+| `edge+api` | on | on | `ServiceAccount <token>` | o wristband do Authorino, um único issuer | Única postura de produção documentada: as duas camadas no ar, a API valida um issuer só, independentemente de a NetworkPolicy ser aplicada |
 
-Enquanto o 1668 não chega, os switches continuam sendo os dois booleanos no
-helmfile do `hyperfleet-infra` (`EXT_AUTHZ_ENABLED`, `JWT_AUTH_ENABLED`), e as
-duas flags ligadas juntas não são uma combinação válida até o HYPERFLEET-1484
-shipar.
+Enquanto o [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668)
+não chega, os switches continuam sendo os dois booleanos no helmfile do
+`hyperfleet-infra` (`EXT_AUTHZ_ENABLED`, `JWT_AUTH_ENABLED`), e as duas flags
+ligadas juntas não são uma combinação válida até o
+[HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) shipar.
 
 ## 4. Modo `edge` (sem wristband)
 
@@ -364,7 +368,7 @@ sequenceDiagram
   [HYPERFLEET-1621](https://redhat.atlassian.net/browse/HYPERFLEET-1621). O fix
   (tenancy a partir das claims do wristband) agora é o
   [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669),
-  bloqueado pelo 1668.
+  bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668).
 - TLS nos hops in-cluster (Envoy para Authorino, Envoy para API) não autentica o
   chamador. Ele impede ler uma credencial ou o wristband em trânsito e impede o
   Envoy de falar com um Authorino ou API impostor.
@@ -379,58 +383,72 @@ observação marca a mudança.
 
 | Ticket | Tema | Status | Responsável |
 |--------|------|--------|-------------|
-| HYPERFLEET-1465 | Feature Multi-Tenant HyperFleet | In Progress | Phuongnhat Nguyen |
-| HYPERFLEET-1164 | Épico: Multi-Tenant Identity and Authorization (API tenancy) | Review | Phuongnhat Nguyen |
-| HYPERFLEET-1476 | Épico: Envoy and Authorino Gateway Deployment | In Progress | Martin Liptak |
-| HYPERFLEET-1530 | Épico: Gateway as an Operator-Managed Component | In Progress | — |
+| [HYPERFLEET-1465](https://redhat.atlassian.net/browse/HYPERFLEET-1465) | Feature Multi-Tenant HyperFleet | In Progress | Phuongnhat Nguyen |
+| [HYPERFLEET-1164](https://redhat.atlassian.net/browse/HYPERFLEET-1164) | Épico: Multi-Tenant Identity and Authorization (API tenancy) | Review | Phuongnhat Nguyen |
+| [HYPERFLEET-1476](https://redhat.atlassian.net/browse/HYPERFLEET-1476) | Épico: Envoy and Authorino Gateway Deployment | In Progress | Martin Liptak |
+| [HYPERFLEET-1530](https://redhat.atlassian.net/browse/HYPERFLEET-1530) | Épico: Gateway as an Operator-Managed Component | In Progress | — |
 
 ### Gateway, identidade e wristband
 
 | Ticket | Tema | Status | Observação |
 |--------|------|--------|------------|
-| HYPERFLEET-1480 | Machine identity pelo gateway (scheme split, allow-list, knob de scheme) | Closed | Fechado desde 16/set (PR 88) |
-| HYPERFLEET-1631 | Mock OIDC human token source para kind e CI | Closed | Fechado desde 16/set (PR 90) |
-| HYPERFLEET-1484 | In-app JWT atrás do gateway | In Progress | Lado da API do wristband |
-| HYPERFLEET-1668 | Emitir o wristband no gateway, trocar o Authorization e introduzir o AUTH_MODE | In Progress | **Novo**, criado após 16/set; é o lado do gateway |
-| HYPERFLEET-1669 | Ler tenancy e system identity das claims do wristband | New | **Novo**, criado após 16/set; bloqueado pelo 1668 |
-| HYPERFLEET-1636 | Emenda do ADR-0020: convenção de scheme, wristband como issuer, tenancy de claims | Backlog | Ainda não registrado no repo |
-| HYPERFLEET-1621 | Caso e2e com wristband e tenant forjado | Backlog | Depende de 1631 e 1484 |
-| HYPERFLEET-1485 | Suíte e2e do gateway em kind | Backlog | Responsável Dmitrii Andreev |
-| HYPERFLEET-1632 | Cache de TokenReview no método de máquina | New | — |
-| HYPERFLEET-1633 | Rodar validate-authorino no ci-validate | Backlog | — |
-| HYPERFLEET-1613 | Habilitar enforcement de NetworkPolicy nos clusters GKE dev e CI | Backlog | Independente |
+| [HYPERFLEET-1480](https://redhat.atlassian.net/browse/HYPERFLEET-1480) | Machine identity pelo gateway (scheme split, allow-list, knob de scheme) | Closed | Fechado desde 16/set (PR 88) |
+| [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) | Mock OIDC human token source para kind e CI | Closed | Fechado desde 16/set (PR 90) |
+| [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) | In-app JWT atrás do gateway | In Progress | Lado da API do wristband |
+| [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) | Emitir o wristband no gateway, trocar o Authorization e introduzir o AUTH_MODE | In Progress | **Novo**, criado após 16/set; é o lado do gateway |
+| [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669) | Ler tenancy e system identity das claims do wristband | New | **Novo**, criado após 16/set; bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) |
+| [HYPERFLEET-1636](https://redhat.atlassian.net/browse/HYPERFLEET-1636) | Emenda do ADR-0020: convenção de scheme, wristband como issuer, tenancy de claims | Backlog | Ainda não registrado no repo |
+| [HYPERFLEET-1621](https://redhat.atlassian.net/browse/HYPERFLEET-1621) | Caso e2e com wristband e tenant forjado | Backlog | Depende de [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) e [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) |
+| [HYPERFLEET-1485](https://redhat.atlassian.net/browse/HYPERFLEET-1485) | Suíte e2e do gateway em kind | Backlog | Responsável Dmitrii Andreev |
+| [HYPERFLEET-1632](https://redhat.atlassian.net/browse/HYPERFLEET-1632) | Cache de TokenReview no método de máquina | New | — |
+| [HYPERFLEET-1633](https://redhat.atlassian.net/browse/HYPERFLEET-1633) | Rodar validate-authorino no ci-validate | Backlog | — |
+| [HYPERFLEET-1613](https://redhat.atlassian.net/browse/HYPERFLEET-1613) | Habilitar enforcement de NetworkPolicy nos clusters GKE dev e CI | Backlog | Independente |
 
 ### TLS
 
 | Ticket | Tema | Status | Observação |
 |--------|------|--------|------------|
-| HYPERFLEET-1648 | CA interna e TLS em todos os hops in-cluster do gateway | Review | **Absorveu o 1635**: um CA, três certs (listener Authorino 50051, OIDC Authorino 8083, listener da API) |
-| HYPERFLEET-1635 | TLS no hop Envoy → API | Closed | Escopo consolidado no 1648 |
-| HYPERFLEET-1523 | Spike de rotação de certificados do Envoy | New | Signing key, JWKS e CA |
-| HYPERFLEET-1483 | Fronteira de confiança de rede gateway ↔ API | Closed | — |
-| HYPERFLEET-1327 | API: exigir HTTPS em issuer JWT e URLs de JWKS | Closed | Origem do `requireHTTPSURL` |
+| [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) | CA interna e TLS em todos os hops in-cluster do gateway | Review | **Absorveu o [HYPERFLEET-1635](https://redhat.atlassian.net/browse/HYPERFLEET-1635)**: um CA, três certs (listener Authorino 50051, OIDC Authorino 8083, listener da API) |
+| [HYPERFLEET-1635](https://redhat.atlassian.net/browse/HYPERFLEET-1635) | TLS no hop Envoy → API | Closed | Escopo consolidado no [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) |
+| [HYPERFLEET-1523](https://redhat.atlassian.net/browse/HYPERFLEET-1523) | Spike de rotação de certificados do Envoy | New | Signing key, JWKS e CA |
+| [HYPERFLEET-1483](https://redhat.atlassian.net/browse/HYPERFLEET-1483) | Fronteira de confiança de rede gateway ↔ API | Closed | — |
+| [HYPERFLEET-1327](https://redhat.atlassian.net/browse/HYPERFLEET-1327) | API: exigir HTTPS em issuer JWT e URLs de JWKS | Closed | Origem do `requireHTTPSURL` |
 
 ### Tenancy
 
 | Ticket | Tema | Status | Observação |
 |--------|------|--------|------------|
-| HYPERFLEET-1473 | Unicidade de nome de recurso escopada por tenant | Closed | — |
-| HYPERFLEET-1531 | Documentar o enforcement de tenant | Closed | — |
-| HYPERFLEET-1532 | AuthConfig Oracle: tenancy derivada do issuer por domínio | New | Perigo adjacente (overrides, não defaults) |
-| HYPERFLEET-1634 | Decidir e enforçar cardinalidade de dimensões para integridade no delete | Backlog | Escopo ajustado desde 16/set |
+| [HYPERFLEET-1473](https://redhat.atlassian.net/browse/HYPERFLEET-1473) | Unicidade de nome de recurso escopada por tenant | Closed | — |
+| [HYPERFLEET-1531](https://redhat.atlassian.net/browse/HYPERFLEET-1531) | Documentar o enforcement de tenant | Closed | — |
+| [HYPERFLEET-1532](https://redhat.atlassian.net/browse/HYPERFLEET-1532) | AuthConfig Oracle: tenancy derivada do issuer por domínio | New | Perigo adjacente (overrides, não defaults) |
+| [HYPERFLEET-1634](https://redhat.atlassian.net/browse/HYPERFLEET-1634) | Decidir e enforçar cardinalidade de dimensões para integridade no delete | Backlog | Escopo ajustado desde 16/set |
 
 Mudanças materiais desde 16/set/2026:
 
-- **1480** e **1631** fecharam; os PRs 88 e 90 mergearam.
-- **1635** fechou, mas seu escopo foi **consolidado no 1648**, que agora está em
-  Review com um único CA e três certificados leaf.
-- **1530** saiu de New para In Progress, agora escopado como gateway
-  operator-managed **orientado a Oracle** (Identity Domains, tenancy derivada do
-  issuer, `HyperFleetConfig`), bloqueado por 1403 e 1476.
-- **1164** está em Review e **1465** em In Progress.
-- Os dois itens dados como "not yet created" agora existem: **1668** (gateway) e
-  **1669** (API). Surgiu também o **1679** (port-name/appProtocol do chart da
-  API), fora do escopo do 1648.
+- [HYPERFLEET-1480](https://redhat.atlassian.net/browse/HYPERFLEET-1480) e
+  [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631)
+  fecharam; os PRs 88 e 90 mergearam.
+- [HYPERFLEET-1635](https://redhat.atlassian.net/browse/HYPERFLEET-1635) fechou,
+  mas seu escopo foi **consolidado no**
+  [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648), que
+  agora está em Review com um único CA e três certificados leaf.
+- [HYPERFLEET-1530](https://redhat.atlassian.net/browse/HYPERFLEET-1530) saiu de
+  New para In Progress, agora escopado como gateway operator-managed
+  **orientado a Oracle** (Identity Domains, tenancy derivada do issuer,
+  `HyperFleetConfig`), bloqueado por
+  [HYPERFLEET-1403](https://redhat.atlassian.net/browse/HYPERFLEET-1403) e
+  [HYPERFLEET-1476](https://redhat.atlassian.net/browse/HYPERFLEET-1476).
+- [HYPERFLEET-1164](https://redhat.atlassian.net/browse/HYPERFLEET-1164) está em
+  Review e [HYPERFLEET-1465](https://redhat.atlassian.net/browse/HYPERFLEET-1465)
+  em In Progress.
+- Os dois itens dados como "not yet created" agora existem:
+  [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668)
+  (gateway) e
+  [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669) (API).
+  Surgiu também o
+  [HYPERFLEET-1679](https://redhat.atlassian.net/browse/HYPERFLEET-1679)
+  (port-name/appProtocol do chart da API), fora do escopo do
+  [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648).
 
 ## Referências
 
