@@ -1289,7 +1289,7 @@ Timeline: cluster created at 12:00:00Z (generation 1) → validation starts at 1
         "status": "False",
         "reason": "ReconciledMissingAdapters",
         "message": "Required adapters not reporting Available=True: [controlplane, dns, validation]. Currently reporting: []",
-        "observed_generation": 1,
+        "observed_generation": 0,
         "created_time": "2025-10-17T12:00:00Z",
         "last_transition_time": "2025-10-17T12:00:00Z",
         "last_updated_time": "2025-10-17T12:00:00Z"
@@ -1299,7 +1299,7 @@ Timeline: cluster created at 12:00:00Z (generation 1) → validation starts at 1
         "status": "False",
         "reason": "AdaptersMissingReports",
         "message": "Required adapters have not yet reported status",
-        "observed_generation": 1,
+        "observed_generation": 0,
         "created_time": "2025-10-17T12:00:00Z",
         "last_transition_time": "2025-10-17T12:00:00Z",
         "last_updated_time": "2025-10-17T12:00:00Z"
