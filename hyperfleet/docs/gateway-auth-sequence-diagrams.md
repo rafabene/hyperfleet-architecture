@@ -452,8 +452,8 @@ observação marca a mudança.
 
 | Ticket | Tema | Status | Observação |
 |--------|------|--------|------------|
-| [HYPERFLEET-1480](https://redhat.atlassian.net/browse/HYPERFLEET-1480) | Machine identity pelo gateway (scheme split, allow-list, knob de scheme) | Closed | Fechado desde 16/set (PR 88) |
-| [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) | Mock OIDC human token source para kind e CI | Closed | Fechado desde 16/set (PR 90) |
+| [HYPERFLEET-1480](https://redhat.atlassian.net/browse/HYPERFLEET-1480) | Machine identity pelo gateway (scheme split, allow-list, knob de scheme) | Closed | Fechado desde 16/set (PR [88](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/88)) |
+| [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) | Mock OIDC human token source para kind e CI | Closed | Fechado desde 16/set (PR [90](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/90)) |
 | [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) | In-app JWT atrás do gateway | In Progress | Lado da API do wristband |
 | [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) | Emitir o wristband no gateway, trocar o Authorization e introduzir o AUTH_MODE | In Progress | **Novo**, criado após 16/set; é o lado do gateway |
 | [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669) | Ler tenancy e system identity das claims do wristband | New | **Novo**, criado após 16/set; bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) |
@@ -487,7 +487,7 @@ Mudanças materiais desde 16/set/2026:
 
 - [HYPERFLEET-1480](https://redhat.atlassian.net/browse/HYPERFLEET-1480) e
   [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631)
-  fecharam; os PRs 88 e 90 mergearam.
+  fecharam; os PRs [88](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/88) e [90](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/90) mergearam.
 - [HYPERFLEET-1635](https://redhat.atlassian.net/browse/HYPERFLEET-1635) fechou,
   mas seu escopo foi **consolidado no**
   [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648), que
