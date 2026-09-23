@@ -84,7 +84,8 @@ graph TD
 Nos dois fluxos abaixo o gateway resolve identidade e tenancy, o Authorino emite
 o wristband e a API valida esse único emissor. A única diferença entre humano e
 máquina é o **método de autenticação** escolhido pelo scheme do header
-`Authorization`.
+`Authorization`. Nos dois casos o token original nunca chega à API: o Authorino o
+descarta e injeta o próprio JWT, o que mantém **um único issuer** para a API.
 
 ### 2.1 Chamador humano (Bearer / OIDC)
 
@@ -322,6 +323,11 @@ sequenceDiagram
     E-->>C: 200
 ```
 
+Nota: em `edge` a credencial original segue para a API sem troca e a API confia
+nos headers injetados. É exatamente aqui que mora o gap do Ataque 3 (seção 6):
+quem conseguir forjar os `x-tenant-*` dá o tom do escopo, porque não há wristband
+assinado para contradizer.
+
 ## 5. Negações fail-closed
 
 Toda rejeição acontece no gateway; a API nunca é alcançada.
@@ -408,38 +414,24 @@ sequenceDiagram
     end
 ```
 
-## Notas de leitura
+### Notas do diagrama de ameaças
 
-Cada nota abaixo anota um diagrama específico; o item começa dizendo a qual
-seção — e, na seção 6, qual ataque — ele se refere.
-
-- **Seções 1 e 2 (visão geral).** A árvore de decisão (seção 1) é a visão de
-  **ramificação**; os fluxos das seções 2.1 e 2.2 são a visão de **linha do
-  tempo** para os dois ramos que terminam em allow.
-- **Seções 2.1, 2.2 e 4 (wristband).** O wristband só aparece nos fluxos 2.1 e
-  2.2 (`edge+api`). No modo `edge` (seção 4) não há troca de `Authorization`, que
-  é exatamente onde mora o gap do Ataque 3 (seção 6).
-- **Seções 2.1 e 2.2 (credencial).** Em ambos os fluxos de produção, o token
-  original nunca chega à API: o Authorino o descarta e injeta o próprio JWT. Por
-  isso a API tem **um único issuer**, independentemente de o chamador ser humano
-  ou máquina.
-- **Seção 6, Ataque 1 (forjar headers pelo Envoy).** O early header strip é a
-  restrição de ordem que quebrou o primeiro proof of concept de multitenancy: a
-  remoção em nível de rota roda depois do ext_authz e apagaria os headers que o
-  Authorino injeta.
-- **Seção 6, Ataque 2 (pular o Envoy e falar direto com a API).** É a razão de
-  existir da segunda camada. Uma NetworkPolicy em um cluster sem policy engine é
-  aceita pelo apiserver e silenciosamente ignorada.
-- **Seção 6, Ataque 3 (wristband próprio + tenant forjado).** É o gap registrado
-  como caso e2e em
+- **Ataque 1 (forjar headers pelo Envoy).** O early header strip é a restrição
+  de ordem que quebrou o primeiro proof of concept de multitenancy: a remoção em
+  nível de rota roda depois do ext_authz e apagaria os headers que o Authorino
+  injeta.
+- **Ataque 2 (pular o Envoy e falar direto com a API).** É a razão de existir da
+  segunda camada. Uma NetworkPolicy em um cluster sem policy engine é aceita
+  pelo apiserver e silenciosamente ignorada.
+- **Ataque 3 (wristband próprio + tenant forjado).** É o gap registrado como
+  caso e2e em
   [HYPERFLEET-1621](https://redhat.atlassian.net/browse/HYPERFLEET-1621). O fix
   (tenancy a partir das claims do wristband) agora é o
   [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669),
   bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668).
-- **Seção 6, Ataque 4 (impostor), e os hops TLS das seções 2 e 4.** TLS nos hops
-  in-cluster (Envoy para Authorino, Envoy para API) não autentica o chamador. Ele
-  impede ler uma credencial ou o wristband em trânsito e impede o Envoy de falar
-  com um Authorino ou API impostor.
+- **Ataque 4 (impostor Authorino/API).** TLS nos hops in-cluster (Envoy para
+  Authorino, Envoy para API) não autentica o chamador; impede ler uma credencial
+  ou o wristband em trânsito e impede o Envoy de falar com um impostor.
 
 ## Mapa de tickets (status em 2026-09-22)
 
