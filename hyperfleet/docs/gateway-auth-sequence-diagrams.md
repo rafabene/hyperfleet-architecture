@@ -216,6 +216,22 @@ sequenceDiagram
     Note over API: confia apenas no issuer do Authorino
 ```
 
+### `hf_system` e `x-hyperfleet-system`
+
+`hf_system` **não é uma claim da credencial de origem**: nem o JWT OIDC nem o
+resultado do TokenReview a carregam. É um booleano que o Authorino **deriva do
+método escolhido** — `true` para `ServiceAccount`/TokenReview, `false` para
+`Bearer`/OIDC — e expressa de duas formas:
+
+- **Header `x-hyperfleet-system`**, que a API lê no modo `edge`, onde confia nos
+  headers injetados.
+- **Claim `hf_system` do wristband**, que a API lê no modo `edge+api`, para que o
+  valor venha assinado pelo Authorino em vez de apenas afirmado
+  ([HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669)).
+
+Ele não identifica nem autentica: é o que liga/desliga o bypass de tenancy. A
+identidade do chamador é o `x-hyperfleet-identity`.
+
 ### Como a API valida o wristband
 
 A API reaproveita o middleware JWT existente com **um único issuer** (o
