@@ -510,6 +510,32 @@ Mudanças materiais desde 16/set/2026:
   (port-name/appProtocol do chart da API), fora do escopo do
   [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648).
 
+### PRs por ticket
+
+PRs com o ID do ticket no título (convenção do HyperFleet), consultadas em
+2026-09-23. PR é efêmera: a fonte de verdade continua sendo o ticket.
+
+| Ticket | PR(s) |
+|--------|-------|
+| [HYPERFLEET-1327](https://redhat.atlassian.net/browse/HYPERFLEET-1327) | [hyperfleet-api#318](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/318) (merged) |
+| [HYPERFLEET-1473](https://redhat.atlassian.net/browse/HYPERFLEET-1473) | [hyperfleet-api#344](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/344) (merged) |
+| [HYPERFLEET-1480](https://redhat.atlassian.net/browse/HYPERFLEET-1480) | [hyperfleet-infra#88](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/88), [hyperfleet-sentinel#264](https://github.com/openshift-hyperfleet/hyperfleet-sentinel/pull/264), [hyperfleet-adapter#297](https://github.com/openshift-hyperfleet/hyperfleet-adapter/pull/297) (merged) |
+| [HYPERFLEET-1483](https://redhat.atlassian.net/browse/HYPERFLEET-1483) | [hyperfleet-infra#85](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/85), [hyperfleet-e2e#159](https://github.com/openshift-hyperfleet/hyperfleet-e2e/pull/159) (merged) |
+| [HYPERFLEET-1485](https://redhat.atlassian.net/browse/HYPERFLEET-1485) | [hyperfleet-infra#98](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/98) (open) |
+| [HYPERFLEET-1531](https://redhat.atlassian.net/browse/HYPERFLEET-1531) | [hyperfleet-api#369](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/369) (merged) |
+| [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) | [hyperfleet-infra#90](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/90) (merged) |
+| [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) | [hyperfleet-infra#96](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/96) (merged) |
+
+Dois detalhes:
+
+- O [HYPERFLEET-1635](https://redhat.atlassian.net/browse/HYPERFLEET-1635) não
+  tem PR própria; o escopo dele foi absorvido pelo
+  [hyperfleet-infra#96](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/96).
+- O ticket [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648)
+  ainda consta como Review no JIRA, embora a PR já esteja **merged**.
+- Os tickets ainda sem PR aberta (1484, 1523, 1530, 1532, 1613, 1621, 1632-1636,
+  1668, 1669) não aparecem nesta tabela.
+
 ## Referências
 
 - [ADR-0020: Envoy and Authorino as the API Authentication Gateway](../adrs/0020-envoy-authorino-api-gateway.md)
