@@ -397,7 +397,7 @@ sequenceDiagram
     A-->>M: wristband legitimo (sub do atacante)
     M->>API: Authorization: Bearer <wristband><br/>x-tenant-org: vitima + x-hyperfleet-system: true
     Note over API: autenticacao passa,<br/>tenancy = o que ele digitou (GAP)
-    Note over API: Fix proposto: resolver tenancy<br/>das claims do wristband, nao dos headers
+    Note over API: Fix (HYPERFLEET-1669): resolver tenancy<br/>das claims do wristband, nao dos headers
     end
 
     rect rgb(237, 231, 246)
@@ -459,7 +459,7 @@ observação marca a mudança.
 | [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669) | Ler tenancy e system identity das claims do wristband | New | **Novo**, criado após 16/set; bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) |
 | [HYPERFLEET-1636](https://redhat.atlassian.net/browse/HYPERFLEET-1636) | Emenda do ADR-0020: convenção de scheme, wristband como issuer, tenancy de claims | Backlog | Ainda não registrado no repo |
 | [HYPERFLEET-1621](https://redhat.atlassian.net/browse/HYPERFLEET-1621) | Caso e2e com wristband e tenant forjado | Backlog | Depende de [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) e [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) |
-| [HYPERFLEET-1485](https://redhat.atlassian.net/browse/HYPERFLEET-1485) | Suíte e2e do gateway em kind | Backlog | Responsável Dmitrii Andreev |
+| [HYPERFLEET-1485](https://redhat.atlassian.net/browse/HYPERFLEET-1485) | Suíte e2e do gateway em kind | In Progress | Responsável Dmitrii Andreev |
 | [HYPERFLEET-1632](https://redhat.atlassian.net/browse/HYPERFLEET-1632) | Cache de TokenReview no método de máquina | New | — |
 | [HYPERFLEET-1633](https://redhat.atlassian.net/browse/HYPERFLEET-1633) | Rodar validate-authorino no ci-validate | Backlog | — |
 | [HYPERFLEET-1613](https://redhat.atlassian.net/browse/HYPERFLEET-1613) | Habilitar enforcement de NetworkPolicy nos clusters GKE dev e CI | Backlog | Independente |
