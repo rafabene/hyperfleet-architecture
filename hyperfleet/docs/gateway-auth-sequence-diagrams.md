@@ -289,24 +289,34 @@ ligadas juntas não são uma combinação válida até o
 
 No modo `edge` a API não roda middleware JWT e confia incondicionalmente nos
 headers injetados. A credencial original **não** é trocada por um wristband.
+Como nos modos com gateway, os **dois schemes** são aceitos — `Bearer` para
+humanos e `ServiceAccount` para máquinas; o diagrama abaixo mostra os dois ramos.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor C as Chamador
+    actor C as Chamador (humano ou maquina)
     participant E as Envoy gateway
     participant A as Authorino
     participant API as hyperfleet-api
     participant DB as Postgres
 
-    C->>E: Authorization: ServiceAccount <token>
-    Note over E: Early header mutation (strip)
-    E->>A: ext_authz Check
-    Note over A: valida credencial + allow-list
-    A-->>E: allow + x-hyperfleet-system, x-hyperfleet-identity, x-tenant-*
+    C->>E: Authorization: Bearer <JWT OIDC> ou ServiceAccount <token SA>
+    Note over E: Early header mutation (strip<br/>de x-tenant-* e x-hyperfleet-*)
+
+    alt Bearer (humano)
+        E->>A: ext_authz Check
+        Note over A: valida OIDC, exige a claim de tenant<br/>hf_system=false
+        A-->>E: allow + x-hyperfleet-system: false<br/>+ x-hyperfleet-identity + x-tenant-*
+    else ServiceAccount (maquina)
+        E->>A: ext_authz Check
+        Note over A: TokenReview + allow-list<br/>hf_system=true
+        A-->>E: allow + x-hyperfleet-system: true<br/>+ x-hyperfleet-identity + x-tenant-*
+    end
+
     E->>API: encaminha (TLS via HYPERFLEET-1648),<br/>sem troca de Authorization
     Note over API: NAO roda middleware JWT<br/>confia nos headers injetados
-    API->>DB: SELECT ... WHERE tenancy @> caller_map
+    API->>DB: SELECT ... WHERE tenancy @> caller_map<br/>(sem filtro se hf_system=true)
     DB-->>API: linhas
     API-->>E: resposta
     E-->>C: 200
