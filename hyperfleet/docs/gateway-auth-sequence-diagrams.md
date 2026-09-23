@@ -261,12 +261,12 @@ substitui as duas flags booleanas atuais (`EXT_AUTHZ_ENABLED` e
 O guard do helmfile que rejeita JWT com o issuer mock passa a ser ciente do modo
 (correto para `api`, não aplicado em `edge+api`).
 
-| `AUTH_MODE` | Gateway | JWT na API | Clientes enviam | A API valida | Quando usar |
-|-------------|---------|------------|-----------------|--------------|-------------|
-| `none` | off | off | nada | nada | Dev local: rodar a API direto, sem gateway e sem wiring de JWT. O loop local mais rápido para trabalho que não tem a ver com auth. Nunca deployado em ambiente real |
-| `edge` | on | off | `Bearer` (humanos) ou `ServiceAccount` (máquinas) | nada; confia nos headers | Deployments de gateway atuais e prova do fluxo gateway/Authorino/tenancy end-to-end. Ponto fraco: a API confia incondicionalmente nos headers, então só é tão forte quanto a NetworkPolicy realmente aplicada em frente à API |
-| `api` | off | on | `Bearer` (humanos e SA tokens validados contra o issuer do cluster) | issuer do cluster e IdP humano direto | Onde não há gateway porque o cluster alvo não é nosso para moldar (caminho operator até o [HYPERFLEET-1530](https://redhat.atlassian.net/browse/HYPERFLEET-1530); kind e GKE sem gateway) |
-| `edge+api` | on | on | `Bearer` (humanos) ou `ServiceAccount` (máquinas) | o wristband do Authorino, um único issuer | Única postura de produção documentada: as duas camadas no ar, a API valida um issuer só, independentemente de a NetworkPolicy ser aplicada |
+| `AUTH_MODE` | Gateway | Validação JWT na API | Clientes enviam | A API valida | Quando usar |
+|-------------|---------|----------------------|-----------------|--------------|-------------|
+| `none` | desligado | desligada | nada | nada | Dev local: rodar a API direto, sem gateway e sem wiring de JWT. O loop local mais rápido para trabalho que não tem a ver com auth. Nunca deployado em ambiente real |
+| `edge` | ligado | desligada | `Bearer` (humanos) ou `ServiceAccount` (máquinas) | nada; confia nos headers | Deployments de gateway atuais e prova do fluxo gateway/Authorino/tenancy end-to-end. Ponto fraco: a API confia incondicionalmente nos headers, então só é tão forte quanto a NetworkPolicy realmente aplicada em frente à API |
+| `api` | desligado | ligada | `Bearer` (humanos e SA tokens validados contra o issuer do cluster) | issuer do cluster e IdP humano direto | Onde não há gateway porque o cluster alvo não é nosso para moldar (caminho operator até o [HYPERFLEET-1530](https://redhat.atlassian.net/browse/HYPERFLEET-1530); kind e GKE sem gateway) |
+| `edge+api` | ligado | ligada | `Bearer` (humanos) ou `ServiceAccount` (máquinas) | o wristband do Authorino, um único issuer | Única postura de produção documentada: as duas camadas no ar, a API valida um issuer só, independentemente de a NetworkPolicy ser aplicada |
 
 O scheme que o cliente envia é um **fato de deploy** (por cliente: `auth.scheme`,
 default `Bearer`), não uma propriedade exclusiva do modo. Nos modos com gateway
