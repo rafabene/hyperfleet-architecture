@@ -157,6 +157,29 @@ wristband**. Não há reuso nem re-assinatura do token recebido. O Authorino
 descarta a credencial original e **emite um JWT novo**, assinado por ele, cujas
 claims são montadas a partir da identidade já resolvida no pipeline.
 
+### Por que um JWT novo, e não o token original
+
+Três razões, em ordem de força:
+
+- **Não dá para re-assinar.** O token foi assinado pelo IdP (humano) ou pelo
+  issuer de service account do cluster (máquina) e o Authorino não tem — nem
+  deveria ter — essas chaves privadas. Com a chave dele, a única coisa que ele
+  consegue produzir é um token novo.
+- **Reusar quebraria o objetivo.** Repassar o token original obrigaria a API a
+  validar N emissores (o do cluster mais cada IdP) e, pior, a aceitar qualquer
+  credencial válida que chegasse direto na API, sem passar pelo gateway. O
+  wristband tem um único issuer e só o Authorino o emite, então ele é a prova de
+  que a requisição atravessou o gateway
+  ([HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668)).
+- **O token original não traz o que a API precisa.** Nem o JWT OIDC nem o
+  resultado do TokenReview carregam `sub` normalizado, `hf_system` e as
+  dimensões de tenant. O wristband monta exatamente esses campos a partir da
+  identidade resolvida e ainda atenua o escopo: vida curta, só o necessário para
+  a API, e o token do usuário não trafega adiante.
+
+O preço é um emissor a mais para gerenciar (chave de assinatura, JWKS e rotação
+— [HYPERFLEET-1523](https://redhat.atlassian.net/browse/HYPERFLEET-1523)).
+
 O mecanismo, em ordem:
 
 - **Onde é configurado.** No `AuthConfig`, no bloco de resposta de sucesso
