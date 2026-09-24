@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Team
-Last Updated: 2026-09-22
+Last Updated: 2026-09-24
 ---
 
 # Autenticação no Gateway, TLS e Tenancy: Diagramas
@@ -32,13 +32,29 @@ que está à frente dos ADRs commitados em dois pontos:
   JWKS do wristband. A emenda é rastreada por
   [HYPERFLEET-1636](https://redhat.atlassian.net/browse/HYPERFLEET-1636)
   (Backlog). O termo "wristband" ainda não aparece em nenhum documento commitado
-  deste repositório.
+  deste repositório. Atenção: o escopo atual do
+  [HYPERFLEET-1636](https://redhat.atlassian.net/browse/HYPERFLEET-1636) no JIRA
+  cobre apenas a **convenção de scheme** (`Bearer` vs `ServiceAccount`); o
+  wristband como issuer único e os valores do `AUTH_MODE` ainda precisam ser
+  adicionados ao ticket (ou a uma emenda irmã) para que a emenda do ADR-0020
+  tenha onde pousar.
 - A implementação, porém, já está ticketada: o lado do gateway (emitir o
   wristband, trocar o `Authorization` e introduzir o `AUTH_MODE`) é o
   [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668)
-  (In Progress); o lado da API (ler tenancy de claims) é o
+  (Review, PR
+  [hyperfleet-infra#101](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/101)
+  aberta); o lado da API (validar o wristband como issuer único) é o
+  [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484)
+  (In Progress); e ler tenancy de claims é o
   [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669)
   (New, bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668)).
+- O PKI interno já está de pé: o
+  [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648)
+  (Review, PR
+  [hyperfleet-infra#96](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/96)
+  merged em 22/set) entregou uma CA namespace-local e três certificados leaf —
+  listener do Authorino em 50051, servidor OIDC do Authorino em 8083 e listener
+  da API — o que desbloqueia a validação do wristband por URL (rota 2 adiante).
 
 Trate os fluxos abaixo como o design-alvo, e o ADR-0020 mais o design doc de
 tenancy como o estado atualmente commitado.
@@ -253,9 +269,11 @@ rotas:
   `jwk_cert_ca_file`). Exige TLS no servidor OIDC; a rotação é gratuita porque a
   API atualiza em um intervalo.
 
-Comece pela rota 1 e migre para a 2 quando o
-[HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) chegar. O
-wristband não está bloqueado no TLS.
+A [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) registra
+a rota 1 (JWKS montado em arquivo) como primeiro passo. Com o PKI do
+[HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) já
+merged, a migração para a rota 2 (fetch por URL com a CA interna) passa a ser
+mudança de configuração. O wristband não está bloqueado no TLS.
 
 ### Onde o `AUTH_MODE` é definido
 
@@ -438,7 +456,7 @@ sequenceDiagram
   Authorino, Envoy para API) não autentica o chamador; impede ler uma credencial
   ou o wristband em trânsito e impede o Envoy de falar com um impostor.
 
-## Mapa de tickets (status em 2026-09-22)
+## Mapa de tickets (status em 2026-09-24)
 
 Todos os tickets citados no material de origem ("Crash Course", 16/set/2026),
 com o status atual consultado no JIRA. Onde o material de origem divergia, a
@@ -459,8 +477,8 @@ observação marca a mudança.
 |--------|------|--------|------------|
 | [HYPERFLEET-1480](https://redhat.atlassian.net/browse/HYPERFLEET-1480) | Machine identity pelo gateway (scheme split, allow-list, knob de scheme) | Closed | Fechado desde 16/set (PR [88](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/88)) |
 | [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) | Mock OIDC human token source para kind e CI | Closed | Fechado desde 16/set (PR [90](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/90)) |
-| [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) | In-app JWT atrás do gateway | In Progress | Lado da API do wristband |
-| [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) | Emitir o wristband no gateway, trocar o Authorization e introduzir o AUTH_MODE | In Progress | **Novo**, criado após 16/set; é o lado do gateway |
+| [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) | In-app JWT atrás do gateway | In Progress | Lado da API do wristband; update 24/set: o runner E2E em `EDGE+API` precisa mandar `ServiceAccount <token>`, senão o gateway trata o token de SA como JWT humano e devolve 401 |
+| [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) | Emitir o wristband no gateway, trocar o Authorization e introduzir o AUTH_MODE | Review | **Novo**, criado após 16/set; lado do gateway, PR [hyperfleet-infra#101](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/101) aberta |
 | [HYPERFLEET-1669](https://redhat.atlassian.net/browse/HYPERFLEET-1669) | Ler tenancy e system identity das claims do wristband | New | **Novo**, criado após 16/set; bloqueado pelo [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) |
 | [HYPERFLEET-1636](https://redhat.atlassian.net/browse/HYPERFLEET-1636) | Emenda do ADR-0020: convenção de scheme, wristband como issuer, tenancy de claims | Backlog | Ainda não registrado no repo |
 | [HYPERFLEET-1621](https://redhat.atlassian.net/browse/HYPERFLEET-1621) | Caso e2e com wristband e tenant forjado | Backlog | Depende de [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) e [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) |
@@ -514,11 +532,22 @@ Mudanças materiais desde 16/set/2026:
   [HYPERFLEET-1679](https://redhat.atlassian.net/browse/HYPERFLEET-1679)
   (port-name/appProtocol do chart da API), fora do escopo do
   [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648).
+- [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648)
+  mergeou a PR
+  [hyperfleet-infra#96](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/96)
+  em 22/set (segue em Review no JIRA); o PKI é uma CA namespace-local e três
+  certificados leaf, um por hop.
+- [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) saiu de
+  In Progress para Review, com a PR
+  [hyperfleet-infra#101](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/101)
+  aberta. O AC registra a validação do wristband **por arquivo JWKS primeiro**;
+  a rota por URL é o passo seguinte agora que o
+  [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) mergeou.
 
 ### PRs por ticket
 
 PRs com o ID do ticket no título (convenção do HyperFleet), consultadas em
-2026-09-23. PR é efêmera: a fonte de verdade continua sendo o ticket.
+2026-09-24. PR é efêmera: a fonte de verdade continua sendo o ticket.
 
 | Ticket | PR(s) |
 |--------|-------|
@@ -530,6 +559,7 @@ PRs com o ID do ticket no título (convenção do HyperFleet), consultadas em
 | [HYPERFLEET-1531](https://redhat.atlassian.net/browse/HYPERFLEET-1531) | [hyperfleet-api#369](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/369) (merged) |
 | [HYPERFLEET-1631](https://redhat.atlassian.net/browse/HYPERFLEET-1631) | [hyperfleet-infra#90](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/90) (merged) |
 | [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648) | [hyperfleet-infra#96](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/96) (merged) |
+| [HYPERFLEET-1668](https://redhat.atlassian.net/browse/HYPERFLEET-1668) | [hyperfleet-infra#101](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/101) (open) |
 
 Dois detalhes:
 
@@ -539,7 +569,7 @@ Dois detalhes:
 - O ticket [HYPERFLEET-1648](https://redhat.atlassian.net/browse/HYPERFLEET-1648)
   ainda consta como Review no JIRA, embora a PR já esteja **merged**.
 - Os tickets ainda sem PR aberta (1484, 1523, 1530, 1532, 1613, 1621, 1632-1636,
-  1668, 1669) não aparecem nesta tabela.
+  1669) não aparecem nesta tabela.
 
 ## Referências
 
