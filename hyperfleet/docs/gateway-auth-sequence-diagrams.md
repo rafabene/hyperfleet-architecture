@@ -25,8 +25,12 @@ Estes diagramas descrevem o design **como discutido em 16 de setembro de 2026**,
 que está à frente dos ADRs commitados em dois pontos:
 
 - O **wristband** (Authorino Festival Wristband) e o refactor do **`AUTH_MODE`**
-  ainda não são decisão de registro. São a emenda pendente do ADR-0020,
-  rastreada por [HYPERFLEET-1636](https://redhat.atlassian.net/browse/HYPERFLEET-1636)
+  ainda não são decisão de registro. O **ADR-0020 será atualizado** para
+  registrá-los: o wristband como issuer único da API, os valores do `AUTH_MODE`
+  (`none`/`edge`/`api`/`edge+api`) e, no cenário `edge+api`, a consulta da
+  hyperfleet-api ao servidor OIDC do Authorino na porta **8083** para buscar o
+  JWKS do wristband. A emenda é rastreada por
+  [HYPERFLEET-1636](https://redhat.atlassian.net/browse/HYPERFLEET-1636)
   (Backlog). O termo "wristband" ainda não aparece em nenhum documento commitado
   deste repositório.
 - A implementação, porém, já está ticketada: o lado do gateway (emitir o
@@ -85,7 +89,8 @@ Nos dois fluxos abaixo o gateway resolve identidade e tenancy, o Authorino emite
 o wristband e a API valida esse único emissor. A única diferença entre humano e
 máquina é o **método de autenticação** escolhido pelo scheme do header
 `Authorization`. Nos dois casos o token original nunca chega à API: o Authorino o
-descarta e injeta o próprio JWT, o que mantém **um único issuer** para a API.
+descarta e injeta o **wristband** — o JWT que ele mesmo assina —, o que mantém
+**um único issuer** para a API.
 
 ### 2.1 Chamador humano (Bearer / OIDC)
 
