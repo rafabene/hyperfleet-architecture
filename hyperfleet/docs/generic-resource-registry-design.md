@@ -1,7 +1,7 @@
 ---
 Status: Draft
 Owner: HyperFleet Architecture Team
-Last Updated: 2026-05-18
+Last Updated: 2026-09-28
 ---
 
 # Generic Resource Registry — Design Document
@@ -955,7 +955,7 @@ const (
 When a resource is deleted, the service iterates all registered child types and applies each child's policy:
 
 - **`restrict`** — if any active children of this type exist, return `409 Conflict`. No partial deletion occurs.
-- **`cascade`** — soft-delete all children of this type recursively (DFS, innermost first) before deleting the parent.
+- **`cascade`** — mark all children of this type deleted recursively (DFS, innermost first) before deleting the parent. Each child then follows the service-layer soft/hard rule: a child participating in adapter deletion reconciliation is soft-deleted until all adapters report `Finalized=True` and its own soft-deleted children are gone; a child not participating in adapter deletion reconciliation is hard-deleted in the same transaction, unless it still has soft-deleted children of its own, in which case it stays soft-deleted until a subsequent DELETE (it has no finalization event of its own — see [HYPERFLEET-1721](https://redhat.atlassian.net/browse/HYPERFLEET-1721)).
 
 Different child types of the same parent can have different policies. For example, a Cluster might have NodePools (`cascade`) and AuditLogs (`restrict`) — deleting the Cluster cascades to NodePools but is blocked if AuditLogs exist.
 
@@ -969,6 +969,8 @@ DELETE /clusters/{id} → 202 Accepted  (NodePools cascade)
 ### 8.2 Service layer implementation
 
 A single `Delete` method handles all cases. `DeleteCascade` is not a separate method.
+
+The snippet below illustrates only the child-policy loop; the service also checks references ([§9.3](#93-deletion-restriction)) and applies the per-resource soft/hard decision described above — a resource participating in adapter deletion reconciliation, or with soft-deleted children, is soft-deleted; the rest are hard-deleted in the same transaction.
 
 <details>
 <summary>Delete service implementation</summary>
@@ -1000,7 +1002,7 @@ func (s *sqlResourceService) Delete(ctx context.Context, resourceType, id string
 
 </details>
 
-All deletions happen within the existing transaction-per-request middleware. The entire tree is soft-deleted atomically or not at all. If a restrict-policy child is found after some cascade-policy children have already been deleted, the transaction rolls back and nothing is persisted.
+All delete bookkeeping happens within the existing transaction-per-request middleware: the tree is marked deleted atomically or not at all, and any resource that does not need to wait for adapter finalization is hard-deleted in the same transaction. A resource participating in adapter deletion reconciliation is left soft-deleted until all adapters report `Finalized=True` and no soft-deleted children remain; a resource not participating in adapter deletion reconciliation that still has soft-deleted children is left soft-deleted until a subsequent DELETE (nothing re-evaluates it once its children are gone — see [HYPERFLEET-1721](https://redhat.atlassian.net/browse/HYPERFLEET-1721)). If a restrict-policy child is found after some cascade-policy children have already been deleted, the transaction rolls back and nothing is persisted.
 
 ---
 
