@@ -1,7 +1,7 @@
 ---
 Status: Draft
 Owner: HyperFleet API Team
-Last Updated: 2026-05-25
+Last Updated: 2026-09-29
 ---
 
 # Condition Mapping Design
@@ -16,7 +16,7 @@ Last Updated: 2026-05-25
 | **Adapter Condition** | Condition reported by adapters via `PUT /statuses`. Status can be `True`, `False`, or `Unknown`. Stored in `adapter_statuses` table. **Note**: Adapter conditions with `status="Unknown"` are automatically filtered out during mapping and never converted to resource conditions, preventing violations of the True/False-only contract. |
 | **Standard Condition Fields** | All conditions (both Resource and Adapter) contain six fields: <br>• `type` — condition category (string)<br>• `status` — `True`/`False` for resource conditions; `True`/`False`/`Unknown` for adapter conditions<br>• `reason` — machine-readable cause (CamelCase string)<br>• `message` — human-readable description<br>• `observed_generation` — resource generation when condition was set<br>• `last_transition_time` — RFC 3339 timestamp of last status change |
 | **Condition Mapping** | Declarative CEL-based rules that copy/transform selected adapter conditions into resource conditions. |
-| **Aggregated Conditions** | System-computed resource conditions (`Reconciled`, `LastKnownReconciled`) synthesized from adapter statuses. Only applies to reconcilable resources (Cluster, NodePool). Non-reconcilable resources (Channel, Version) have no aggregated conditions. Future: express these via custom mappings to eliminate exceptions. |
+| **Aggregated Conditions** | System-computed resource conditions (`Reconciled`, `LastKnownReconciled`) synthesized from adapter statuses. Only applies to reconcilable resources (Cluster, NodePool). Non-reconcilable resources (Channel, Version) have no aggregated conditions, unless a condition mapper is configured. Future: express these via custom mappings to eliminate exceptions. |
 | **Mapped Conditions** | **Output of Condition Mapping** — resource conditions dynamically created from adapter conditions via the mapping rules defined above. |
 
 ## What & Why
@@ -453,6 +453,7 @@ GCPQuotaDetails:  # Map key is the output condition type
 
 - **No CEL evaluation timeouts** — MVP does not implement per-expression or aggregate timeouts. CEL expressions that run indefinitely (e.g., infinite loops in complex filters) will block the request. Deferred until adoption patterns are known and typical CEL complexity is understood. When implemented, timeouts must trigger transaction rollback (not partial commits) to ensure timely retry on next reconciliation cycle.
 - **No adapter re-reporting optimization** — for large clusters, repeated status updates generate mapping overhead proportional to Sentinel polling frequency (deferred)
+- **Mapper-only kinds never reconcile** — computing `Reconciled` requires at least one required adapter to report success. A Sentinel watching such a kind would republish it on every poll once the 10s debounce has passed, indefinitely (see [Sentinel — Key Insight](../sentinel/sentinel.md#decision-logic)). No entity combines a mapper with zero required adapters today; operators should not combine condition mapping with an empty `required_adapters` list.
 
 ### Acceptable Because
 

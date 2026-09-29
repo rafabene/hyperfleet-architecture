@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Sentinel Team
-Last Updated: 2026-07-09
+Last Updated: 2026-09-29
 ---
 
 # HyperFleet Sentinel
@@ -251,6 +251,10 @@ For deployment patterns, configuration examples, and resource filtering strategi
 - **Polling instead of watching**: Sentinel polls the API on a fixed interval rather than reacting to resource change events via a push mechanism. This wastes compute on stable resources and introduces latency proportional to the poll interval.
   - **Impact**: Constant background API load; up to 5s reaction time to spec changes.
   - **Remediation**: Post-MVP, consider an API watch endpoint or webhook-triggered publishing to reduce idle load.
+
+- **Mapper-only kinds never reconcile**: kinds configured with only a CEL condition mapper and no required adapters never satisfy `Reconciled == True` ([API caveat](../api-service/condition-mapping-design.md#technical-debt-incurred)). A Sentinel watching such a kind would republish it on every poll once the 10s debounce has passed, indefinitely.
+  - **Impact**: Continuous event publishing and adapter work for every resource of that kind. No kind is configured this way today.
+  - **Remediation**: Don't combine condition mapping with an empty `required_adapters` list.
 
 ### Acceptable Because
 
