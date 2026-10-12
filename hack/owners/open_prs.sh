@@ -106,7 +106,13 @@ for repo in "${REPOS[@]}"; do
       gh repo fork "${ORG}/${repo}" --clone=false >/dev/null
     fi
     git remote add fork "git@github.com:${FORK_OWNER}/${repo}.git"
-    git push -q --force-with-lease fork "${BRANCH}"
+    # the branch is ours and single purpose, so overwrite whatever a previous run left
+    git push -q --force fork "${BRANCH}"
+    existing="$(gh pr list --repo "${ORG}/${repo}" --state open --head "${BRANCH}" --json url --jq '.[0].url // empty')"
+    if [[ -n "${existing}" ]]; then
+      echo "  PR already open: ${existing}"
+      exit 0
+    fi
     body="${BODY}"
     draft_flag=()
     if [[ "${DRAFT}" -eq 1 ]]; then
