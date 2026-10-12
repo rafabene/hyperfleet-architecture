@@ -13,7 +13,7 @@ set -euo pipefail
 ORG="openshift-hyperfleet"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="${ROOT}/hack/owners/out"
-BRANCH="${BRANCH:-HYPERFLEET-1200-owners-areas}"
+BRANCH="${BRANCH:-HYPERFLEET-1200-owners-files}"
 TITLE="${TITLE:-HYPERFLEET-1200 - chore: narrow OWNERS to area owners and aliases}"
 DOC_URL="https://github.com/${ORG}/architecture/blob/main/hyperfleet/docs/owners.md"
 DOC_PR="${DOC_PR:-openshift-hyperfleet/architecture#232}"
