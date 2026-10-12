@@ -2,10 +2,12 @@
 # Open one PR per repository that replaces its OWNERS files with the rendered set
 # from hack/owners/out. Run gen_owners.py render first.
 #
-# Usage: hack/owners/open_prs.sh [--dry-run] [repo ...]
+# Usage: hack/owners/open_prs.sh [--dry-run] [--draft] [repo ...]
 # Pushes to a branch on the caller's fork (created if missing) and opens the PR
 # with gh. Existing OWNERS files that the generator does not produce are removed,
-# so stale per-directory files go in the same change.
+# so stale per-directory files go in the same change. With --draft the PR opens
+# as a draft and holds itself, so it cannot merge until it is marked ready and
+# the hold is lifted.
 set -euo pipefail
 
 ORG="openshift-hyperfleet"
@@ -14,11 +16,17 @@ OUT="${ROOT}/hack/owners/out"
 BRANCH="${BRANCH:-HYPERFLEET-1200-owners-areas}"
 TITLE="${TITLE:-HYPERFLEET-1200 - chore: narrow OWNERS to area owners and aliases}"
 DOC_URL="https://github.com/${ORG}/architecture/blob/main/hyperfleet/docs/owners.md"
+DOC_PR="${DOC_PR:-openshift-hyperfleet/architecture#232}"
 DRY_RUN=0
-if [[ "${1:-}" == "--dry-run" ]]; then
-  DRY_RUN=1
+DRAFT=0
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1 ;;
+    --draft) DRAFT=1 ;;
+    *) echo "unknown flag: $1" >&2; exit 2 ;;
+  esac
   shift
-fi
+done
 
 FORK_OWNER="$(gh api user --jq .login)"
 WORK="$(mktemp -d)"
@@ -30,19 +38,43 @@ if [[ $# -gt 0 ]]; then
 fi
 
 read -r -d '' BODY <<EOM || true
+## What changed
+
 Replaces the flat list of approvers and reviewers with area owners from the
 ownership document: ${DOC_URL}
+(in review in ${DOC_PR} until it merges).
 
 - OWNERS_ALIASES holds the names, OWNERS files reference aliases and carry area labels
 - a merge now needs an approver for every touched path
 - Blunderbuss requests reviewers from the area's pool
 
-The same criteria were applied to everyone at launch, using the last three
+## Why
+
+Today every repository lists the same seventeen people as approvers and
+reviewers, so review requests route at random and any one of them can merge
+anything alone. Named areas put the request in front of the people who know the
+code and make an approver accountable for what merges.
+
+**The same criteria were applied to everyone at launch, using the last three
 sprints. Reviewer and approver status follows the criteria in the ownership
-document and nothing else. The path to reviewer and approver is written there.
+document and nothing else.** The path to reviewer and approver is written there.
 
 Generated from hyperfleet/docs/owners.yaml in the architecture repository.
 Changes to ownership are a PR to that file, then a regenerated OWNERS here.
+
+## Merge order
+
+This is one of the nineteen per-repository OWNERS PRs, step 5 of the
+repository ownership rollout. It merges after the team session and after the
+ownership document, and only when the hold is lifted.
+
+1. ${DOC_PR}, ownership document and generator.
+2. openshift-hyperfleet/hyperfleet-hooks commitlint PR, then the v0.3.0 tag.
+3. openshift/release#86872, Prow onboarding and the tide context.
+4. Team session.
+5. **This PR** with the other eighteen OWNERS PRs, after 1, 3 and 4.
+6. openshift/release#86873, squash on merge, after 2 and 4.
+7. hyperfleet-claude-plugins digest PR, any time after 5.
 EOM
 
 for repo in "${REPOS[@]}"; do
@@ -75,7 +107,13 @@ for repo in "${REPOS[@]}"; do
     fi
     git remote add fork "git@github.com:${FORK_OWNER}/${repo}.git"
     git push -q --force-with-lease fork "${BRANCH}"
+    body="${BODY}"
+    draft_flag=()
+    if [[ "${DRAFT}" -eq 1 ]]; then
+      draft_flag=(--draft)
+      body="${BODY}"$'\n\n/hold'
+    fi
     gh pr create --repo "${ORG}/${repo}" --head "${FORK_OWNER}:${BRANCH}" --base main \
-      --title "${TITLE}" --body "${BODY}"
+      "${draft_flag[@]}" --title "${TITLE}" --body "${body}"
   )
 done
