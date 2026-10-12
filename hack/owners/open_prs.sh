@@ -81,12 +81,13 @@ for repo in "${REPOS[@]}"; do
   echo "== ${ORG}/${repo}"
   src="${OUT}/${repo}"
   dir="${WORK}/${repo}"
-  git clone --quiet "https://github.com/${ORG}/${repo}.git" "${dir}"
+  git clone --quiet "git@github.com:${ORG}/${repo}.git" "${dir}"
   (
     cd "${dir}"
     git checkout -q -b "${BRANCH}"
     # remove every tracked OWNERS and OWNERS_ALIASES, then copy the rendered set
-    git ls-files -z | grep -z -E '(^|/)OWNERS(_ALIASES)?$' | xargs -0 -r git rm -q
+    # a repository with no OWNERS yet is fine, grep then matches nothing
+    { git ls-files -z | grep -z -E '(^|/)OWNERS(_ALIASES)?$' || true; } | xargs -0 -r git rm -q
     (cd "${src}" && find . -type f -print0) | while IFS= read -r -d '' f; do
       mkdir -p "$(dirname "${f}")"
       cp "${src}/${f}" "${f}"
@@ -102,12 +103,20 @@ for repo in "${REPOS[@]}"; do
       exit 0
     fi
     git commit -q -m "${TITLE}"
-    if ! gh repo view "${FORK_OWNER}/${repo}" >/dev/null 2>&1; then
-      gh repo fork "${ORG}/${repo}" --clone=false >/dev/null
+    # Push to the caller's fork, or to a branch on the org repository when the
+    # caller's copy is not registered as a fork (GitHub refuses a cross-repo PR then).
+    head_ref="${FORK_OWNER}:${BRANCH}"
+    if [[ "${PUSH_TO_ORIGIN:-0}" -eq 1 ]]; then
+      git push -q --force origin "${BRANCH}"
+      head_ref="${BRANCH}"
+    else
+      if ! gh repo view "${FORK_OWNER}/${repo}" >/dev/null 2>&1; then
+        gh repo fork "${ORG}/${repo}" --clone=false >/dev/null
+      fi
+      git remote add fork "git@github.com:${FORK_OWNER}/${repo}.git"
+      # the branch is ours and single purpose, so overwrite whatever a previous run left
+      git push -q --force fork "${BRANCH}"
     fi
-    git remote add fork "git@github.com:${FORK_OWNER}/${repo}.git"
-    # the branch is ours and single purpose, so overwrite whatever a previous run left
-    git push -q --force fork "${BRANCH}"
     existing="$(gh pr list --repo "${ORG}/${repo}" --state open --head "${BRANCH}" --json url --jq '.[0].url // empty')"
     if [[ -n "${existing}" ]]; then
       echo "  PR already open: ${existing}"
@@ -119,7 +128,7 @@ for repo in "${REPOS[@]}"; do
       draft_flag=(--draft)
       body="${BODY}"$'\n\n/hold'
     fi
-    gh pr create --repo "${ORG}/${repo}" --head "${FORK_OWNER}:${BRANCH}" --base main \
+    gh pr create --repo "${ORG}/${repo}" --head "${head_ref}" --base main \
       "${draft_flag[@]}" --title "${TITLE}" --body "${body}"
   )
 done
