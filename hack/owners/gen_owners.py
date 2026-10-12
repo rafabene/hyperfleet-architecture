@@ -140,8 +140,9 @@ def clear_out_dir(out_dir):
 
     Symlinks are resolved first so the check and the deletion see the same real path.
     The target may not be the filesystem root, the repository, the current directory,
-    or a parent of the repository. Inside the repository only hack/owners/ is allowed,
-    so a stray --out can never delete documentation.
+    or a parent of the repository. Inside the repository only a directory under
+    hack/owners/ is allowed (not hack/owners itself), so a stray --out can never
+    delete documentation or these scripts.
     """
     target = os.path.realpath(out_dir)
     root = os.path.realpath(ROOT)
@@ -151,8 +152,10 @@ def clear_out_dir(out_dir):
         raise SystemExit(f"refusing to clear {target}: pass a dedicated output directory")
     if os.path.commonpath([target, root]) == target:
         raise SystemExit(f"refusing to clear {target}: it contains the repository")
-    if os.path.commonpath([target, root]) == root and os.path.commonpath([target, allowed_in_root]) != allowed_in_root:
-        raise SystemExit(f"refusing to clear {target}: inside the repository only {allowed_in_root} may be used")
+    inside_root = os.path.commonpath([target, root]) == root
+    strict_descendant = target != allowed_in_root and os.path.commonpath([target, allowed_in_root]) == allowed_in_root
+    if inside_root and not strict_descendant:
+        raise SystemExit(f"refusing to clear {target}: inside the repository only a directory under {allowed_in_root} may be used")
     shutil.rmtree(target, ignore_errors=True)
     os.makedirs(target, exist_ok=True)
     return target
