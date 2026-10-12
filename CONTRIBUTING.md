@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Architecture Team
-Last Updated: 2026-03-25
+Last Updated: 2026-10-12
 ---
 
 # Contributing to HyperFleet Architecture
@@ -111,15 +111,13 @@ Use the scripts in `hack/` to run linting locally before pushing:
 5. **Open a PR** with a description that includes:
    - **What changed**: Which documents were added or updated
    - **Why**: The architectural context or decision being documented
-   - **Reviewers to loop in**: Tag any component owners affected by the change
+   - **Reviewers to loop in**: Prow requests reviewers from the area's `OWNERS` pool automatically; tag anyone else who should see it
 
 6. **Post the PR link** in [#hcm-hyperfleet-team](https://redhat.enterprise.slack.com/archives/hcm-hyperfleet-team) for team visibility
 
-7. **Wait 24 hours** for peer review (accounts for time zone differences between regions)
-   - For urgent changes, use judgement but ensure the rationale is well-documented in the PR
-   - For major architectural changes, strongly consider waiting for at least one Technical Leader review
+7. **Review**: reviewers aim for a substantive review within one business day. Push fixes as new commits once review has started
 
-8. **Merge** once approved with no objections
+8. **Merge**: an area approver's `/lgtm` or approving review merges the PR once CI is green. See [Repository Ownership](hyperfleet/docs/owners.md) for who approves which area. Want to become a reviewer or approver in an area? The criteria are in that document and apply to everyone
 
 ---
 

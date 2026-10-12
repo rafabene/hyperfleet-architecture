@@ -90,7 +90,7 @@ architecture/
 ├── README.md                      # This file - repository guide
 ├── CONTRIBUTING.md                # How to contribute to this repository
 ├── CLAUDE.md                      # Claude Code guidelines for AI-assisted workflows
-├── OWNERS                         # Repository ownership
+├── OWNERS                         # Repository ownership (generated from hyperfleet/docs/owners.yaml)
 ├── hack/                          # Utility scripts
 └── hyperfleet/                    # HyperFleet-specific architecture
     ├── README.md                  # HyperFleet system overview and architecture summary
@@ -305,25 +305,15 @@ Example of paying down technical debt:
 
 ### Review and Merge Process
 
-**MVP Process (Current)**:
-
-All HyperFleet team developers have approve and merge access. **Goal**: Move fast while keeping the team informed.
+A merge needs one approval from an approver for every path the PR touches, as declared in the `OWNERS` files and enforced by Prow. Reviewer and approver status in an area is earned against the criteria in [Repository Ownership](hyperfleet/docs/owners.md), which also holds the current area table and the path to becoming a reviewer or an approver.
 
 **How to submit and merge changes:**
 
 1. **Create a PR** with your documentation updates
 2. **Add a clear description** of what changed and why
 3. **Post the PR link** in Slack: #hcm-hyperfleet-team for team visibility
-4. **Wait 24 hours** for peer review and objections (accounts for time zone differences between regions)
-   - For urgent changes, use judgment but ensure the change is well-documented with clear rationale
-   - For major architectural changes, strongly consider waiting for at least one or two Technical Leader reviews
-5. **Merge when ready**: Once you have approval from peers and no objections after the 24-hour window, you may merge
-
-**Post-MVP Process** (to be established):
-
-- Formal approval requirements based on change type
-- Required reviewers for different document categories
-- Defined merge timelines and escalation paths
+4. Prow requests reviewers from the area's pool. Reviewers aim for a substantive review within one business day
+5. An area approver's `/lgtm` or approving review merges the PR once CI is green
 
 ---
 

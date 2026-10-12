@@ -80,6 +80,8 @@ When there is no associated JIRA ticket (e.g., intermediate commits during devel
 The **header** is mandatory.
 
 > **Note:** PR titles **always** require the JIRA prefix (`HYPERFLEET-XXX - <type>: <subject>`). Since HyperFleet uses squash merges, the PR title becomes the final commit on `main` and must be traceable to a JIRA ticket.
+>
+> Commits inside a PR need only the `<type>: <subject>` shape. Once review has started, push fixes as new commits rather than amending, so the reviewer can see what changed. Squash on merge keeps them off `main`.
 
 ### Character Limits
 
@@ -198,7 +200,7 @@ This standard is enforced through automated tooling at two levels:
 
 ### CI Validation
 
-- **Prow** runs [`hyperfleet-hooks commitlint --pr`](https://github.com/openshift-hyperfleet/hyperfleet-hooks) on every pull request to validate all commit messages and the PR title
+- **Prow** runs [`hyperfleet-hooks commitlint --pr`](https://github.com/openshift-hyperfleet/hyperfleet-hooks) on every pull request to validate the PR title, which becomes the squashed commit on `main`
 - PR titles **MUST** include a JIRA prefix (`HYPERFLEET-XXX - <type>: <subject>`) because squash merges use the PR title as the final commit message
 - See the [commitlint documentation](https://github.com/openshift-hyperfleet/hyperfleet-hooks/blob/main/docs/commitlint.md) for Prow configuration details
 
