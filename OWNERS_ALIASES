@@ -1,0 +1,61 @@
+aliases:
+  adapter-owners:
+  - rh-amarin
+  - rafabene
+  - kuudori
+  adapter-reviewers:
+  - Ruclo
+  - Mischulee
+  - mliptak0
+  - tirthct
+  api-owners:
+  - kuudori
+  - pnguyen44
+  api-reviewers:
+  - tirthct
+  - Mischulee
+  - ma-hill
+  - mliptak0
+  - ldornele
+  - rafabene
+  architecture-approvers:
+  - ciaranRoche
+  - mbrudnoy
+  - rafabene
+  - rh-amarin
+  broker-owners:
+  - rh-amarin
+  - kuudori
+  broker-reviewers:
+  - tirthct
+  - pnguyen44
+  - Mischulee
+  e2e-owners:
+  - kuudori
+  - ma-hill
+  e2e-reviewers:
+  - pnguyen44
+  - tirthct
+  - Mischulee
+  - mliptak0
+  release-owners:
+  - ma-hill
+  - kuudori
+  release-reviewers:
+  - tirthct
+  - Mischulee
+  sentinel-owners:
+  - pnguyen44
+  - kuudori
+  - rh-amarin
+  sentinel-reviewers:
+  - tirthct
+  - Ruclo
+  - ldornele
+  - mliptak0
+  tooling-owners:
+  - rafabene
+  - pnguyen44
+  tooling-reviewers:
+  - kuudori
+  - tirthct

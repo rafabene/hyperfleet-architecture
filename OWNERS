@@ -1,24 +1,13 @@
 approvers:
-- ciaranRoche
-- mbrudnoy
-- rafabene
-- rh-amarin
-
+- architecture-approvers
 reviewers:
-- aredenba-rh
-- ciaranRoche
-- crizzo71
-- jsell-rh
-- mbrudnoy
-- Mischulee
-- pnguyen44
-- rafabene
-- rh-amarin
-- Ruclo
-- tirthct
-- vkareh
 - kuudori
-- ma-hill
+- pnguyen44
+- tirthct
 - ldornele
-- sherine-k
+- ma-hill
 - mliptak0
+- Ruclo
+- Mischulee
+labels:
+- area/architecture
