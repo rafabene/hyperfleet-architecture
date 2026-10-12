@@ -13,6 +13,7 @@ Rules applied at render time are documented at the top of owners.yaml.
 """
 import argparse
 import os
+import shutil
 import sys
 
 import yaml
@@ -134,7 +135,18 @@ def splice_table(text, new_table):
     return text[:start] + "\n" + new_table + "\n" + text[end:]
 
 
+def clear_out_dir(out_dir):
+    """Remove a previous render so the output reflects only the current repository set."""
+    out_dir = os.path.abspath(out_dir)
+    protected = {os.path.abspath(os.sep), ROOT, os.getcwd()}
+    if out_dir in protected or ROOT.startswith(out_dir + os.sep):
+        raise SystemExit(f"refusing to clear {out_dir}: pass a dedicated output directory")
+    shutil.rmtree(out_dir, ignore_errors=True)
+    os.makedirs(out_dir, exist_ok=True)
+
+
 def render(data, out_dir):
+    clear_out_dir(out_dir)
     count = 0
     for repo, spec_map in data["repos"].items():
         base = os.path.join(out_dir, repo)
