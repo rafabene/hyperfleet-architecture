@@ -193,7 +193,7 @@ Example of a facilitation comment on an Epic:
 - Prow labels the PR with its `area/*` labels and requests two reviewers from the area's `OWNERS` pool. Anyone else is welcome to review as well
 - A merge needs **one approval from an area approver** for every path the PR touches (see [Repository Ownership](owners.md#how-a-merge-works)). A reviewer's approval sets `lgtm`; the reviewer then `/assign`s an area approver to complete it
 - Approvers do not approve their own PRs
-- Reviewers **acknowledge within four working hours and give a substantive review within one business day**, or say so on the PR and `/unassign` so Prow picks someone else. If a PR has no review activity after one business day, bump the Slack thread
+- Reviewers **acknowledge within four working hours and give a substantive review within one business day**, or say so on the PR, `/uncc` yourself and `/auto-cc` so Prow requests someone else from the area's pool. If a PR has no review activity after one business day, bump the Slack thread
 - Multiple commits per PR are fine. **Once review has started, push fixes as new commits**; do not amend or force-push, so the reviewer can see what changed since their last pass. Rebase only to resolve a conflict
 - Tide **squashes on merge** with the PR title as the commit message, so the PR title must follow the [commit standard](../../hyperfleet/standards/commit-standard.md). Commits inside the PR do not reach `main`
 - In an emergency (broken `main`, live incident) with no area approver available, a tech lead approves and says so in the PR

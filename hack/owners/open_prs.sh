@@ -32,9 +32,14 @@ FORK_OWNER="$(gh api user --jq .login)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
-mapfile -t REPOS < <(ls "${OUT}")
 if [[ $# -gt 0 ]]; then
   REPOS=("$@")
+else
+  if [[ ! -d "${OUT}" ]]; then
+    echo "rendered OWNERS directory not found: ${OUT} (run 'make owners' first)" >&2
+    exit 1
+  fi
+  mapfile -t REPOS < <(ls -A "${OUT}")
 fi
 
 read -r -d '' BODY <<EOM || true
@@ -81,13 +86,22 @@ for repo in "${REPOS[@]}"; do
   echo "== ${ORG}/${repo}"
   src="${OUT}/${repo}"
   dir="${WORK}/${repo}"
+  # never stage a root OWNERS deletion: the rendered set for this repository must exist
+  if [[ ! -f "${src}/OWNERS" ]]; then
+    echo "no rendered root OWNERS for ${repo} at ${src}/OWNERS (not in owners.yaml, or run 'make owners')" >&2
+    exit 1
+  fi
   git clone --quiet "git@github.com:${ORG}/${repo}.git" "${dir}"
   (
     cd "${dir}"
     git checkout -q -b "${BRANCH}"
-    # remove every tracked OWNERS and OWNERS_ALIASES, then copy the rendered set
-    # a repository with no OWNERS yet is fine, grep then matches nothing
-    { git ls-files -z | grep -z -E '(^|/)OWNERS(_ALIASES)?$' || true; } | xargs -0 -r git rm -q
+    # remove every tracked OWNERS and OWNERS_ALIASES, then copy the rendered set.
+    # git ls-files failures stay fatal; only grep's "no match" (exit 1) is tolerated,
+    # because a repository with no OWNERS yet is fine.
+    # NUL-separated lists go through files: command substitution would drop the NULs.
+    git ls-files -z > "${WORK}/${repo}.tracked"
+    grep -z -E '(^|/)OWNERS(_ALIASES)?$' "${WORK}/${repo}.tracked" > "${WORK}/${repo}.owners" || [[ $? -eq 1 ]]
+    xargs -0 -r git rm -q < "${WORK}/${repo}.owners"
     (cd "${src}" && find . -type f -print0) | while IFS= read -r -d '' f; do
       mkdir -p "$(dirname "${f}")"
       cp "${src}/${f}" "${f}"
@@ -105,19 +119,35 @@ for repo in "${REPOS[@]}"; do
     git commit -q -m "${TITLE}"
     # Push to the caller's fork, or to a branch on the org repository when the
     # caller's copy is not registered as a fork (GitHub refuses a cross-repo PR then).
-    head_ref="${FORK_OWNER}:${BRANCH}"
     if [[ "${PUSH_TO_ORIGIN:-0}" -eq 1 ]]; then
-      git push -q --force origin "${BRANCH}"
+      remote="origin"
+      head_owner="${ORG}"
       head_ref="${BRANCH}"
     else
+      remote="fork"
+      head_owner="${FORK_OWNER}"
+      head_ref="${FORK_OWNER}:${BRANCH}"
       if ! gh repo view "${FORK_OWNER}/${repo}" >/dev/null 2>&1; then
         gh repo fork "${ORG}/${repo}" --clone=false >/dev/null
       fi
       git remote add fork "git@github.com:${FORK_OWNER}/${repo}.git"
-      # the branch is ours and single purpose, so overwrite whatever a previous run left
-      git push -q --force fork "${BRANCH}"
     fi
-    existing="$(gh pr list --repo "${ORG}/${repo}" --state open --head "${BRANCH}" --json url --jq '.[0].url // empty')"
+    # An existing remote branch is only overwritten when it is this workflow's: an open
+    # PR in the org repository with that head, the expected owner and this title. The
+    # update is then leased on the OID observed here, never a blind force push.
+    remote_oid="$(git ls-remote "${remote}" "refs/heads/${BRANCH}" | cut -f1)"
+    existing="$(gh pr list --repo "${ORG}/${repo}" --state open --head "${BRANCH}" \
+      --json url,title,headRefName,headRepositoryOwner |
+      jq -r --arg owner "${head_owner}" --arg branch "${BRANCH}" --arg title "${TITLE}" \
+        '[.[] | select(.headRepositoryOwner.login == $owner and .headRefName == $branch and .title == $title)][0].url // empty')"
+    if [[ -z "${remote_oid}" ]]; then
+      git push -q "${remote}" "${BRANCH}"
+    elif [[ -n "${existing}" ]]; then
+      git push -q --force-with-lease="${BRANCH}:${remote_oid}" "${remote}" "${BRANCH}"
+    else
+      echo "  branch ${BRANCH} already exists on ${remote} (${remote_oid:0:7}) with no open PR titled '${TITLE}' from ${head_owner}; refusing to overwrite. Set BRANCH to a different name or remove the branch." >&2
+      exit 1
+    fi
     if [[ -n "${existing}" ]]; then
       echo "  PR already open: ${existing}"
       exit 0

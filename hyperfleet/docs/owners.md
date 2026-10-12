@@ -125,7 +125,7 @@ The [working agreement](working-agreement.md#code-review) says review for correc
 
 ### Reviewers
 
-- **Acknowledge within four working hours, substantive review within one business day.** If you cannot, say so on the PR and `/unassign` so Blunderbuss picks someone else.
+- **Acknowledge within four working hours, substantive review within one business day.** If you cannot, say so on the PR, `/uncc` yourself and `/auto-cc` so Blunderbuss requests someone else from the area's pool.
 - **Read the whole diff.** A review that only covers the first file is not a review.
 - **Say what kind of comment it is.** Every comment is one of: fix before merge, follow-up (with a ticket or a named place it is tracked), or FYI. Pre-production, only reproducible failures block.
 - **Aim for about four reviews a week.** That is roughly three hours. It is not forty.

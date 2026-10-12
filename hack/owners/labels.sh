@@ -24,15 +24,24 @@ color_for() {
   esac
 }
 
-mapfile -t REPOS < <(python3 -c "import yaml; print('\n'.join(yaml.safe_load(open('${SOURCE}'))['repos']))")
+mapfile -t REPOS < <(python3 - "${SOURCE}" <<'PY'
+import sys
+import yaml
+with open(sys.argv[1]) as f:
+    print("\n".join(yaml.safe_load(f)["repos"]))
+PY
+)
 if [[ $# -gt 0 ]]; then
   REPOS=("$@")
 fi
-mapfile -t LABELS < <(python3 -c "
+mapfile -t LABELS < <(python3 - "${SOURCE}" <<'PY'
+import sys
 import yaml
-for name, desc in yaml.safe_load(open('${SOURCE}'))['labels'].items():
-    print(f'{name}\t{desc}')
-")
+with open(sys.argv[1]) as f:
+    for name, desc in yaml.safe_load(f)["labels"].items():
+        print(f"{name}\t{desc}")
+PY
+)
 
 for repo in "${REPOS[@]}"; do
   echo "== ${ORG}/${repo}"

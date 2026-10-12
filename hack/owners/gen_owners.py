@@ -136,17 +136,30 @@ def splice_table(text, new_table):
 
 
 def clear_out_dir(out_dir):
-    """Remove a previous render so the output reflects only the current repository set."""
-    out_dir = os.path.abspath(out_dir)
-    protected = {os.path.abspath(os.sep), ROOT, os.getcwd()}
-    if out_dir in protected or ROOT.startswith(out_dir + os.sep):
-        raise SystemExit(f"refusing to clear {out_dir}: pass a dedicated output directory")
-    shutil.rmtree(out_dir, ignore_errors=True)
-    os.makedirs(out_dir, exist_ok=True)
+    """Remove a previous render so the output reflects only the current repository set.
+
+    Symlinks are resolved first so the check and the deletion see the same real path.
+    The target may not be the filesystem root, the repository, the current directory,
+    or a parent of the repository. Inside the repository only hack/owners/ is allowed,
+    so a stray --out can never delete documentation.
+    """
+    target = os.path.realpath(out_dir)
+    root = os.path.realpath(ROOT)
+    cwd = os.path.realpath(os.getcwd())
+    allowed_in_root = os.path.join(root, "hack", "owners")
+    if target in {os.path.realpath(os.sep), root, cwd}:
+        raise SystemExit(f"refusing to clear {target}: pass a dedicated output directory")
+    if os.path.commonpath([target, root]) == target:
+        raise SystemExit(f"refusing to clear {target}: it contains the repository")
+    if os.path.commonpath([target, root]) == root and os.path.commonpath([target, allowed_in_root]) != allowed_in_root:
+        raise SystemExit(f"refusing to clear {target}: inside the repository only {allowed_in_root} may be used")
+    shutil.rmtree(target, ignore_errors=True)
+    os.makedirs(target, exist_ok=True)
+    return target
 
 
 def render(data, out_dir):
-    clear_out_dir(out_dir)
+    out_dir = clear_out_dir(out_dir)
     count = 0
     for repo, spec_map in data["repos"].items():
         base = os.path.join(out_dir, repo)
