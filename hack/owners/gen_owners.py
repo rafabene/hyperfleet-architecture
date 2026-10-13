@@ -3,10 +3,12 @@
 
 Usage:
   gen_owners.py render [--out DIR]   write OWNERS_ALIASES and OWNERS per repository
-                                     (default hack/owners/out) and refresh the table
-                                     in hyperfleet/docs/owners.md
-  gen_owners.py check                fail if the table in owners.md is stale, the
-                                     YAML is inconsistent, or a path's approvers or
+                                     (default hack/owners/out), refresh the table in
+                                     hyperfleet/docs/owners.md and copy its criteria
+                                     block into hyperfleet/docs/working-agreement.md
+  gen_owners.py check                fail if the table in owners.md or the criteria
+                                     copy in the working agreement is stale, the YAML
+                                     is inconsistent, or a path's approvers or
                                      reviewers differ from its area row in the table
   gen_owners.py table                print the area table
 
@@ -22,9 +24,15 @@ import yaml
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SOURCE = os.path.join(ROOT, "hyperfleet", "docs", "owners.yaml")
 DOC = os.path.join(ROOT, "hyperfleet", "docs", "owners.md")
+AGREEMENT = os.path.join(ROOT, "hyperfleet", "docs", "working-agreement.md")
 DEFAULT_OUT = os.path.join(ROOT, "hack", "owners", "out")
 TABLE_START = "<!-- owners-table:start -->"
 TABLE_END = "<!-- owners-table:end -->"
+# The criteria are authored once in owners.md between these markers and copied
+# into the working agreement between the same markers, with headings one level
+# deeper because the agreement's section sits under a level-three heading.
+CRITERIA_START = "<!-- owners-criteria:start -->"
+CRITERIA_END = "<!-- owners-criteria:end -->"
 
 # Fallback approver sets that are never auto-requested as reviewers.
 FALLBACK_ALIASES = {"tech-leads", "architecture-approvers"}
@@ -192,13 +200,32 @@ def table(data):
     return "\n".join(rows)
 
 
-def splice_table(text, new_table):
-    start = text.find(TABLE_START)
-    end = text.find(TABLE_END)
+def splice(text, start_marker, end_marker, block, path):
+    """Replace what sits between the two markers in text with block."""
+    start = text.find(start_marker)
+    end = text.find(end_marker)
     if start < 0 or end < 0 or end < start:
-        raise SystemExit(f"{DOC}: table markers missing")
-    start += len(TABLE_START)
-    return text[:start] + "\n" + new_table + "\n" + text[end:]
+        raise SystemExit(f"{os.path.relpath(path, ROOT)}: markers {start_marker} and {end_marker} missing or out of order")
+    start += len(start_marker)
+    return text[:start] + "\n" + block + "\n" + text[end:]
+
+
+def splice_table(text, new_table):
+    return splice(text, TABLE_START, TABLE_END, new_table, DOC)
+
+
+def criteria_block(doc_text):
+    """The criteria as written in owners.md, headings demoted one level for the agreement."""
+    start = doc_text.find(CRITERIA_START)
+    end = doc_text.find(CRITERIA_END)
+    if start < 0 or end < 0 or end < start:
+        raise SystemExit(f"{os.path.relpath(DOC, ROOT)}: criteria markers missing or out of order")
+    block = doc_text[start + len(CRITERIA_START):end].strip("\n")
+    return "\n".join("#" + line if line.startswith("#") else line for line in block.splitlines())
+
+
+def splice_criteria(agreement_text, doc_text):
+    return splice(agreement_text, CRITERIA_START, CRITERIA_END, criteria_block(doc_text), AGREEMENT)
 
 
 def clear_out_dir(out_dir):
@@ -249,6 +276,12 @@ def render(data, out_dir):
     if new_text != text:
         with open(DOC, "w") as f:
             f.write(new_text)
+    with open(AGREEMENT) as f:
+        agreement = f.read()
+    new_agreement = splice_criteria(agreement, new_text)
+    if new_agreement != agreement:
+        with open(AGREEMENT, "w") as f:
+            f.write(new_agreement)
     return count
 
 
@@ -258,6 +291,10 @@ def check(data):
         text = f.read()
     if splice_table(text, table(data)) != text:
         errors.append(f"{os.path.relpath(DOC, ROOT)}: area table is stale, run gen_owners.py render")
+    with open(AGREEMENT) as f:
+        agreement = f.read()
+    if splice_criteria(agreement, text) != agreement:
+        errors.append(f"{os.path.relpath(AGREEMENT, ROOT)}: criteria copy differs from owners.md, run gen_owners.py render")
     for e in errors:
         print(f"error: {e}", file=sys.stderr)
     return not errors

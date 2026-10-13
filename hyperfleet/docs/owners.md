@@ -76,6 +76,7 @@ The tech leads sit in every root approver set as the fallback, not the routine m
 
 ## The criteria
 
+<!-- owners-criteria:start -->
 **Reviewer and approver status in an area follows the criteria below and nothing else. Title, level, tenure and team do not count, for anyone, including the tech leads.**
 
 The bar is deliberately concrete. It is sized for a team of ten, and the shape is the Kubernetes community ladder: contribute, review, get sponsored, and keep doing it.
@@ -107,6 +108,8 @@ You are ready when all of these are true:
 ### How the table was set
 
 The same criteria were applied to everyone at launch, using the last three sprints of authored PRs and reviews. Nobody is an approver on title or on history alone. The same criteria, applied the same way, are used at every quarterly sweep.
+
+<!-- owners-criteria:end -->
 
 ### How to apply
 
@@ -157,7 +160,7 @@ Approving means: I read the whole diff, I checked the behavioural claims against
 ### Changing the table
 
 1. Open a PR to [`owners.yaml`](owners.yaml) in this repository. For a role change, follow [How to apply](#how-to-apply).
-2. Run `make owners` to regenerate the table in this document and the `OWNERS` files under `hack/owners/out/`. `make verify-owners` fails when the table is stale or when any path's approvers or reviewers differ from its area's row, so the table and the `OWNERS` files cannot drift apart. The scripts under `hack/owners/` run on the bash 3.2 that macOS ships.
+2. Run `make owners` to regenerate the table in this document, the copy of the criteria in the [working agreement](working-agreement.md#repository-roles-reviewer-and-approver), and the `OWNERS` files under `hack/owners/out/`. `make verify-owners` fails when the table or that copy is stale, or when any path's approvers or reviewers differ from its area's row, so the three cannot drift apart. The criteria are edited here only. The scripts under `hack/owners/` run on the bash 3.2 that macOS ships.
 3. Once merged, run `hack/owners/open_prs.sh` to open the `OWNERS` PRs in the affected repositories.
 
 ## References

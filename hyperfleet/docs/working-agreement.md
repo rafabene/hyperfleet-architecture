@@ -56,32 +56,43 @@ This section defines the two roles the team asks about most: the **Feature Owner
 
 ### Repository roles: reviewer and approver
 
-Code review and merge rights are a third axis, declared per directory in `OWNERS` files and enforced by Prow. The full model, the current area table and how to apply are in [Repository Ownership](owners.md). The criteria are repeated here because they are rules of this agreement, not guidance.
+Code review and merge rights are a third axis, declared per directory in `OWNERS` files and enforced by Prow. The two roles, the current area table and how to apply are in [Repository Ownership](owners.md). The criteria below are rules of this agreement, not guidance. They are written once in that document and copied here by the generator, so the two cannot differ.
 
+<!-- owners-criteria:start -->
 **Reviewer and approver status in an area follows the criteria below and nothing else. Title, level, tenure and team do not count, for anyone, including the tech leads.**
 
-| Role | What it means |
-| ---- | ------------- |
-| **Reviewer** | You know the area well enough to give a substantive first review. Prow requests you on PRs in the area. Your approving review sets `lgtm`, and an approver still has to sign off. |
-| **Approver** | You can be the last check on the area. Your approval merges the PR on its own. You are accountable for what merges into the area. |
+The bar is deliberately concrete. It is sized for a team of ten, and the shape is the Kubernetes community ladder: contribute, review, get sponsored, and keep doing it.
 
-**Reviewer in an area**, all of:
+#### Reviewer in an area
 
-1. Five PRs you authored have merged in the area.
-2. Five reviews in the area with comments you wrote yourself, having read the diff.
-3. A current approver of the area sponsors you.
+You are ready when all of these are true:
 
-**Approver in an area**, all of:
+1. You have authored **five PRs** that merged in the area.
+2. You have given **five reviews** in the area with comments you wrote yourself. Running the review plugin is fine and encouraged, but the findings you post are yours, and you have read the diff.
+3. One current approver of the area **sponsors** you.
 
-1. Reviewer in the area for at least two sprints.
-2. Primary reviewer on ten PRs in the area, at least three substantial (a design change, or over 300 lines), and your review changed at least some of them.
-3. One story shipped end to end in the area with a reviewer other than the area's most active approver, or a design-level change for it (ADR, design doc, or an epic's story decomposition).
-4. You know the tests that cover the area.
-5. Nominated by an existing approver in a PR to `owners.yaml`, with no objection from another approver within three working days.
+#### Approver in an area
 
-**Staying an approver:** no reviews in the area for two sprints moves you back to reviewer at the next sweep. One sprint of reviewing and a request restores you within six months without re-qualifying. On loan or leave, step back for the duration. Leaving the team removes you from every alias.
+You are ready when all of these are true:
 
-The same criteria were applied to everyone at launch, using the last three sprints, and are applied the same way at every quarterly sweep. The tech leads are the fallback approver in every repository root, not the routine merger.
+1. You have been a reviewer in the area for **at least two sprints**.
+2. You have been the **primary reviewer on ten PRs** in the area. At least three were substantial (a design change, or over 300 lines), and your review changed at least some of them.
+3. You have **shipped one story end to end** in the area with a reviewer other than the area's most active approver, or you have written a design-level change for it (an ADR, a design doc, or the story decomposition of an epic).
+4. You know the **tests that cover the area**: which suites exercise it, what they do and do not check, and where a change would need a new one.
+5. An existing approver **nominates** you in a PR to `owners.yaml`, and no other approver objects within three working days.
+
+#### Staying an approver
+
+- An approver with **no reviews in the area for two sprints** moves back to the reviewer alias at the next sweep. Nothing is lost: review in the area for a sprint and ask, and you are re-added without re-qualifying if it is within six months.
+- On loan or extended leave, tell the other approvers in the area and either `/uncc` yourself or move to the reviewer alias for the duration.
+- Leaving the team removes you from every alias in the same PR that removes your access.
+
+#### How the table was set
+
+The same criteria were applied to everyone at launch, using the last three sprints of authored PRs and reviews. Nobody is an approver on title or on history alone. The same criteria, applied the same way, are used at every quarterly sweep.
+<!-- owners-criteria:end -->
+
+The tech leads are the fallback approver in every repository root, not the routine merger.
 
 ### Feature Owner (Level 4)
 
