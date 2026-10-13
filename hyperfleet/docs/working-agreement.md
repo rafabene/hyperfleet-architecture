@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Team
-Last Updated: 2026-08-18
+Last Updated: 2026-10-12
 ---
 
 # HyperFleet Working Agreement
@@ -53,6 +53,46 @@ Ownership runs on two axes that coexist:
 The two intersect during delivery: the **Epic Owner drives the Epic to done**, but **technical-approach decisions defer to the Domain Owner** of the affected component (and to the Architect for cross-component contracts). Domain ownership — its Contributor → Key Contributor → Owner progression — and the full role ladder are defined in the [HyperFleet Team Operating Model](https://docs.google.com/document/d/1Pqq9EdWGBuMR00wL7sguZHGFiP5_f4aQ2VPoDcW5HCA/edit?tab=t.bthlqz8tix2a).
 
 This section defines the two roles the team asks about most: the **Feature Owner** and the **Epic Owner**.
+
+### Repository roles: reviewer and approver
+
+Code review and merge rights are a third axis, declared per directory in `OWNERS` files and enforced by Prow. The two roles, the current area table and how to apply are in [Repository Ownership](owners.md). The criteria below are rules of this agreement, not guidance. They are written once in that document and copied here by the generator, so the two cannot differ.
+
+<!-- owners-criteria:start -->
+**Reviewer and approver status in an area follows the criteria below and nothing else. Title, level, tenure and team do not count, for anyone, including the tech leads.**
+
+The bar is deliberately concrete. It is sized for a team of ten, and the shape is the Kubernetes community ladder: contribute, review, get sponsored, and keep doing it.
+
+#### Reviewer in an area
+
+You are ready when all of these are true:
+
+1. You have authored **five PRs** that merged in the area.
+2. You have given **five reviews** in the area with comments you wrote yourself. Running the review plugin is fine and encouraged, but the findings you post are yours, and you have read the diff.
+3. One current approver of the area **sponsors** you.
+
+#### Approver in an area
+
+You are ready when all of these are true:
+
+1. You have been a reviewer in the area for **at least two sprints**.
+2. You have been the **primary reviewer on ten PRs** in the area. At least three were substantial (a design change, or over 300 lines), and your review changed at least some of them.
+3. You have **shipped one story end to end** in the area with a reviewer other than the area's most active approver, or you have written a design-level change for it (an ADR, a design doc, or the story decomposition of an epic).
+4. You know the **tests that cover the area**: which suites exercise it, what they do and do not check, and where a change would need a new one.
+5. An existing approver **nominates** you in a PR to `owners.yaml`, and no other approver objects within three working days.
+
+#### Staying an approver
+
+- An approver with **no reviews in the area for two sprints** moves back to the reviewer alias at the next sweep. Nothing is lost: review in the area for a sprint and ask, and you are re-added without re-qualifying if it is within six months.
+- On loan or extended leave, tell the other approvers in the area and either `/uncc` yourself or move to the reviewer alias for the duration.
+- Leaving the team removes you from every alias in the same PR that removes your access.
+
+#### How the table was set
+
+The same criteria were applied to everyone at launch, using the last three sprints of authored PRs and reviews. Nobody is an approver on title or on history alone. The same criteria, applied the same way, are used at every quarterly sweep.
+<!-- owners-criteria:end -->
+
+The tech leads are the fallback approver in every repository root, not the routine merger.
 
 ### Feature Owner (Level 4)
 
@@ -131,7 +171,7 @@ Example of a facilitation comment on an Epic:
 - **Epic Owner (engineer)** — owns *delivering one Epic*: breakdown, readiness, tracking, and demo, within the release. Altitude: execution of a single Epic.
 - Beyond co-owning Features, the **Tech Lead** also owns *sprint execution across Epics*: planning, commitment, capacity, and unblocking, and holds Epic Owners accountable for delivery.
 
-> **See also:** the [HyperFleet Team Operating Model](https://docs.google.com/document/d/1Pqq9EdWGBuMR00wL7sguZHGFiP5_f4aQ2VPoDcW5HCA/edit?tab=t.bthlqz8tix2a) for the full role ladder, Domain Ownership model, decision-making framework, and escalation paths (the canonical source for team roles); the [Sprint Planning — Architect & Tech Lead Roles](https://docs.google.com/document/d/1TV5hNX02fgsHVD_2SHjg9SpmMbPHfiDq1RGLYOz8s3I/edit) document for how these roles interact during sprint planning; and the [Work Assignment Process](https://docs.google.com/document/d/1Pqq9EdWGBuMR00wL7sguZHGFiP5_f4aQ2VPoDcW5HCA/edit?tab=t.dssq8ihx7z3) (a tab of the Operating Model) for ticket assignment, the Epic Owner model, and reactive-work capacity.
+> **See also:** the [HyperFleet Team Operating Model](https://docs.google.com/document/d/1Pqq9EdWGBuMR00wL7sguZHGFiP5_f4aQ2VPoDcW5HCA/edit?tab=t.bthlqz8tix2a) for the full role ladder, Domain Ownership model, decision-making framework, and escalation paths (the canonical source for team roles; repository reviewer and approver roles are governed by this agreement and [Repository Ownership](owners.md)); the [Sprint Planning — Architect & Tech Lead Roles](https://docs.google.com/document/d/1TV5hNX02fgsHVD_2SHjg9SpmMbPHfiDq1RGLYOz8s3I/edit) document for how these roles interact during sprint planning; and the [Work Assignment Process](https://docs.google.com/document/d/1Pqq9EdWGBuMR00wL7sguZHGFiP5_f4aQ2VPoDcW5HCA/edit?tab=t.dssq8ihx7z3) (a tab of the Operating Model) for ticket assignment, the Epic Owner model, and reactive-work capacity.
 
 ---
 
@@ -161,13 +201,15 @@ Example of a facilitation comment on an Epic:
 
 ### 4. Review and Merge
 
-- Multiple commits per PR are fine, but each commit message should be meaningful
-- Allow **24 hours** for peer review (accounts for time zone differences)
-- If a PR has no review activity after 24 hours, bump the Slack thread with a reminder
-- For urgent changes, use judgement but document rationale clearly
-- For major architectural changes, wait for at least one Technical Leader review
+- Prow labels the PR with its `area/*` labels and requests two reviewers from the area's `OWNERS` pool. Anyone else is welcome to review as well
+- A merge needs **one approval from an area approver** for every path the PR touches (see [Repository Ownership](owners.md#how-a-merge-works)). A reviewer's approval sets `lgtm`; the reviewer then `/assign`s an area approver to complete it
+- Approvers do not approve their own PRs
+- Reviewers **acknowledge within four working hours and give a substantive review within one business day**, or say so on the PR, `/uncc` yourself and `/auto-cc` so Prow requests someone else from the area's pool. If a PR has no review activity after one business day, bump the Slack thread
+- Multiple commits per PR are fine. **Once review has started, push fixes as new commits**; do not amend or force-push, so the reviewer can see what changed since their last pass. Rebase only to resolve a conflict
+- Tide **squashes on merge** with the PR title as the commit message, so the PR title must follow the [commit standard](../../hyperfleet/standards/commit-standard.md). Commits inside the PR do not reach `main`
+- In an emergency (broken `main`, live incident) with no area approver available, a tech lead approves and says so in the PR
+- An approver who wants a second review on a risky change (migrations, tenant isolation, release plumbing, RBAC) asks for it on the PR with `/hold` until it lands
 - Use the Jira Development Panel to track PR status directly from the ticket (see [GitHub-Jira Integration](github-jira-integration.md))
-- Merge once approved with no objections
 
 ### 5. Close the Ticket
 
@@ -191,13 +233,22 @@ Example of a facilitation comment on an Epic:
 
 - Everyone is welcome to add comments to a review — every question is valid
 - Be constructive and specific
-- Distinguish between blocking issues and suggestions (prefix with `nit:` for non-blocking)
+- Say what kind of comment it is: **fix before merge**, **follow-up** (with a ticket or a named place it is tracked), or **FYI** (prefix with `nit:` for non-blocking). Pre-production, only reproducible failures block
+- Read the whole diff. A review that only covers the first file is not a review
 - If you approve with suggestions, trust the author to address them
 - Don't block PRs on style preferences already covered by linting
 
+### Approver Guidelines
+
+- Approving means: I read the whole diff, I checked the behavioural claims against the code, and I would be comfortable debugging this in production
+- Do not approve what you have not verified. Say when a change is outside your depth and name who should look
+- Approve the change, not the author
+
 ### Author Guidelines
 
-- Keep PRs focused and reviewable (smaller is better)
+- You own every claim in your PR, whoever or whatever wrote the description. Behavioural claims cite a file and line or a test
+- Read your own diff before you ask a person to. A green bot is not the same as ready for review
+- Keep PRs focused and reviewable (smaller is better). Over about 400 non-generated lines, add a short review plan to the description
 - Respond to all review comments, even if just acknowledging
 - If you disagree with feedback, discuss it — don't ignore it
 

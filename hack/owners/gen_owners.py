@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""Render OWNERS files and the ownership table from hyperfleet/docs/owners.yaml.
+
+Usage:
+  gen_owners.py render [--out DIR]   write OWNERS_ALIASES and OWNERS per repository
+                                     (default hack/owners/out), refresh the table in
+                                     hyperfleet/docs/owners.md and copy its criteria
+                                     block into hyperfleet/docs/working-agreement.md
+  gen_owners.py check                fail if the table in owners.md or the criteria
+                                     copy in the working agreement is stale, the YAML
+                                     is inconsistent, or a path's approvers or
+                                     reviewers differ from its area row in the table
+  gen_owners.py table                print the area table
+
+Rules applied at render time are documented at the top of owners.yaml.
+"""
+import argparse
+import os
+import shutil
+import sys
+
+import yaml
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+SOURCE = os.path.join(ROOT, "hyperfleet", "docs", "owners.yaml")
+DOC = os.path.join(ROOT, "hyperfleet", "docs", "owners.md")
+AGREEMENT = os.path.join(ROOT, "hyperfleet", "docs", "working-agreement.md")
+DEFAULT_OUT = os.path.join(ROOT, "hack", "owners", "out")
+TABLE_START = "<!-- owners-table:start -->"
+TABLE_END = "<!-- owners-table:end -->"
+# The criteria are authored once in owners.md between these markers and copied
+# into the working agreement between the same markers, with headings one level
+# deeper because the agreement's section sits under a level-three heading.
+CRITERIA_START = "<!-- owners-criteria:start -->"
+CRITERIA_END = "<!-- owners-criteria:end -->"
+
+# Fallback approver sets that are never auto-requested as reviewers.
+FALLBACK_ALIASES = {"tech-leads", "architecture-approvers"}
+
+
+def load():
+    with open(SOURCE) as f:
+        return yaml.safe_load(f)
+
+
+def dedupe(items):
+    seen, out = set(), []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def expand(data, names):
+    aliases = data["aliases"]
+    out = []
+    for n in names:
+        out.extend(aliases[n] if n in aliases else [n])
+    return dedupe(out)
+
+
+def reviewers_for(spec):
+    """Reviewers plus the path's approvers, minus the fallback aliases."""
+    approvers = [a for a in spec.get("approvers", []) if a not in FALLBACK_ALIASES]
+    return dedupe(list(spec.get("reviewers", [])) + approvers)
+
+
+def owners_doc(spec):
+    doc = {}
+    if spec.get("approvers"):
+        doc["approvers"] = list(spec["approvers"])
+    reviewers = reviewers_for(spec)
+    if reviewers:
+        doc["reviewers"] = reviewers
+    if spec.get("labels"):
+        doc["labels"] = list(spec["labels"])
+    return doc
+
+
+def used_aliases(data, spec_map):
+    used = set()
+    for spec in spec_map.values():
+        for n in list(spec.get("approvers", [])) + reviewers_for(spec):
+            if n in data["aliases"]:
+                used.add(n)
+    return sorted(used)
+
+
+def dump(obj):
+    return yaml.safe_dump(obj, sort_keys=False, default_flow_style=False)
+
+
+def validate(data):
+    errors = []
+    people = set(data["people"])
+    for alias, members in data["aliases"].items():
+        for m in members:
+            if m not in people:
+                errors.append(f"alias {alias}: unknown login {m}")
+    for repo, spec_map in data["repos"].items():
+        for path, spec in spec_map.items():
+            for key in ("approvers", "reviewers"):
+                for n in spec.get(key, []):
+                    if n not in data["aliases"] and n not in people:
+                        errors.append(f"{repo}/{path or '(root)'} {key}: unknown name {n}")
+            for label in spec.get("labels", []):
+                if label not in data["labels"]:
+                    errors.append(f"{repo}/{path or '(root)'}: label {label} not in labels")
+            if path == "" and not spec.get("approvers"):
+                errors.append(f"{repo}: root OWNERS has no approvers")
+    areas = {a["name"]: a for a in data["areas"]}
+    for area in data["areas"]:
+        for key in ("approvers", "reviewers"):
+            for n in area.get(key, []):
+                if n not in data["aliases"] and n not in people:
+                    errors.append(f"area {area['name']} {key}: unknown name {n}")
+        if area["label"] not in data["labels"]:
+            errors.append(f"area {area['name']}: label {area['label']} not in labels")
+        if area.get("inherits") and area["inherits"] not in areas:
+            errors.append(f"area {area['name']}: inherits unknown area {area['inherits']}")
+    if not errors:
+        errors.extend(validate_areas(data, areas))
+    return errors
+
+
+def area_approvers(areas, area):
+    """The area's approvers, following `inherits` to the parent row."""
+    while area.get("inherits"):
+        area = areas[area["inherits"]]
+    return list(area.get("approvers", []))
+
+
+def logins(data, names):
+    """Expanded login set, with the fallback aliases left out."""
+    return set(expand(data, [n for n in names if n not in FALLBACK_ALIASES]))
+
+
+def describe(have, want):
+    parts = []
+    if have - want:
+        parts.append("extra " + ", ".join(sorted(have - want)))
+    if want - have:
+        parts.append("missing " + ", ".join(sorted(want - have)))
+    return "; ".join(parts)
+
+
+def validate_areas(data, areas):
+    """Every path with approvers names an area, and matches that area's row.
+
+    Approvers are compared without the fallback aliases, which the root OWNERS of
+    most repositories carry and the table shows only where they are the area's
+    second approver. Reviewers are compared as rendered, so the area's approvers
+    count on both sides. A path without approvers inherits them from its parent
+    OWNERS and only its reviewers are checked.
+    """
+    errors = []
+    named = set()
+    for repo, spec_map in data["repos"].items():
+        for path, spec in spec_map.items():
+            where = f"{repo}/{path or '(root)'}"
+            name = spec.get("area")
+            if name is None:
+                if spec.get("approvers"):
+                    errors.append(f"{where}: has approvers but names no area")
+                continue
+            if name not in areas:
+                errors.append(f"{where}: unknown area {name}")
+                continue
+            named.add(name)
+            area = areas[name]
+            want_approvers = logins(data, area_approvers(areas, area))
+            want_reviewers = logins(data, area["reviewers"]) | want_approvers
+            if spec.get("approvers"):
+                have = logins(data, spec["approvers"])
+                if have != want_approvers:
+                    errors.append(f"{where}: approvers differ from area {name}: {describe(have, want_approvers)}")
+            have = logins(data, reviewers_for(spec))
+            if have != want_reviewers:
+                errors.append(f"{where}: reviewers differ from area {name}: {describe(have, want_reviewers)}")
+    for name in areas:
+        if name not in named:
+            errors.append(f"area {name}: no path in repos names it")
+    return errors
+
+
+def names(data, logins):
+    return ", ".join(f"{data['people'][l]} ({l})" for l in logins)
+
+
+def table(data):
+    rows = ["| Area | Paths | Approvers | Reviewers |", "|---|---|---|---|"]
+    for area in data["areas"]:
+        if area.get("inherits"):
+            approvers = f"inherits {area['inherits']}"
+        else:
+            approvers = names(data, expand(data, area["approvers"]))
+        reviewers = names(data, expand(data, area["reviewers"]))
+        rows.append(f"| {area['name']} | {area['paths']} | {approvers} | {reviewers} |")
+    return "\n".join(rows)
+
+
+def splice(text, start_marker, end_marker, block, path):
+    """Replace what sits between the two markers in text with block."""
+    start = text.find(start_marker)
+    end = text.find(end_marker)
+    if start < 0 or end < 0 or end < start:
+        raise SystemExit(f"{os.path.relpath(path, ROOT)}: markers {start_marker} and {end_marker} missing or out of order")
+    start += len(start_marker)
+    return text[:start] + "\n" + block + "\n" + text[end:]
+
+
+def splice_table(text, new_table):
+    return splice(text, TABLE_START, TABLE_END, new_table, DOC)
+
+
+def criteria_block(doc_text):
+    """The criteria as written in owners.md, headings demoted one level for the agreement."""
+    start = doc_text.find(CRITERIA_START)
+    end = doc_text.find(CRITERIA_END)
+    if start < 0 or end < 0 or end < start:
+        raise SystemExit(f"{os.path.relpath(DOC, ROOT)}: criteria markers missing or out of order")
+    block = doc_text[start + len(CRITERIA_START):end].strip("\n")
+    return "\n".join("#" + line if line.startswith("#") else line for line in block.splitlines())
+
+
+def splice_criteria(agreement_text, doc_text):
+    return splice(agreement_text, CRITERIA_START, CRITERIA_END, criteria_block(doc_text), AGREEMENT)
+
+
+def clear_out_dir(out_dir):
+    """Remove a previous render so the output reflects only the current repository set.
+
+    Symlinks are resolved first so the check and the deletion see the same real path.
+    The target may not be the filesystem root, the repository, the current directory,
+    or a parent of the repository. Inside the repository only a directory under
+    hack/owners/ is allowed (not hack/owners itself), so a stray --out can never
+    delete documentation or these scripts.
+    """
+    target = os.path.realpath(out_dir)
+    root = os.path.realpath(ROOT)
+    cwd = os.path.realpath(os.getcwd())
+    allowed_in_root = os.path.join(root, "hack", "owners")
+    if target in {os.path.realpath(os.sep), root, cwd}:
+        raise SystemExit(f"refusing to clear {target}: pass a dedicated output directory")
+    if os.path.commonpath([target, root]) == target:
+        raise SystemExit(f"refusing to clear {target}: it contains the repository")
+    inside_root = os.path.commonpath([target, root]) == root
+    strict_descendant = target != allowed_in_root and os.path.commonpath([target, allowed_in_root]) == allowed_in_root
+    if inside_root and not strict_descendant:
+        raise SystemExit(f"refusing to clear {target}: inside the repository only a directory under {allowed_in_root} may be used")
+    shutil.rmtree(target, ignore_errors=True)
+    os.makedirs(target, exist_ok=True)
+    return target
+
+
+def render(data, out_dir):
+    out_dir = clear_out_dir(out_dir)
+    count = 0
+    for repo, spec_map in data["repos"].items():
+        base = os.path.join(out_dir, repo)
+        os.makedirs(base, exist_ok=True)
+        aliases = used_aliases(data, spec_map)
+        if aliases:
+            with open(os.path.join(base, "OWNERS_ALIASES"), "w") as f:
+                f.write(dump({"aliases": {a: list(data["aliases"][a]) for a in aliases}}))
+        for path, spec in spec_map.items():
+            d = os.path.join(base, path) if path else base
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "OWNERS"), "w") as f:
+                f.write(dump(owners_doc(spec)))
+            count += 1
+    with open(DOC) as f:
+        text = f.read()
+    new_text = splice_table(text, table(data))
+    if new_text != text:
+        with open(DOC, "w") as f:
+            f.write(new_text)
+    with open(AGREEMENT) as f:
+        agreement = f.read()
+    new_agreement = splice_criteria(agreement, new_text)
+    if new_agreement != agreement:
+        with open(AGREEMENT, "w") as f:
+            f.write(new_agreement)
+    return count
+
+
+def check(data):
+    errors = validate(data)
+    with open(DOC) as f:
+        text = f.read()
+    if splice_table(text, table(data)) != text:
+        errors.append(f"{os.path.relpath(DOC, ROOT)}: area table is stale, run gen_owners.py render")
+    with open(AGREEMENT) as f:
+        agreement = f.read()
+    if splice_criteria(agreement, text) != agreement:
+        errors.append(f"{os.path.relpath(AGREEMENT, ROOT)}: criteria copy differs from owners.md, run gen_owners.py render")
+    for e in errors:
+        print(f"error: {e}", file=sys.stderr)
+    return not errors
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("render")
+    r.add_argument("--out", default=DEFAULT_OUT)
+    sub.add_parser("check")
+    sub.add_parser("table")
+    args = parser.parse_args()
+
+    data = load()
+    if args.cmd == "table":
+        print(table(data))
+        return
+    if args.cmd == "check":
+        sys.exit(0 if check(data) else 1)
+    errors = validate(data)
+    if errors:
+        for e in errors:
+            print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+    n = render(data, args.out)
+    print(f"wrote {n} OWNERS files across {len(data['repos'])} repositories to {os.path.relpath(args.out, ROOT)}")
+
+
+if __name__ == "__main__":
+    main()
