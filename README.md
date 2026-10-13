@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: Architecture Team
-Last Updated: 2025-11-07
+Last Updated: 2026-10-13
 ---
 
 # HyperFleet Architecture Repository
@@ -9,7 +9,7 @@ Last Updated: 2025-11-07
 ## Table of Contents
 
 - [Overview](#overview)
-- [Repository Access & MVP Process](#repository-access--mvp-process)
+- [Repository Access and Review](#repository-access-and-review)
 - [Repository Structure](#repository-structure)
 - [Document Types](#document-types)
   - [1. Architecture Overview (`hyperfleet/README.md`)](#1-architecture-overview-hyperfleetreadmemd)
@@ -53,33 +53,21 @@ This repository serves as the **single source of truth** for all architectural d
 
 ---
 
-## Repository Access & MVP Process
-
-**Current Phase**: MVP Development
+## Repository Access and Review
 
 **Access & Permissions**:
 
-- All developers in the HyperFleet team are granted **write access** to this repository
-- To support quick iteration during MVP, developers have **approve and merge access** if there are no objections from peers
-- This temporary process enables rapid documentation of decisions and scope changes
+- All developers in the HyperFleet team have **write access** to this repository
+- A merge needs an approval from an **area approver**, as declared in the `OWNERS` files and enforced by Prow. The process is in [Review and Merge Process](#review-and-merge-process) below
+- Reviewer and approver status is earned against the criteria in [Repository Ownership](hyperfleet/docs/owners.md), and nothing else
 
 **Repository Usage**:
 
 - This repository primarily records:
   - Architectural decisions and their rationale
-  - Trade-offs we're accepting during MVP
-  - Changes to MVP scope and priorities
-  - Technical debt we're consciously incurring
-
-**Post-MVP**:
-
-- Once MVP is complete, we will establish official processes for:
-  - Repository access management
-  - PR review requirements
-  - Approval workflows
-  - Documentation governance
-
-**During MVP, prioritize speed over process while maintaining clear documentation of decisions.**
+  - Trade-offs we are accepting
+  - Changes to scope and priorities
+  - Technical debt we are consciously incurring
 
 ---
 
