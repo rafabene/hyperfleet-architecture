@@ -3,7 +3,8 @@
 # repository listed there. Idempotent: existing labels are updated in place.
 #
 # Usage: hack/owners/labels.sh [--dry-run] [repo ...]
-# Needs gh authenticated with write access to the repositories.
+# Needs gh authenticated with write access to the repositories. Runs on the bash
+# 3.2 that macOS ships, so no mapfile, associative arrays or ${var,,}.
 set -euo pipefail
 
 ORG="openshift-hyperfleet"
@@ -24,7 +25,8 @@ color_for() {
   esac
 }
 
-mapfile -t REPOS < <(python3 - "${SOURCE}" <<'PY'
+REPOS=()
+while IFS= read -r line; do REPOS+=("${line}"); done < <(python3 - "${SOURCE}" <<'PY'
 import sys
 import yaml
 with open(sys.argv[1]) as f:
@@ -34,7 +36,8 @@ PY
 if [[ $# -gt 0 ]]; then
   REPOS=("$@")
 fi
-mapfile -t LABELS < <(python3 - "${SOURCE}" <<'PY'
+LABELS=()
+while IFS= read -r line; do LABELS+=("${line}"); done < <(python3 - "${SOURCE}" <<'PY'
 import sys
 import yaml
 with open(sys.argv[1]) as f:
@@ -42,6 +45,10 @@ with open(sys.argv[1]) as f:
         print(f"{name}\t{desc}")
 PY
 )
+if [[ ${#REPOS[@]} -eq 0 || ${#LABELS[@]} -eq 0 ]]; then
+  echo "no repositories or labels found in ${SOURCE}" >&2
+  exit 1
+fi
 
 for repo in "${REPOS[@]}"; do
   echo "== ${ORG}/${repo}"

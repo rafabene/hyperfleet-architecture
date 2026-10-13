@@ -7,7 +7,8 @@
 # with gh. Existing OWNERS files that the generator does not produce are removed,
 # so stale per-directory files go in the same change. With --draft the PR opens
 # as a draft and holds itself, so it cannot merge until it is marked ready and
-# the hold is lifted.
+# the hold is lifted. Runs on the bash 3.2 that macOS ships, so no mapfile,
+# associative arrays or unguarded empty-array expansion under set -u.
 set -euo pipefail
 
 ORG="openshift-hyperfleet"
@@ -39,7 +40,12 @@ else
     echo "rendered OWNERS directory not found: ${OUT} (run 'make owners' first)" >&2
     exit 1
   fi
-  mapfile -t REPOS < <(ls -A "${OUT}")
+  REPOS=()
+  while IFS= read -r line; do REPOS+=("${line}"); done < <(ls -A "${OUT}")
+fi
+if [[ ${#REPOS[@]} -eq 0 ]]; then
+  echo "nothing rendered under ${OUT} (run 'make owners' first)" >&2
+  exit 1
 fi
 
 read -r -d '' BODY <<EOM || true
@@ -158,7 +164,8 @@ for repo in "${REPOS[@]}"; do
       draft_flag=(--draft)
       body="${BODY}"$'\n\n/hold'
     fi
+    # ${arr[@]+"${arr[@]}"} is the empty-array form that bash 3.2 accepts under set -u
     gh pr create --repo "${ORG}/${repo}" --head "${head_ref}" --base main \
-      "${draft_flag[@]}" --title "${TITLE}" --body "${body}"
+      ${draft_flag[@]+"${draft_flag[@]}"} --title "${TITLE}" --body "${body}"
   )
 done

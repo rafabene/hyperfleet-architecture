@@ -5,8 +5,9 @@ Usage:
   gen_owners.py render [--out DIR]   write OWNERS_ALIASES and OWNERS per repository
                                      (default hack/owners/out) and refresh the table
                                      in hyperfleet/docs/owners.md
-  gen_owners.py check                fail if the table in owners.md is stale or the
-                                     YAML is inconsistent
+  gen_owners.py check                fail if the table in owners.md is stale, the
+                                     YAML is inconsistent, or a path's approvers or
+                                     reviewers differ from its area row in the table
   gen_owners.py table                print the area table
 
 Rules applied at render time are documented at the top of owners.yaml.
@@ -100,6 +101,7 @@ def validate(data):
                     errors.append(f"{repo}/{path or '(root)'}: label {label} not in labels")
             if path == "" and not spec.get("approvers"):
                 errors.append(f"{repo}: root OWNERS has no approvers")
+    areas = {a["name"]: a for a in data["areas"]}
     for area in data["areas"]:
         for key in ("approvers", "reviewers"):
             for n in area.get(key, []):
@@ -107,6 +109,70 @@ def validate(data):
                     errors.append(f"area {area['name']} {key}: unknown name {n}")
         if area["label"] not in data["labels"]:
             errors.append(f"area {area['name']}: label {area['label']} not in labels")
+        if area.get("inherits") and area["inherits"] not in areas:
+            errors.append(f"area {area['name']}: inherits unknown area {area['inherits']}")
+    if not errors:
+        errors.extend(validate_areas(data, areas))
+    return errors
+
+
+def area_approvers(areas, area):
+    """The area's approvers, following `inherits` to the parent row."""
+    while area.get("inherits"):
+        area = areas[area["inherits"]]
+    return list(area.get("approvers", []))
+
+
+def logins(data, names):
+    """Expanded login set, with the fallback aliases left out."""
+    return set(expand(data, [n for n in names if n not in FALLBACK_ALIASES]))
+
+
+def describe(have, want):
+    parts = []
+    if have - want:
+        parts.append("extra " + ", ".join(sorted(have - want)))
+    if want - have:
+        parts.append("missing " + ", ".join(sorted(want - have)))
+    return "; ".join(parts)
+
+
+def validate_areas(data, areas):
+    """Every path with approvers names an area, and matches that area's row.
+
+    Approvers are compared without the fallback aliases, which the root OWNERS of
+    most repositories carry and the table shows only where they are the area's
+    second approver. Reviewers are compared as rendered, so the area's approvers
+    count on both sides. A path without approvers inherits them from its parent
+    OWNERS and only its reviewers are checked.
+    """
+    errors = []
+    named = set()
+    for repo, spec_map in data["repos"].items():
+        for path, spec in spec_map.items():
+            where = f"{repo}/{path or '(root)'}"
+            name = spec.get("area")
+            if name is None:
+                if spec.get("approvers"):
+                    errors.append(f"{where}: has approvers but names no area")
+                continue
+            if name not in areas:
+                errors.append(f"{where}: unknown area {name}")
+                continue
+            named.add(name)
+            area = areas[name]
+            want_approvers = logins(data, area_approvers(areas, area))
+            want_reviewers = logins(data, area["reviewers"]) | want_approvers
+            if spec.get("approvers"):
+                have = logins(data, spec["approvers"])
+                if have != want_approvers:
+                    errors.append(f"{where}: approvers differ from area {name}: {describe(have, want_approvers)}")
+            have = logins(data, reviewers_for(spec))
+            if have != want_reviewers:
+                errors.append(f"{where}: reviewers differ from area {name}: {describe(have, want_reviewers)}")
+    for name in areas:
+        if name not in named:
+            errors.append(f"area {name}: no path in repos names it")
     return errors
 
 

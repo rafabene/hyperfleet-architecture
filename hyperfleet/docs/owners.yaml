@@ -9,6 +9,9 @@
 #   request them. The tech-leads and architecture-approvers aliases are the
 #   exception: they are fallback approvers and are never auto-requested.
 # - a path without approvers inherits the approvers of the closest parent OWNERS.
+# - every path that has approvers names its area. gen_owners.py check fails when a
+#   path's approvers or reviewers differ from the area row in the table, so the
+#   table and the OWNERS files cannot drift apart.
 
 people:
   ciaranRoche: Ciaran
@@ -145,7 +148,7 @@ areas:
     reviewers: [operator-reviewers]
     label: area/operator
   - name: Infra
-    paths: "hyperfleet-infra root, `terraform/envs`, `functions/lifecycle-enforcer`"
+    paths: "hyperfleet-infra root, everything not listed under Gateway, E2E or OCI"
     approvers: [infra-owners]
     reviewers: [infra-reviewers]
     label: area/infra
@@ -199,106 +202,107 @@ labels:
   tide/merge-method-merge: Keep the branch commits on merge instead of squashing
 
 # repo -> path -> OWNERS file. "" is the repository root.
-# approvers and reviewers are alias names or logins. Reviewers get the path's
-# approvers appended at render time (see the rule at the top).
+# area names the row of the table above that the path belongs to; approvers and
+# reviewers are alias names or logins and must match that row. Reviewers get the
+# path's approvers appended at render time (see the rule at the top). A path with
+# no approvers inherits them and only routes reviews, so it may name an area
+# without carrying its approvers.
 repos:
   hyperfleet-api:
-    "": {approvers: [api-owners, tech-leads], reviewers: [api-reviewers], labels: [area/api]}
-    pkg/tenant: {approvers: [tenancy-owners], reviewers: [tenancy-reviewers], labels: [area/tenancy]}
-    pkg/auth: {approvers: [tenancy-owners], reviewers: [tenancy-reviewers], labels: [area/auth]}
-    pkg/middleware: {approvers: [tenancy-owners, generic-model-owners], reviewers: [tenancy-reviewers], labels: [area/auth]}
-    pkg/dao: {approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
-    pkg/db: {approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model, area/search]}
-    pkg/registry: {approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
-    pkg/services: {approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
-    pkg/handlers: {approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
-    pkg/validation: {approvers: [generic-model-owners], reviewers: [search-reviewers], labels: [area/search]}
-    pkg/validators: {approvers: [generic-model-owners], reviewers: [search-reviewers], labels: [area/search]}
-    pkg/api: {approvers: [generic-model-owners], reviewers: [search-reviewers], labels: [area/search]}
-    pkg/telemetry: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    pkg/metrics: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    charts/dashboards: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    openapi: {approvers: [contracts-owners], reviewers: [contracts-reviewers], labels: [area/contracts]}
-    .tekton: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    "": {area: API, approvers: [api-owners, tech-leads], reviewers: [api-reviewers], labels: [area/api]}
+    pkg/tenant: {area: Tenancy and auth, approvers: [tenancy-owners], reviewers: [tenancy-reviewers], labels: [area/tenancy]}
+    pkg/auth: {area: Tenancy and auth, approvers: [tenancy-owners], reviewers: [tenancy-reviewers], labels: [area/auth]}
+    pkg/middleware: {area: Tenancy and auth, approvers: [tenancy-owners], reviewers: [tenancy-reviewers], labels: [area/auth]}
+    pkg/dao: {area: Generic model, approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
+    pkg/db: {area: Generic model, approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model, area/search]}
+    pkg/registry: {area: Generic model, approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
+    pkg/services: {area: Generic model, approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
+    pkg/handlers: {area: Generic model, approvers: [generic-model-owners], reviewers: [generic-model-reviewers], labels: [area/generic-model]}
+    pkg/validation: {area: Search, approvers: [generic-model-owners], reviewers: [search-reviewers], labels: [area/search]}
+    pkg/validators: {area: Search, approvers: [generic-model-owners], reviewers: [search-reviewers], labels: [area/search]}
+    pkg/api: {area: Search, approvers: [generic-model-owners], reviewers: [search-reviewers], labels: [area/search]}
+    pkg/telemetry: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    pkg/metrics: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    charts/dashboards: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    openapi: {area: Contracts, approvers: [contracts-owners], reviewers: [contracts-reviewers], labels: [area/contracts]}
+    .tekton: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
   hyperfleet-api-spec:
-    "": {approvers: [contracts-owners], reviewers: [contracts-reviewers], labels: [area/contracts]}
+    "": {area: Contracts, approvers: [contracts-owners], reviewers: [contracts-reviewers], labels: [area/contracts]}
   hyperfleet-api-spec-template:
-    "": {approvers: [contracts-owners], reviewers: [contracts-reviewers], labels: [area/contracts]}
+    "": {area: Contracts, approvers: [contracts-owners], reviewers: [contracts-reviewers], labels: [area/contracts]}
   hyperfleet-adapter:
-    "": {approvers: [adapter-owners, tech-leads], reviewers: [adapter-reviewers], labels: [area/adapter]}
-    internal/desireclient: {approvers: [desire-owners], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
-    internal/transportclient: {approvers: [desire-owners], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
-    internal/transportregistry: {approvers: [desire-owners], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
-    charts/dashboards: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    pkg/telemetry: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    .tekton: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    "": {area: Adapter framework, approvers: [adapter-owners, tech-leads], reviewers: [adapter-reviewers], labels: [area/adapter]}
+    internal/desireclient: {area: Desire delivery, approvers: [desire-owners], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
+    internal/transportclient: {area: Desire delivery, approvers: [desire-owners], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
+    internal/transportregistry: {area: Desire delivery, approvers: [desire-owners], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
+    charts/dashboards: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    pkg/telemetry: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    .tekton: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
   hyperfleet-applier:
-    "": {approvers: [desire-owners, tech-leads], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
-    .tekton: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    "": {area: Desire delivery, approvers: [desire-owners, tech-leads], reviewers: [desire-reviewers], labels: [area/desire-delivery]}
+    .tekton: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
   hyperfleet-sentinel:
-    "": {approvers: [sentinel-owners, tech-leads], reviewers: [sentinel-reviewers], labels: [area/sentinel]}
-    pkg/telemetry: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    charts/dashboards: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    .tekton: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    "": {area: Sentinel, approvers: [sentinel-owners, tech-leads], reviewers: [sentinel-reviewers], labels: [area/sentinel]}
+    pkg/telemetry: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    charts/dashboards: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    .tekton: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
   hyperfleet-broker:
-    "": {approvers: [broker-owners, tech-leads], reviewers: [broker-reviewers], labels: [area/broker]}
+    "": {area: Broker, approvers: [broker-owners, tech-leads], reviewers: [broker-reviewers], labels: [area/broker]}
   hyperfleet-logger:
-    "": {approvers: [platform-owners, tech-leads], reviewers: [platform-reviewers], labels: [area/platform]}
+    "": {area: Platform libraries, approvers: [platform-owners, tech-leads], reviewers: [platform-reviewers], labels: [area/platform]}
   hyperfleet-credential-provider:
-    "": {approvers: [platform-owners, tech-leads], reviewers: [platform-reviewers], labels: [area/platform]}
+    "": {area: Platform libraries, approvers: [platform-owners, tech-leads], reviewers: [platform-reviewers], labels: [area/platform]}
   renovate-config:
-    "": {approvers: [platform-owners, tech-leads], reviewers: [platform-reviewers], labels: [area/platform]}
+    "": {area: Platform libraries, approvers: [platform-owners, tech-leads], reviewers: [platform-reviewers], labels: [area/platform]}
   hyperfleet-e2e:
-    "": {approvers: [e2e-owners, tech-leads], reviewers: [e2e-reviewers], labels: [area/e2e]}
-    e2e/auth: {approvers: [e2e-owners, tenancy-owners], reviewers: [gateway-reviewers], labels: [area/auth]}
-    perf: {approvers: [perf-owners], reviewers: [perf-reviewers], labels: [area/performance]}
+    "": {area: E2E, approvers: [e2e-owners, tech-leads], reviewers: [e2e-reviewers], labels: [area/e2e]}
+    e2e/auth: {area: Tenancy and auth, approvers: [tenancy-owners], reviewers: [tenancy-reviewers], labels: [area/auth]}
+    perf: {area: Performance, approvers: [perf-owners], reviewers: [perf-reviewers], labels: [area/performance]}
   hyperfleet-operator:
-    "": {approvers: [operator-owners, tech-leads], reviewers: [operator-reviewers], labels: [area/operator]}
-    catalog: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
-    config/manifests: {approvers: [release-owners, operator-owners], reviewers: [release-reviewers], labels: [area/release]}
-    validators: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
-    .tekton: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
-    internal/metrics: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    internal/servicemonitor: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
-    config/prometheus: {approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    "": {area: Operator, approvers: [operator-owners, tech-leads], reviewers: [operator-reviewers], labels: [area/operator]}
+    catalog: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    config/manifests: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    validators: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    .tekton: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    internal/metrics: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    internal/servicemonitor: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
+    config/prometheus: {area: Observability, approvers: [observability-owners], reviewers: [observability-reviewers], labels: [area/observability]}
   hyperfleet-infra:
-    "": {approvers: [infra-owners, tech-leads], reviewers: [infra-reviewers], labels: [area/infra]}
-    helm/hyperfleet-gateway: {approvers: [gateway-owners], reviewers: [gateway-reviewers], labels: [area/gateway]}
-    helm/network-policies: {approvers: [gateway-owners], reviewers: [gateway-reviewers], labels: [area/gateway]}
-    helm/mock-oidc: {approvers: [gateway-owners], reviewers: [gateway-reviewers], labels: [area/gateway]}
-    helmfile: {approvers: [e2e-owners], reviewers: [mliptak0, tirthct], labels: [area/e2e]}
-    terraform/oci: {approvers: [oci-owners], reviewers: [oci-reviewers], labels: [area/oci]}
-    functions/oci-ci-sweep: {approvers: [oci-owners], reviewers: [oci-reviewers], labels: [area/oci]}
-    functions/lifecycle-enforcer: {approvers: [rafabene, ma-hill], reviewers: [kuudori], labels: [area/infra]}
-    terraform/envs: {approvers: [rafabene, ma-hill], reviewers: [kuudori, mliptak0], labels: [area/infra]}
+    "": {area: Infra, approvers: [infra-owners, tech-leads], reviewers: [infra-reviewers], labels: [area/infra]}
+    helm/hyperfleet-gateway: {area: Gateway, approvers: [gateway-owners], reviewers: [gateway-reviewers], labels: [area/gateway]}
+    helm/network-policies: {area: Gateway, approvers: [gateway-owners], reviewers: [gateway-reviewers], labels: [area/gateway]}
+    helm/mock-oidc: {area: Gateway, approvers: [gateway-owners], reviewers: [gateway-reviewers], labels: [area/gateway]}
+    helmfile: {area: E2E, approvers: [e2e-owners], reviewers: [e2e-reviewers], labels: [area/e2e]}
+    terraform/oci: {area: OCI, approvers: [oci-owners], reviewers: [oci-reviewers], labels: [area/oci]}
+    functions/oci-ci-sweep: {area: OCI, approvers: [oci-owners], reviewers: [oci-reviewers], labels: [area/oci]}
   hyperfleet-release:
-    "": {approvers: [release-owners, tech-leads], reviewers: [release-reviewers], labels: [area/release]}
+    "": {area: Release and packaging, approvers: [release-owners, tech-leads], reviewers: [release-reviewers], labels: [area/release]}
   architecture:
-    "": {approvers: [architecture-approvers], reviewers: [kuudori, pnguyen44, tirthct, ldornele, ma-hill, mliptak0, Ruclo, Mischulee], labels: [area/architecture]}
+    "": {area: Architecture, approvers: [architecture-approvers], reviewers: [kuudori, pnguyen44, tirthct, ldornele, ma-hill, mliptak0, Ruclo, Mischulee], labels: [area/architecture]}
     hyperfleet/adrs: {reviewers: [pnguyen44, kuudori, tirthct, ldornele], labels: [kind/adr]}
     hyperfleet/standards: {reviewers: [rafabene, kuudori, ldornele, pnguyen44], labels: [kind/standard]}
-    hyperfleet/components/api-service: {reviewers: [api-owners, api-reviewers], labels: [area/api]}
-    hyperfleet/components/adapter: {reviewers: [adapter-owners, adapter-reviewers], labels: [area/adapter]}
-    hyperfleet/components/sentinel: {reviewers: [sentinel-owners, sentinel-reviewers], labels: [area/sentinel]}
-    hyperfleet/components/broker: {reviewers: [broker-owners, broker-reviewers], labels: [area/broker]}
-    hyperfleet/components/claude-code-plugin: {reviewers: [tooling-owners, tooling-reviewers], labels: [area/tooling]}
-    hyperfleet/docs/e2e-testing: {reviewers: [e2e-owners, e2e-reviewers], labels: [area/e2e]}
-    hyperfleet/docs/release: {reviewers: [release-owners, release-reviewers], labels: [area/release]}
+    hyperfleet/components/api-service: {area: API, reviewers: [api-owners, api-reviewers], labels: [area/api]}
+    hyperfleet/components/adapter: {area: Adapter framework, reviewers: [adapter-owners, adapter-reviewers], labels: [area/adapter]}
+    hyperfleet/components/sentinel: {area: Sentinel, reviewers: [sentinel-owners, sentinel-reviewers], labels: [area/sentinel]}
+    hyperfleet/components/broker: {area: Broker, reviewers: [broker-owners, broker-reviewers], labels: [area/broker]}
+    hyperfleet/components/claude-code-plugin: {area: Team tooling, reviewers: [tooling-owners, tooling-reviewers], labels: [area/tooling]}
+    hyperfleet/docs/e2e-testing: {area: E2E, reviewers: [e2e-owners, e2e-reviewers], labels: [area/e2e]}
+    hyperfleet/docs/release: {area: Release and packaging, reviewers: [release-owners, release-reviewers], labels: [area/release]}
   hyperfleet-claude-plugins:
-    "": {approvers: [tooling-owners, tech-leads], reviewers: [tooling-reviewers, ma-hill], labels: [area/tooling]}
-    hyperfleet-adapter-authoring: {approvers: [adapter-owners], reviewers: [adapter-reviewers], labels: [area/adapter]}
-    hyperfleet-architecture: {approvers: [ciaranRoche, rafabene], reviewers: [pnguyen44], labels: [area/architecture]}
-    hyperfleet-code-review: {approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
-    hyperfleet-devtools: {approvers: [rafabene, kuudori], reviewers: [tirthct], labels: [area/tooling]}
-    hyperfleet-hooks: {approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
-    hyperfleet-jira: {approvers: [rafabene, ciaranRoche], reviewers: [pnguyen44], labels: [area/tooling]}
-    hyperfleet-operational-readiness: {approvers: [tirthct, ciaranRoche], reviewers: [pnguyen44, ma-hill], labels: [area/tooling]}
-    hyperfleet-release: {approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
-    hyperfleet-standards: {approvers: [rafabene, kuudori], reviewers: [ldornele], labels: [kind/standard]}
-    hyperfleet-work-triage: {approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    "": {area: Team tooling, approvers: [tooling-owners, tech-leads], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-adapter-authoring: {area: Adapter framework, approvers: [adapter-owners], reviewers: [adapter-reviewers], labels: [area/adapter]}
+    hyperfleet-architecture: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-code-review: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-devtools: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-hooks: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-jira: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-operational-readiness: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-release: {area: Release and packaging, approvers: [release-owners], reviewers: [release-reviewers], labels: [area/release]}
+    hyperfleet-standards: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    hyperfleet-work-triage: {area: Team tooling, approvers: [tooling-owners], reviewers: [tooling-reviewers], labels: [area/tooling]}
   hyperfleet-hooks:
-    "": {approvers: [tooling-owners, tech-leads], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    "": {area: Team tooling, approvers: [tooling-owners, tech-leads], reviewers: [tooling-reviewers], labels: [area/tooling]}
   coderabbit:
-    "": {approvers: [tooling-owners, tech-leads], reviewers: [tooling-reviewers], labels: [area/tooling]}
+    "": {area: Team tooling, approvers: [tooling-owners, tech-leads], reviewers: [tooling-reviewers], labels: [area/tooling]}
   .github:
-    "": {approvers: [tech-leads], reviewers: [tooling-owners, tooling-reviewers], labels: [area/tooling]}
+    "": {area: Team tooling, approvers: [tooling-owners, tech-leads], reviewers: [tooling-reviewers], labels: [area/tooling]}

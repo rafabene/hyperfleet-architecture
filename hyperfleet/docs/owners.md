@@ -67,7 +67,7 @@ The tech leads sit in every root approver set as the fallback, not the routine m
 | E2E | hyperfleet-e2e; infra `helmfile` | Dmitrii (kuudori), Mallory (ma-hill) | Phuongnhat (pnguyen44), Tirth (tirthct), Michaela (Mischulee), Martin (mliptak0) |
 | Performance | e2e `perf` | Phuongnhat (pnguyen44), Dmitrii (kuudori) | Tirth (tirthct), Mallory (ma-hill) |
 | Operator | hyperfleet-operator root | Dmitrii (kuudori), Ciaran (ciaranRoche), Rafael (rafabene), Angel (rh-amarin) | Tirth (tirthct), Mallory (ma-hill), Rafael (rafabene), Leonardo (ldornele), Michal (Ruclo) |
-| Infra | hyperfleet-infra root, `terraform/envs`, `functions/lifecycle-enforcer` | Mallory (ma-hill), Dmitrii (kuudori), Rafael (rafabene) | Martin (mliptak0), Phuongnhat (pnguyen44), Tirth (tirthct) |
+| Infra | hyperfleet-infra root, everything not listed under Gateway, E2E or OCI | Mallory (ma-hill), Dmitrii (kuudori), Rafael (rafabene) | Martin (mliptak0), Phuongnhat (pnguyen44), Tirth (tirthct) |
 | OCI | infra `terraform/oci`, `functions/oci-ci-sweep` | Rafael (rafabene), Ciaran (ciaranRoche) | Phuongnhat (pnguyen44), Leonardo (ldornele), Michaela (Mischulee) |
 | Team tooling | hyperfleet-claude-plugins, hyperfleet-hooks, coderabbit, .github | Rafael (rafabene), Phuongnhat (pnguyen44) | Dmitrii (kuudori), Tirth (tirthct) |
 | Architecture | architecture repository | Ciaran (ciaranRoche), Michael (mbrudnoy), Rafael (rafabene), Angel (rh-amarin) | Dmitrii (kuudori), Phuongnhat (pnguyen44), Tirth (tirthct), Leonardo (ldornele), Mallory (ma-hill), Martin (mliptak0), Michal (Ruclo), Michaela (Mischulee) |
@@ -157,7 +157,7 @@ Approving means: I read the whole diff, I checked the behavioural claims against
 ### Changing the table
 
 1. Open a PR to [`owners.yaml`](owners.yaml) in this repository. For a role change, follow [How to apply](#how-to-apply).
-2. Run `make owners` to regenerate the table in this document and the `OWNERS` files under `hack/owners/out/`. `make verify-owners` is the check that the table is current.
+2. Run `make owners` to regenerate the table in this document and the `OWNERS` files under `hack/owners/out/`. `make verify-owners` fails when the table is stale or when any path's approvers or reviewers differ from its area's row, so the table and the `OWNERS` files cannot drift apart. The scripts under `hack/owners/` run on the bash 3.2 that macOS ships.
 3. Once merged, run `hack/owners/open_prs.sh` to open the `OWNERS` PRs in the affected repositories.
 
 ## References
