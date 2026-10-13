@@ -1,0 +1,5 @@
+reviewers:
+- sentinel-owners
+- sentinel-reviewers
+labels:
+- area/sentinel

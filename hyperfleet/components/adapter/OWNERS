@@ -1,0 +1,5 @@
+reviewers:
+- adapter-owners
+- adapter-reviewers
+labels:
+- area/adapter
