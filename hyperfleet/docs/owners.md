@@ -10,7 +10,7 @@ Last Updated: 2026-10-12
 
 ## Summary
 
-Every area of code has named owners: two or three **approvers** and a wider pool of **reviewers**, declared in `OWNERS` files that Prow reads. Review requests go to the people who know the area. A merge needs one approval, from an approver for every path the change touches. Reviewer and approver status is earned against the criteria in this document and nothing else.
+Every area of code has named owners: two or more **approvers** and a wider pool of **reviewers**, declared in `OWNERS` files that Prow reads. Review requests go to the people who know the area. A merge needs one approval, from an approver for every path the change touches. Reviewer and approver status is earned against the criteria in this document and nothing else.
 
 ## The two roles
 
