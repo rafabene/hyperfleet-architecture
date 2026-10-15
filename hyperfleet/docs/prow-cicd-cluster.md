@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Platform Team
-Last Updated: 2026-01-26
+Last Updated: 2026-10-15
 ---
 
 # Prow CI/CD Cluster Documentation
@@ -212,52 +212,45 @@ terraform apply -var-file=envs/gke/dev-prow.tfvars
 
 ## Manual Installation Steps
 
-After provisioning the cluster via Terraform, two components must be installed manually from the [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) repository.
+After provisioning the cluster via Terraform, install the namespace cleaner manually from the [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) repository.
 
 **First, clone the repo if you haven't already** (see [Prerequisites for Terraform Operations](#prerequisites-for-terraform-operations)).
 
-### Install Maestro
-
-Maestro is the resource management service that HyperFleet adapters depend on. Install it via the `hyperfleet-infra` Makefile:
-
-```bash
-cd hyperfleet-infra
-make install-maestro
-```
-
 ### Install the Namespace Cleaner
 
-The namespace cleaner is a CronJob that automatically removes stale E2E test resources every hour. It performs a two-phase cleanup:
+The namespace cleaner is a CronJob that removes stale namespaces every hour. It deletes each namespace that carries any label key in `CLEANER_LABEL_SELECTOR` and is older than **2 hours**. E2E adapters set `hyperfleet.io/cluster-id` on the resources they create, and the E2E suite sets `e2e.hyperfleet.io/run-id` on its test namespaces. The remaining key, `hyperfleet.io/test-run`, is not E2E-specific: the `check-hyperfleet-namespace` target in the `hyperfleet-infra` Makefile labels the install namespace with it during stack installs (`make install-hyperfleet`, `install-api`, `install-desire-delivery`), so the cleaner also deletes installed HyperFleet stacks once they pass the 2-hour age threshold — not just E2E leftovers.
 
-1. Deletes Maestro resource bundles older than **3 hours** via the Maestro REST API — this prevents Maestro from recreating the associated namespaces on its next reconciliation cycle
-2. Deletes Kubernetes namespaces carrying the `hyperfleet.io/cluster-id` label older than **3 hours** — this label is present on all resources created by E2E adapters
+The cleaner is defined in the `helm/namespace-cleaner/` Helm chart in `hyperfleet-infra` ([PR #55](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/55)). `make install-cleaner` also applies the `hyperfleet-critical` PriorityClass, which the cleaner pod uses.
 
-The cleaner is defined in the `helm/namespace-cleaner/` Helm chart in `hyperfleet-infra` ([PR #55](https://github.com/openshift-hyperfleet/hyperfleet-infra/pull/55)).
+The Makefile runs `kubectl` and `helm` against the current context. Use a kubeconfig that holds only the prow context, so the cleaner can't land on another cluster:
 
 ```bash
+export KUBECONFIG="$(mktemp)"
+gcloud container clusters get-credentials hyperfleet-dev-prow --zone us-central1-a --project hcm-hyperfleet
+
 cd hyperfleet-infra
-make install-cleaner
+make install-cleaner CLEANER_NAMESPACE=hyperfleet-cleaner
 ```
 
 **Configurable variables** (override on the `make` command line):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CLEANER_NAMESPACE` | `$(NAMESPACE)` | Namespace to install the cleaner into. Prow uses `hyperfleet-cleaner` |
 | `CLEANER_SCHEDULE` | `0 * * * *` | Cron schedule (every hour) |
-| `CLEANER_LABEL_SELECTOR` | `hyperfleet.io/cluster-id` | Label key used to identify E2E namespaces |
-| `CLEANER_AGE_MINUTES` | `180` | Minimum age in minutes before a resource is deleted |
-| `CLEANER_MAESTRO_URL` | `http://maestro.maestro.svc.cluster.local:8000` | Maestro REST API endpoint |
+| `CLEANER_LABEL_SELECTOR` | `hyperfleet.io/cluster-id hyperfleet.io/test-run e2e.hyperfleet.io/run-id` | Space-separated label keys. A namespace with any of them is eligible |
+| `CLEANER_AGE_MINUTES` | `120` | Minimum age in minutes before a namespace is deleted |
 
 To trigger a run immediately without waiting for the next scheduled tick:
 
 ```bash
-kubectl create job --from=cronjob/namespace-cleaner namespace-cleaner-manual -n prow-hyperfleet
+kubectl create job --from=cronjob/namespace-cleaner namespace-cleaner-manual -n hyperfleet-cleaner
 ```
 
 To uninstall:
 
 ```bash
-make uninstall-cleaner
+make uninstall-cleaner CLEANER_NAMESPACE=hyperfleet-cleaner
 ```
 
 ---
