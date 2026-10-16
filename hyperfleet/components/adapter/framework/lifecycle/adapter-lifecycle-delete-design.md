@@ -754,10 +754,10 @@ Not cancellable in 1.0.0. Consistent with Kubernetes behavior (namespace deletio
 
 #### Remote-Transport Resources (#9)
 
-The `lifecycle.delete.propagationPolicy` only applies to the local Kubernetes transport, where the adapter controls the delete call. A remote transport does not call the target cluster's API: the adapter writes a `DeleteDesire` to the transport's desire store, the HyperFleet Applier deletes the object on the target cluster, and the mirrored read-back confirms deletion — the adapter's `propagationPolicy` is not used.
+The `lifecycle.delete.propagationPolicy` only applies to the local Kubernetes transport, where the adapter controls the delete call. A remote transport does not call the target cluster's API: the adapter writes a `DeleteDesire` to the transport's desire store, and the HyperFleet Applier deletes the object on the target cluster and updates the `DeleteDesire` status. The adapter's `ProbeDeletion` reads only that delete status to confirm completion; it deliberately does not consult the read mirror, which can lag a confirmed delete. The adapter's `propagationPolicy` is not used.
 
 - **Kubernetes transport**: calls `DeleteResource()` with the specified `propagationPolicy`
-- **Remote transport**: writes a `DeleteDesire` to the desire store; the Applier performs the delete and the mirrored state confirms it. Deletion is asynchronous and typically confirms on a later reconciliation loop. Selector-based discovery is unsupported for remote deletes — `discovery.by_name` is required when `lifecycle.delete` is configured on a remote resource
+- **Remote transport**: writes a `DeleteDesire` to the desire store; the Applier performs the delete and `ProbeDeletion` confirms it from the `DeleteDesire` status. After confirmation, `CleanupAfterDeletion` removes the read and delete desires, even if the read mirror still shows the object. When no delete desire exists, discovery and cleanup checks handle the already-absent case rather than treating a missing delete desire alone as proof of deletion. Selector-based discovery is unsupported for remote deletes — `discovery.by_name` is required when `lifecycle.delete` is configured on a remote resource
 
 #### Multi-Generation Resources (#10)
 
@@ -775,8 +775,11 @@ discovery:
 ```yaml
 # Remote transport: stable name, discovered by name
 discovery:
+  namespace: '{{ .namespace }}'
   by_name: '{{ .clusterId }}-job'
 ```
+
+For a namespaced resource such as this Job, `discovery.namespace` must render to the same namespace as `manifest.metadata.namespace`, and `discovery.by_name` to the same name as `manifest.metadata.name`. Remote deletion builds its target identity from discovery, not from the rendered manifest. Omitting the namespace addresses a different target and can incorrectly take the already-deleted path. Leave the namespace empty only for cluster-scoped resources such as Namespace.
 
 #### Cross-Adapter Deletion Ordering (#13)
 
@@ -909,5 +912,5 @@ Existing adapters continue to work unchanged during rollout — deletion support
 - [HYPERFLEET-543](https://issues.redhat.com/browse/HYPERFLEET-543) - Implement Cluster DELETE endpoint with cascade cleanup
 - [HYPERFLEET-544](https://issues.redhat.com/browse/HYPERFLEET-544) - Implement NodePool DELETE endpoint
 - [HYPERFLEET-904](https://redhat.atlassian.net/browse/HYPERFLEET-904) - SPIKE: Design API hard-deletion mechanism — see [Hard-Delete Design](../../../api-service/hard-delete-design.md)
-- [Desire Store Architecture Overview](../../../../docs/desire-store-hld.md) - Desire-based remote delivery and asynchronous delete confirmation
+- [Desire Store Architecture Overview](../../../../docs/desire-store-hld.md) - Desire Store architecture and trust boundaries
 - [Kubernetes Deletion](https://kubernetes.io/docs/concepts/architecture/garbage-collection/) - Kubernetes garbage collection and propagation policies

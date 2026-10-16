@@ -1,5 +1,5 @@
 ---
-Status: Active
+Status: Draft
 Owner: HyperFleet Team
 Last Updated: 2026-10-16
 ---
@@ -7,6 +7,10 @@ Last Updated: 2026-10-16
 # Adapter Resource Recreation Flow Design
 
 **Jira**: [HYPERFLEET-837](https://issues.redhat.com/browse/HYPERFLEET-837)
+
+## Implementation Status
+
+This document is a proposal, not the shipped adapter contract. `lifecycle.recreate.when` is not implemented; implementation and updates to this design and the authoring guide are tracked in [HYPERFLEET-1194](https://redhat.atlassian.net/browse/HYPERFLEET-1194). The shipped `recreate_on_change` flag is local-Kubernetes-only and is rejected for remote resources. The examples and sequences below describe the proposed local flow, not working configuration for the current binary. Remote recreation semantics must be revisited when the feature is implemented; in particular, remote delete confirmation uses `DeleteDesire` status rather than read-mirror disappearance.
 
 ## What & Why
 
@@ -29,7 +33,6 @@ Last Updated: 2026-10-16
 - CEL expression evaluation for recreation triggers (`lifecycle.recreate.when`)
 - Stateless, transport-agnostic delete+apply flow
 - Handling async deletion (finalizers, eventual consistency)
-- Both local Kubernetes and remote transports
 - Safe retry across Sentinel's polling loop
 
 ### Out of Scope
@@ -112,12 +115,10 @@ resources:
             && string(generation) != resources.job.metadata.annotations["hyperfleet.io/generation"]
 ```
 
-**Requirements (validated at adapter startup):**
+### Proposed Validation Requirements
 
 - **Discovery block required**: If `discovery` is absent, the adapter rejects the config and fails to start — this prevents silent runtime failure where the CEL expression evaluates against an empty resource context
 - **Expression required**: `lifecycle.recreate.when.expression` must be present and non-empty
-- **Transport-agnostic**: Recreation flows through the same transport interface for local and remote transports (a remote delete is confirmed by the mirrored state, so it can span additional reconciliation loops)
-- **Remote requires `by_name`**: the example above combines `discovery.by_selectors` with `lifecycle.delete`, which startup validation rejects for remote transports — a remote resource with `lifecycle.delete` must use `discovery.by_name`. On a remote transport, give the resource a stable name across generations (the generation is carried by the `hyperfleet.io/generation` annotation, not the name) and discover it by name
 
 ### Conflict Resolution: Delete vs. Recreate
 
@@ -227,7 +228,7 @@ See [Adapter Status Contract](./adapter-status-contract.md) for details on the s
 sequenceDiagram
     participant Sentinel as Sentinel
     participant Adapter as Adapter
-    participant Transport as Transport (local/remote)
+    participant Transport as Local Kubernetes Transport
     participant API as HyperFleet API
 
     Sentinel->>Adapter: Event (generation=2)
@@ -280,7 +281,7 @@ This is the critical case: deletion can potentially take multiple adapter reconc
 sequenceDiagram
     participant Sentinel as Sentinel
     participant Adapter as Adapter
-    participant Transport as Transport (local/remote)
+    participant Transport as Local Kubernetes Transport
     participant API as HyperFleet API
 
     Sentinel->>Adapter: Event (generation=2)
@@ -405,7 +406,7 @@ true
 
 ## Responsibilities & Trade-offs
 
-**What the framework provides:** Declarative recreation via CEL expressions. Flows through the same transport interface for local and remote transports. Safe to retry (delete is idempotent). Explicit delete-before-recreate evaluation ordering enforced by the framework.
+**What the proposed framework would provide:** Declarative recreation via CEL expressions. Safe to retry (delete is idempotent). Explicit delete-before-recreate evaluation ordering enforced by the framework. This is not shipped behavior.
 
 **What config authors own:**
 
@@ -414,4 +415,4 @@ true
 
 **Trade-off:** Deletion is fire-and-forget; actual deletion may span multiple reconciliation loops. The framework cannot recover from stuck deletions — prevention through proper design in the staging environment is the only viable approach.
 
-**Why `lifecycle.recreate.when` replaces `RecreateOnChange`:** The previous transport-layer flag was local-Kubernetes-only and was not safe to retry across Sentinel's polling loop. The new CEL-based approach is transport-agnostic and stateless.
+**Why propose replacing `recreate_on_change`:** The shipped flag is local-Kubernetes-only. The proposed CEL-based lifecycle would make recreation explicit and stateless; its implementation and transport-specific behavior remain pending.

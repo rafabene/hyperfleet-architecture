@@ -171,7 +171,7 @@ The adapter loads **two separate YAML files** merged at startup:
 - `Config`: Root configuration structure
 - `ParamConfig`: Defines parameter extraction rules (env.*or event.* sources)
 - `PreconditionConfig`: Defines API calls with `apiCall`, `capture`, `conditions`/`expression`
-- `ResourceConfig`: Defines resources with `manifest`, `discovery`, `recreateOnChange`
+- `ResourceConfig`: Defines resources with `manifest`, `discovery`, `recreate_on_change` (local Kubernetes only)
 - `PostConfig`: Defines `payloads` (with `build`/`buildRef`) and `postActions`
 
 **Configuration Lifecycle:**
@@ -669,7 +669,7 @@ subscriber.Subscribe(ctx, topic, func(ctx context.Context, evt *event.Event) err
   - `name`: Resource identifier for referencing in status evaluation (e.g., `resources.clusterNamespace`)
   - `manifest`: Inline YAML spec or `ref` to external template file
   - `discovery`: Rules for discovering existing resources
-  - `recreateOnChange`: Optional flag to recreate resource when generation changes (e.g., for Jobs)
+  - `recreate_on_change`: Optional local-Kubernetes-only flag to recreate resource when generation changes (e.g., for Jobs); remote resources that set it are rejected at startup
 - Store resources in map: `resources[name] = resourceStatus`
 
 **Resource Discovery:**
@@ -698,6 +698,8 @@ The transport client is the unified apply interface used by the executor to appl
 - **Remote** (`type: remote`): Desire-based delivery. The adapter writes the rendered manifest to a named desire store instead of applying it; the HyperFleet Applier for the target cluster's management cluster reconciles the object (server-side apply) and mirrors its live state back to the store, where discovery reads it. Deletes are expressed as delete desires, and the store rejects a new apply for the same object until the delete is confirmed
 
 Delete safety on a remote transport also relies on the Applier ordering invariants from [ADR 0028 — Serialize Apply Then Delete](../../../adrs/0028-apply-delete-ordering.md): each pass lists the store fresh before it starts, completes every apply before running deletes, and runs only one pass per management-cluster partition. Without these invariants a stale apply can recreate an object after its delete was confirmed — a case the store's rejection of applies during a pending delete does not cover.
+
+Remote discovery reads the mirrored object, but confirmation of a requested delete is separate: `ProbeDeletion` reads the `DeleteDesire` status, not the read mirror. A confirmed delete allows cleanup of the read and delete desires even while the read mirror still shows the object. For namespaced resources, both `discovery.namespace` and `discovery.by_name` must match the manifest's identity, because remote deletion addresses the discovery target.
 
 Transports are declared as named entries in the deployment config under `transports`, backed by named `stores` (Redis or in-memory). Each resource in the task config selects a transport by name (`transport: remote-primary`); an omitted `transport` uses local Kubernetes. The name `kubernetes` is reserved for the local transport.
 
