@@ -1,7 +1,7 @@
 ---
 Status: Draft
 Owner: HyperFleet Team
-Last Updated: 2026-04-12
+Last Updated: 2026-10-16
 ---
 
 # Adapter Deletion Flow Design
@@ -184,7 +184,7 @@ flowchart TD
     D -->|false| CR
     E --> T{Transport?}
     T -->|K8s| G["K8s DeleteResource(propagationPolicy)"]
-    T -->|Maestro| M["Maestro delete endpoint"]
+    T -->|Remote| M["Write DeleteDesire to desire store"]
 
     CR --> H{More resources?}
     G --> H
@@ -250,7 +250,7 @@ flowchart TD
     E -->|false| D
     F --> T{Transport?}
     T -->|K8s| H["K8s DeleteResource(propagationPolicy)"]
-    T -->|Maestro| M["Maestro delete endpoint"]
+    T -->|Remote| M["Write DeleteDesire to desire store"]
 
     D --> D1[Render manifest template]
     D1 --> D2[Check if resource exists]
@@ -642,7 +642,7 @@ Detailed metric naming, labels, alert thresholds, and SLO/SLI definitions will b
 | 6 | Concurrent deletion events | Idempotent operations, K8s handles safely | Low |
 | 7 | Independent subresource deletion | Same pattern, check subresource `deleted_time` | Low |
 | 8 | Cancel deletion | Not cancellable in 1.0.0 | Low |
-| 9 | Maestro-managed resources | Transport layer handles transparently | Low |
+| 9 | Remote-transport resources | Delete is desire-based and confirms asynchronously; `propagationPolicy` does not apply | Low |
 | 10 | Multi-generation resources | Use label selectors to discover all | Medium |
 | 11 | **Deletion error reporting** | **Adapter reports `Finalized=False` when unhealthy; API gates hard-delete on aggregate `Reconciled=True`** | **Critical** |
 | 12 | **API rejects mutations during Finalizing** | **Return 409 Conflict** | **Critical** |
@@ -752,12 +752,12 @@ For customers, the API should indicate a resource/subresource is being deleted w
 
 Not cancellable in 1.0.0. Consistent with Kubernetes behavior (namespace deletion is not cancellable). Future enhancement could add a grace period before adapters start cleanup.
 
-#### Maestro-Managed Resources (#9)
+#### Remote-Transport Resources (#9)
 
-The `lifecycle.delete.propagationPolicy` only applies to direct K8s transport, where the adapter controls the delete call. For Maestro transport, the adapter calls Maestro's delete endpoint and Maestro manages deletion through ManifestWork with its own propagation/cleanup semantics — the adapter's `propagationPolicy` is not used.
+The `lifecycle.delete.propagationPolicy` only applies to the local Kubernetes transport, where the adapter controls the delete call. A remote transport does not call the target cluster's API: the adapter writes a `DeleteDesire` to the transport's desire store, the HyperFleet Applier deletes the object on the target cluster, and the mirrored read-back confirms deletion — the adapter's `propagationPolicy` is not used.
 
-- **K8s transport**: calls `DeleteResource()` with the specified `propagationPolicy`
-- **Maestro transport**: calls Maestro delete endpoint; propagation is managed by ManifestWork, not by the adapter's `lifecycle.delete`
+- **Kubernetes transport**: calls `DeleteResource()` with the specified `propagationPolicy`
+- **Remote transport**: writes a `DeleteDesire` to the desire store; the Applier performs the delete and the mirrored state confirms it. Deletion is asynchronous and typically confirms on a later reconciliation loop. Selector-based discovery is unsupported for remote deletes — `discovery.by_name` is required when `lifecycle.delete` is configured on a remote resource
 
 #### Multi-Generation Resources (#10)
 
@@ -819,7 +819,7 @@ Not required. Each adapter only cleans up its own resources. Unlike creation (wh
 
 **What**: Adapters register finalizers on resource objects in the HyperFleet API. The API won't delete until all finalizers are removed.
 
-**Why Not Chosen**: HyperFleet API resources are stored in a relational database, not as Kubernetes objects. Implementing a finalizer pattern on database records adds complexity without clear benefit over the current pending deletion + `Reconciled` gate model. Maestro follows the same `deleted_time` two-phase pattern without finalizers.
+**Why Not Chosen**: HyperFleet API resources are stored in a relational database, not as Kubernetes objects. Implementing a finalizer pattern on database records adds complexity without clear benefit over the current pending deletion + `Reconciled` gate model.
 
 ### Sentinel Publishes Different Event Type for Deletion
 
@@ -902,5 +902,5 @@ Existing adapters continue to work unchanged during rollout — deletion support
 - [HYPERFLEET-543](https://issues.redhat.com/browse/HYPERFLEET-543) - Implement Cluster DELETE endpoint with cascade cleanup
 - [HYPERFLEET-544](https://issues.redhat.com/browse/HYPERFLEET-544) - Implement NodePool DELETE endpoint
 - [HYPERFLEET-904](https://redhat.atlassian.net/browse/HYPERFLEET-904) - SPIKE: Design API hard-deletion mechanism — see [Hard-Delete Design](../../../api-service/hard-delete-design.md)
-- [Maestro Resource Deletion](https://github.com/openshift-online/maestro) - Two-phase deletion pattern reference
+- [Desire Store Architecture Overview](../../../../docs/desire-store-hld.md) - Desire-based remote delivery and asynchronous delete confirmation
 - [Kubernetes Deletion](https://kubernetes.io/docs/concepts/architecture/garbage-collection/) - Kubernetes garbage collection and propagation policies
