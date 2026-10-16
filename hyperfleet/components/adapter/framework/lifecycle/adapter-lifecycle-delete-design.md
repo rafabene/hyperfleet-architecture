@@ -781,6 +781,10 @@ discovery:
 
 For a namespaced resource such as this Job, `discovery.namespace` must render to the same namespace as `manifest.metadata.namespace`, and `discovery.by_name` to the same name as `manifest.metadata.name`. Remote deletion builds its target identity from discovery, not from the rendered manifest. Omitting the namespace addresses a different target and can incorrectly take the already-deleted path. Leave the namespace empty only for cluster-scoped resources such as Namespace.
 
+This match is required but not validated: neither the config loader nor the executor compares the rendered discovery target with the rendered manifest metadata. Both transports delete through the discovery target, so a mismatch affects the local Kubernetes transport the same way — `by_selectors` only masks it while the labels still match. The failure is silent: the delete probes the discovery identity, finds nothing, and succeeds with the already-deleted outcome while the object applied under the manifest identity is left behind. A runtime check comparing the rendered discovery target with the rendered manifest metadata for resources with `lifecycle.delete` is tracked in [HYPERFLEET-1782](https://redhat.atlassian.net/browse/HYPERFLEET-1782).
+
+The stable-name pattern above covers discovery and deletion only; it does not give a remote immutable resource a way to move to a new generation. `recreate_on_change` is rejected for remote transports, and the proposed `lifecycle.recreate.when` is not implemented, so a changed pod template applied against the same Job name fails at the target cluster with no path to converge. Remote immutable resources have no recreation path until [HYPERFLEET-1194](https://redhat.atlassian.net/browse/HYPERFLEET-1194) lands `lifecycle.recreate.when`.
+
 #### Cross-Adapter Deletion Ordering (#13)
 
 Not required. Each adapter only cleans up its own resources. Unlike creation (where adapters have data dependencies), deletion is self-contained.
@@ -912,5 +916,7 @@ Existing adapters continue to work unchanged during rollout — deletion support
 - [HYPERFLEET-543](https://issues.redhat.com/browse/HYPERFLEET-543) - Implement Cluster DELETE endpoint with cascade cleanup
 - [HYPERFLEET-544](https://issues.redhat.com/browse/HYPERFLEET-544) - Implement NodePool DELETE endpoint
 - [HYPERFLEET-904](https://redhat.atlassian.net/browse/HYPERFLEET-904) - SPIKE: Design API hard-deletion mechanism — see [Hard-Delete Design](../../../api-service/hard-delete-design.md)
+- [HYPERFLEET-1782](https://redhat.atlassian.net/browse/HYPERFLEET-1782) - Adapter: validate discovery identity against manifest metadata for `lifecycle.delete` resources
+- [HYPERFLEET-1194](https://redhat.atlassian.net/browse/HYPERFLEET-1194) - Adapter: implement resource recreation lifecycle (`lifecycle.recreate.when`)
 - [Desire Store Architecture Overview](../../../../docs/desire-store-hld.md) - Desire Store architecture and trust boundaries
 - [Kubernetes Deletion](https://kubernetes.io/docs/concepts/architecture/garbage-collection/) - Kubernetes garbage collection and propagation policies
