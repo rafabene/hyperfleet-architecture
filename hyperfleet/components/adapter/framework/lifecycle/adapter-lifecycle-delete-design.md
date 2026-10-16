@@ -761,14 +761,21 @@ The `lifecycle.delete.propagationPolicy` only applies to the local Kubernetes tr
 
 #### Multi-Generation Resources (#10)
 
-During deletion, use **label selectors** rather than exact name matching to discover all resources across generations:
+During deletion, use **label selectors** rather than exact name matching to discover all resources across generations. This guidance applies to the **local Kubernetes transport only**: a remote resource with `lifecycle.delete` must use `discovery.by_name`, and selector-based lifecycle deletion is rejected at load time. On a remote transport, give the resource a stable name across generations (the generation is carried by the `hyperfleet.io/generation` annotation, not the name) so `discovery.by_name` always resolves to the current object:
 
 ```yaml
+# Local transport: sweep every generation with label selectors
 discovery:
   by_selectors:
     label_selector:
       hyperfleet.io/cluster-id: '{{ .clusterId }}'
       hyperfleet.io/managed-by: '{{ .adapter.name }}'
+```
+
+```yaml
+# Remote transport: stable name, discovered by name
+discovery:
+  by_name: '{{ .clusterId }}-job'
 ```
 
 #### Cross-Adapter Deletion Ordering (#13)

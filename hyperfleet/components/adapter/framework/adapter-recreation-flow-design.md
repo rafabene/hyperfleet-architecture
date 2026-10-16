@@ -117,6 +117,7 @@ resources:
 - **Discovery block required**: If `discovery` is absent, the adapter rejects the config and fails to start — this prevents silent runtime failure where the CEL expression evaluates against an empty resource context
 - **Expression required**: `lifecycle.recreate.when.expression` must be present and non-empty
 - **Transport-agnostic**: Recreation flows through the same transport interface for local and remote transports (a remote delete is confirmed by the mirrored state, so it can span additional reconciliation loops)
+- **Remote requires `by_name`**: the example above combines `discovery.by_selectors` with `lifecycle.delete`, which startup validation rejects for remote transports — a remote resource with `lifecycle.delete` must use `discovery.by_name`. On a remote transport, give the resource a stable name across generations (the generation is carried by the `hyperfleet.io/generation` annotation, not the name) and discover it by name
 
 ### Conflict Resolution: Delete vs. Recreate
 
