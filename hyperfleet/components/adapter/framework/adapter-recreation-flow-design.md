@@ -10,7 +10,7 @@ Last Updated: 2026-10-16
 
 ## Implementation Status
 
-This document is a proposal, not the shipped adapter contract. `lifecycle.recreate.when` is not implemented; implementation and updates to this design and the authoring guide are tracked in [HYPERFLEET-1194](https://redhat.atlassian.net/browse/HYPERFLEET-1194). The shipped `recreate_on_change` flag is local-Kubernetes-only and is rejected for remote resources. The examples and sequences below describe the proposed local flow, not working configuration for the current binary. Remote recreation semantics must be revisited when the feature is implemented; in particular, remote delete confirmation uses `DeleteDesire` status rather than read-mirror disappearance.
+This document is a proposal, not the shipped adapter contract. `lifecycle.recreate.when` is not implemented. This design and the [adapter authoring guide](https://github.com/openshift-hyperfleet/hyperfleet-adapter/blob/main/docs/adapter-authoring-guide.md) must be updated together when the feature is implemented. The shipped `recreate_on_change` flag is local-Kubernetes-only and is rejected for remote resources. The examples and sequences below describe the proposed local flow, not working configuration for the current binary. Remote recreation semantics must be revisited when the feature is implemented; in particular, remote delete confirmation uses `DeleteDesire` status rather than read-mirror disappearance.
 
 ## What & Why
 
