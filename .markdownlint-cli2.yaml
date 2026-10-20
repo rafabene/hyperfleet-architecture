@@ -1,3 +1,7 @@
+# One-line import pointer; the canonical guidance is linted in AGENTS.md.
+ignores:
+  - CLAUDE.md
+
 config:
   # Disable line length limit - documentation files often have long lines
   MD013: false

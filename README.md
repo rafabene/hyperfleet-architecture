@@ -77,7 +77,8 @@ This repository serves as the **single source of truth** for all architectural d
 architecture/
 ├── README.md                      # This file - repository guide
 ├── CONTRIBUTING.md                # How to contribute to this repository
-├── CLAUDE.md                      # Claude Code guidelines for AI-assisted workflows
+├── AGENTS.md                      # Canonical agent guidance for AI-assisted workflows
+├── CLAUDE.md                      # One-line import of AGENTS.md for Claude Code
 ├── OWNERS                         # Repository ownership (generated from hyperfleet/docs/owners.yaml)
 ├── hack/                          # Utility scripts
 └── hyperfleet/                    # HyperFleet-specific architecture
