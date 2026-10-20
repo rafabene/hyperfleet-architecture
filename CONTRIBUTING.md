@@ -35,7 +35,7 @@ make install-hooks
 - The CI pipeline runs `markdownlint`, `yamllint`, and link checking automatically on PRs
 - `make install-hooks` installs pre-commit hooks for commit message validation and file hygiene — see [Pre-Commit Hooks Setup Guide](hyperfleet/docs/pre-commit-hooks.md)
 - Run linting locally before pushing to catch issues early
-- If using Claude Code for AI-assisted editing, see [CLAUDE.md](CLAUDE.md) for repository-specific guidelines
+- For AI-assisted editing, see [AGENTS.md](AGENTS.md) for repository-specific guidelines; Claude Code imports the same guidance through the root [CLAUDE.md](CLAUDE.md) pointer
 
 ---
 
@@ -53,10 +53,10 @@ See the [README.md Navigation Guide](README.md#navigation-guide) for the documen
 
 ### Document Standards
 
-All documents must follow the header format and summary requirements defined in [CLAUDE.md](CLAUDE.md#document-header-format).
+All documents must follow the [metadata header format](AGENTS.md#metadata-header). See the [README Writing Guidelines](README.md#writing-guidelines) for writing guidance.
 
-- **Component design documents**: See [components/CLAUDE.md](hyperfleet/components/CLAUDE.md) for required sections (What/Why/How/Trade-offs/Alternatives).
-- **Standards documents**: See [standards/CLAUDE.md](hyperfleet/standards/CLAUDE.md) for the required structure.
+- **Component design documents**: See [component doc requirements](AGENTS.md#hyperfleetcomponents) for required sections (What/Why/How/Trade-offs/Alternatives).
+- **Standards documents**: See [standards doc requirements](AGENTS.md#hyperfleetstandards) for the required structure.
 
 ### Terminology
 
