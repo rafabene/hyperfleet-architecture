@@ -144,7 +144,7 @@ The following APIs **must be enabled** before cluster provisioning:
 
 ### 3.4 GCP Quota Validation (Post-MVP)
 
-**Implementation Reference**: [CS quota preflight logic](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L190-L191)  
+**Implementation Reference**: [CS quota preflight logic](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L190-L191)
 
 **Regional vCPU Quota Validation Flow**:
 
@@ -212,7 +212,7 @@ If Regional Limit = 100, Current Usage = 80:
 
 ### 3.5 Network Configuration Validation (Post-MVP)
 
-**Implementation Reference**: [CS network preflight](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L188-196)  
+**Implementation Reference**: [CS network preflight](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L188-196)
 
 #### VPC and Subnet Existence
 
@@ -273,17 +273,17 @@ _, machineCIDRNet, _ := net.ParseCIDR(machineCIDR)
 
 for _, subnetCIDR := range subnetCidrs {
     subnetIP, subnetNet, _ := net.ParseCIDR(subnetCIDR)
-    
+
     // Check if subnet's first IP is within Machine CIDR
     if !machineCIDRNet.Contains(subnetIP) {
-        return fmt.Errorf("subnet CIDR %s not contained in machine CIDR %s", 
+        return fmt.Errorf("subnet CIDR %s not contained in machine CIDR %s",
             subnetCIDR, machineCIDR)
     }
-    
+
     // Additional: Check subnet size is sufficient
     subnetSize := calculateCIDRSize(subnetNet)
     if subnetSize < minimumSubnetSize {
-        return fmt.Errorf("subnet %s too small: %d IPs (minimum: %d)", 
+        return fmt.Errorf("subnet %s too small: %d IPs (minimum: %d)",
             subnetCIDR, subnetSize, minimumSubnetSize)
     }
 }
@@ -359,20 +359,20 @@ spec:
       # Use the shared pre-configured Service Account
       # It has both WIF configuration (for Validator) and RBAC permissions (for Reporter)
       serviceAccountName: gcp-validator-sa
-      
+
       containers:
       # Container 1: GCP Validator
       # Performs validation checks and writes results to shared volume
       - name: validator
         image: "{{.registry}}/gcp-validator:{{.version}}"
-        
+
         env:
         # Cluster identification
         - name: CLUSTER_ID
           value: "{{.cluster_id}}"
         - name: CLUSTER_NAME
           value: "{{.cluster_name}}"
-        
+
         # Cluster-Specific Configuration (Extracted and passed as Env Vars)
         # Refer to https://github.com/openshift-hyperfleet/hyperfleet-api-spec/tree/main
         - name: GCP_PROJECT_ID
@@ -382,22 +382,22 @@ spec:
         # TBD after further discussion about WIF
         # - name: GCP_DEPLOYER_SA_EMAIL
         #   value: "{{.gcp_deployer_sa_email}}"
-          
+
         # Validation Logic Configuration
         # Comma-separated list of checks to perform.
         # Common rules (APIs, quotas, etc.) are integrated into the image.
         - name: VALIDATION_CHECKS
           value: "api_enablement,vpc_subnet_existence,service_account_existence,region_availability"
-        
+
         # Results output path (shared with reporter sidecar)
         - name: RESULTS_OUTPUT_PATH
           value: "/results/validation-report.json"
-        
+
         volumeMounts:
         - name: results
           mountPath: /results
           readOnly: false  # Validator writes results here
-        
+
         resources:
           requests:
             memory: "256Mi"
@@ -405,32 +405,32 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
-      
+
       # Container 2: Status Reporter Sidecar (Reusable across all validators)
       # Waits for validation results, updates Job status, creates events
       - name: status-reporter
         image: "{{.registry}}/validation-status-reporter:{{.reporter_version}}"
-        
+
         env:
         # K8s resource to update
         - name: JOB_NAME
           value: "gcp-validate-{{.cluster_id}}"
         - name: JOB_NAMESPACE
           value: "{{.namespace}}"
-        
+
         # Results input path (shared with validator)
         - name: RESULTS_INPUT_PATH
           value: "/results/validation-report.json"
-        
+
         # Reporter behavior
         - name: POLL_INTERVAL
           value: "2"    # Check for results every 2 seconds
-        
+
         volumeMounts:
         - name: results
           mountPath: /results
           readOnly: true  # Reporter only reads results
-        
+
         resources:
           requests:
             memory: "64Mi"
@@ -438,13 +438,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
-      
+
       volumes:
       - name: results
         emptyDir: {}  # Shared volume for result communication
-      
+
       restartPolicy: Never
-  
+
   # Job control
   backoffLimit: 0  # Disable retries. The Job is marked Failed as soon as the Pod fails once.
   activeDeadlineSeconds: 300  # 5 minute timeout
@@ -777,7 +777,7 @@ Based on this spike, implementation tickets should have the following acceptance
 - [ ] Dockerfile builds successfully
 - [ ] Container image runs in K8s
 
-**GCP Validator** (Minimal validation logic):  
+**GCP Validator** (Minimal validation logic):
 
 - [ ] **Workload Identity Federation** (WIF) for GCP authentication
   - How to setup WIF to access customer's GCP project

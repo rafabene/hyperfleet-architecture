@@ -63,16 +63,16 @@ In order to generate a new set of configurations, some information will be neces
 Let's start with general information about the repository...
 Enter the organization for the repository: openshift-hyperfleet
 Enter the repository to initialize: hyperfleet-logger
-Enter the development branch for the repository: [default: main] 
+Enter the development branch for the repository: [default: main]
 
 Now, let's determine how the repository builds output artifacts...
-Does the repository build and promote container images?  [default: no] 
+Does the repository build and promote container images?  [default: no]
 
 Now, let's configure how the repository is compiled...
-What version of Go does the repository build with? [default: 1.13] 
-[OPTIONAL] Enter the Go import path for the repository if it uses a vanity URL (e.g. "k8s.io/my-repo"): 
-[OPTIONAL] What commands are used to build binaries in the repository? (e.g. "go install ./cmd/...") 
-[OPTIONAL] What commands are used to build test binaries? (e.g. "go install -race ./cmd/..." or "go test -c ./test/...") 
+What version of Go does the repository build with? [default: 1.13]
+[OPTIONAL] Enter the Go import path for the repository if it uses a vanity URL (e.g. "k8s.io/my-repo"):
+[OPTIONAL] What commands are used to build binaries in the repository? (e.g. "go install ./cmd/...")
+[OPTIONAL] What commands are used to build test binaries? (e.g. "go install -race ./cmd/..." or "go test -c ./test/...")
 
 Now, let's configure test jobs for the repository...
 
@@ -84,7 +84,7 @@ checking out the code under test.
 
 Are there any test scripts to configure?  [default: no] yes
 What is the name of this test (e.g. "unit")?  unit
-What commands in the repository run the test (e.g. "make test-unit")?  make test     
+What commands in the repository run the test (e.g. "make test-unit")?  make test
 Are there any more test scripts to configure?  [default: no] no
 
 Next, we will configure end-to-end tests. An end-to-end test

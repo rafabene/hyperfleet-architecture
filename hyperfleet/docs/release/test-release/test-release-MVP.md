@@ -69,7 +69,7 @@ flowchart TD
     K -->|No| L[Investigate & Fix]
     L --> F
     K -->|Yes| M[Release to Production]
-    
+
     style A fill:#e1f5ff
     style B fill:#e1f5ff
     style C fill:#fff4e1
@@ -231,7 +231,7 @@ flowchart TD
 - **Action**: Block PR merging if any test failures occur
 - **Success criteria**: All unit and integration tests must pass
 - **Jobs**:
-  
+
   1. **Linter Check** (`pull-ci-<repo>-main-lint`)
      - **Purpose**: Ensure code quality, consistency, and adherence to Go coding standards
      - **Tools**:
@@ -249,7 +249,7 @@ flowchart TD
      - **Success criteria**: Zero linting issues detected, all code properly formatted
      - **Running command**: `make lint-check`
      - **On failure**: Block PR merge until all linting issues resolved
-  
+
   2. **Unit Test** (`pull-ci-<repo>-main-unit`)
      - **Purpose**: Validate individual components and functions work correctly in isolation
      - **Framework**: Standard Go testing framework (flexible framework choice)
@@ -265,7 +265,7 @@ flowchart TD
      - **Artifacts generated**:
        - Test execution logs and results
      - **On failure**: Block PR merge until all tests pass
-  
+
   3. **Integration Test** (`pull-ci-<repo>-main-integration`)
      - **Purpose**: Validate interactions between components and external dependencies
      - **Framework**: Standard Go testing + testcontainers (for dependency simulation, flexible framework choice)
@@ -300,13 +300,13 @@ flowchart TD
        # Dockerfile.integration
        # Use the same nested-podman base image that Prow uses
        FROM registry.ci.openshift.org/ci/nested-podman:latest
-       
+
        # Copy source code
        COPY . /opt/app-root/src/
        WORKDIR /opt/app-root/src
-       
+
        USER root
-       
+
        # Install Go and build tools specific to your project
        RUN dnf install -y \
            git \
@@ -314,13 +314,13 @@ flowchart TD
            make \
            wget \
            && dnf clean all
-       
+
        # Download Go dependencies
        RUN go mod download
-       
+
        # Set up environment for testcontainers
        ENV TESTCONTAINERS_RYUK_DISABLED=true
-       
+
        # The nested-podman image already has podman configured
        # Just run your integration tests when you start the container
        CMD ["sh", "-c", "podman system service --time=0 & sleep 2 && make test-integration"]
@@ -338,10 +338,10 @@ flowchart TD
        ```bash
        # Build the integration test image
        podman build -f Dockerfile.integration -t hyperfleet-api-integration:latest .
-       
+
        # Run integration tests with privileged mode for nested containers
        podman run --rm --privileged hyperfleet-api-integration:latest
-       
+
        ```
 
        **Makefile Target** (add to your Makefile):
@@ -353,7 +353,7 @@ flowchart TD
         podman build -f Dockerfile.integration -t $(PROJECT_NAME)-integration:latest .
         @echo "Running integration tests..."
         podman run --rm --privileged $(PROJECT_NAME)-integration:latest
-       
+
        .PHONY: test-integration
        test-integration:
         @echo "Running integration tests with testcontainers..."
@@ -377,11 +377,11 @@ flowchart TD
            # Start podman system service for testcontainers
            podman system service --time=0 & || true
            systemctl --user start podman.socket
-           
+
            # Configure Docker host for testcontainers
            export DOCKER_HOST=$(podman info --format 'unix://{{.Host.RemoteSocket.Path}}')
            export TESTCONTAINERS_RYUK_DISABLED=true
-           
+
            # Run integration tests
            make test-integration
          container:
@@ -399,7 +399,7 @@ flowchart TD
            name: nested-podman
            namespace: ci
            tag: latest
-       
+
        images:
        - dockerfile_path: Dockerfile.integration
          from: nested-podman  # Required: specify nested-podman as FROM base
@@ -428,12 +428,12 @@ flowchart TD
            name: nested-podman
            namespace: ci
            tag: latest
-       
+
        images:
        - dockerfile_path: Dockerfile.integration
          from: nested-podman
          to: integration-tests
-       
+
        tests:
        - as: integration
          capabilities:
@@ -463,10 +463,10 @@ flowchart TD
            "github.com/testcontainers/testcontainers-go"
            "github.com/testcontainers/testcontainers-go/wait"
        )
-       
+
        func TestDatabaseIntegration(t *testing.T) {
            ctx := context.Background()
-           
+
            // Start PostgreSQL container
            pgContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
                ContainerRequest: testcontainers.ContainerRequest{
@@ -481,11 +481,11 @@ flowchart TD
                Started: true,
            })
            defer pgContainer.Terminate(ctx)
-           
+
            // Get connection details and run tests
            host, _ := pgContainer.Host(ctx)
            port, _ := pgContainer.MappedPort(ctx, "5432")
-           
+
            // Your integration test logic here
        }
        ```
@@ -497,7 +497,7 @@ flowchart TD
        labels:
          capability/nested-podman: nested-podman  # Enables nested container capability
        ```
-  
+
 ### CD Testing
 
 - **Job location**: Prow
@@ -729,7 +729,7 @@ git submodule add -b main \
 # Configure sparse checkout for each submodule (only checkout charts/ directory)
 for component in hyperfleet-api hyperfleet-broker hyperfleet-sentinel hyperfleet-adapter; do
   git config -f .gitmodules submodule..submodules/${component}.sparse true
-  
+
   # Create sparse-checkout file to only checkout the chart directory
   mkdir -p .git/modules/.submodules/${component}/info
   echo "charts/*" > .git/modules/.submodules/${component}/info/sparse-checkout
@@ -909,20 +909,20 @@ helm upgrade --install hyperfleet ./charts/hyperfleet \
 
      ```bash
      cd hyperfleet-chart
-     
+
      # Option A: Update all components to latest on main branch
      git submodule update --remote --merge
-     
+
      # Option B: Update specific component to a tagged version
      cd .submodules/hyperfleet-api
      git fetch --tags
      git checkout chart-v1.2.0  # Specific chart version tag
      cd ../..
-     
+
      # Review changes (only chart files will show via symlinks)
      git status
      git diff .submodules/
-     
+
      # Commit updated submodule references
      git add .submodules/
      git commit -m "Update component charts for release v1.0.0"
@@ -984,7 +984,7 @@ This section outlines the step-by-step actions required to set up the complete t
   WORKDIR /workspace
   COPY . .
   RUN make build
-  
+
   # Stage 2: Runtime
   FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
   WORKDIR /
@@ -1053,7 +1053,7 @@ build_root:
 **Objective**: Automate container image building for both pre-merge validation and post-merge releases.
 
 **Action Items**:
-  
+
 - **Post-merge (Main Branch) Image Builds**:
   - Create postsubmit job configuration for image build
   - Tag images with:

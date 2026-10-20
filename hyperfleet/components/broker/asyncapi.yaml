@@ -5,7 +5,7 @@ info:
   description: >
     Cluster Lifecycle Management.
     Defines the commands used to drive the reconciliation loops.
-    
+
 components:
   messages:
     ReconcileCluster:
@@ -114,7 +114,7 @@ components:
           const: com.redhat.hyperfleet.cluster.reconcile.v1
         data:
           $ref: '#/components/schemas/ReconcileCluster'
-     
+
     ReconcileNodePoolCloudEvent:
       type: object
       required:

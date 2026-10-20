@@ -151,7 +151,7 @@ adapters:
       limits:
         cpu: 500m
         memory: 512Mi
-  
+
   dns:
     enabled: true
     replicas: 3
@@ -351,18 +351,18 @@ data:
   # Logging
   LOG_LEVEL: {{ .Values.observability.logLevel | quote }}
   LOG_FORMAT: "json"
-  
+
   # Metrics (Prometheus)
   METRICS_ENABLED: "true"
   METRICS_PORT: {{ .Values.observability.metricsPort | quote }}
   METRICS_PATH: "/metrics"
-  
+
   # Health Checks
   HEALTH_ENABLED: "true"
   HEALTH_PORT: {{ .Values.observability.healthPort | quote }}
   HEALTH_LIVENESS_PATH: "/healthz"
   HEALTH_READINESS_PATH: "/readyz"
-  
+
   # Tracing (OpenTelemetry)
   TRACE_ENABLED: {{ .Values.observability.traceEnabled | quote }}
   TRACE_ENDPOINT: {{ .Values.observability.traceEndpoint | quote }}
@@ -441,16 +441,16 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
-  
+
   # Create and manage resources
   - apiGroups: [""]
     resources: ["namespaces", "services", "configmaps", "secrets"]
     verbs: ["create", "get", "list", "watch", "update", "patch"]
-  
+
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets"]
     verbs: ["create", "get", "list", "watch", "update", "patch"]
-  
+
   # Read-only access for status checking
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
