@@ -440,7 +440,7 @@ The commit will be blocked until secrets are removed.
 
 ## GitHub Actions secondary gate
 
-The ten Go repositories use the same `.github/workflows/pre-commit.yml`: API, Adapter, Applier, Broker, E2E, Sentinel, Operator, Logger, Credential Provider, and Hooks. It runs on `pull_request` as a secondary feedback check. **Prow remains the merge gate**; do not add this workflow to branch-protection or ruleset required checks as part of this rollout.
+The ten Go repositories share a baseline `.github/workflows/pre-commit.yml`: API, Adapter, Applier, Broker, E2E, Sentinel, Operator, Logger, Credential Provider, and Hooks. The API has the sole workflow exception: a code-generation step before the hooks. It runs on `pull_request` as a secondary feedback check. **Prow remains the merge gate**; do not add this workflow to branch-protection or ruleset required checks as part of this rollout.
 
 The workflow sets up Go from the consuming repo's `go.mod`, Python, and a pinned pre-commit executable. It then uses the project's `make install-hooks` target to register Git hooks before running:
 
@@ -448,7 +448,9 @@ The workflow sets up Go from the consuming repo's `go.mod`, Python, and a pinned
 pre-commit run --all-files --show-diff-on-failure
 ```
 
-It first runs `make generate-all` only when that target exists, so the API's ignored OpenAPI models and mocks are available before formatting and static analysis. This is code generation for the hooks, not an application build or test suite. The workflow does not run application unit, integration, or live E2E tests.
+Only the API workflow includes `make generate-all`, so its ignored OpenAPI models and mocks are available before formatting and static analysis. The other nine workflows omit this step rather than probing their Makefiles. After removing that API-only step, all ten workflows are identical. This is code generation for the hooks, not an application build or test suite. The workflow does not run application unit, integration, or live E2E tests.
+
+All ten workflows retain `actions/setup-go` with `go-version-file: go.mod` and caching for the available root/tool-module checksum files. Go is required by the formatting, vet and pinned linter commands as well as by Go-based hooks, independently of code generation. Do not rely on the runner's preinstalled Go: a newer version may be incompatible with a repo's pinned tooling.
 
 Each repo's `.pre-commit-config.yaml` remains the source of truth for hook selection and frozen revisions. The workflow does not add hooks missing from a repo's config; for example, Broker currently configures only the HyperFleet registry hooks.
 

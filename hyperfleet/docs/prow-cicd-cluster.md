@@ -22,7 +22,7 @@ This is the long-running reserved GKE cluster for Prow CI/CD job execution. This
 
 ## Merge gate and secondary checks
 
-Prow remains HyperFleet's merge gate. The Go repos also run the identical `.github/workflows/pre-commit.yml` on pull requests as a secondary, non-required feedback check; it does not replace Prow presubmits or add application builds/tests. See the [pre-commit CI guide](pre-commit-hooks.md#github-actions-secondary-gate) for the workflow, security controls, and coverage boundaries.
+Prow remains HyperFleet's merge gate. The Go repos also run a shared `.github/workflows/pre-commit.yml` baseline on pull requests as a secondary, non-required feedback check. Only the API adds a preparation step for its ignored generated sources; Go setup remains in every repo for the quality hooks. This does not replace Prow presubmits or add application builds/tests. See the [pre-commit CI guide](pre-commit-hooks.md#github-actions-secondary-gate) for the workflow, security controls, and coverage boundaries.
 
 In particular, `pre-commit run --all-files` does not execute commit-message hooks, and a staged-only LeakTK hook passing on a clean checkout is not proof of secret scanning. Prow PR-title coverage gaps and effective CI secret scanning are tracked separately in [HYPERFLEET-1817](https://redhat.atlassian.net/browse/HYPERFLEET-1817) and [HYPERFLEET-1819](https://redhat.atlassian.net/browse/HYPERFLEET-1819).
 
