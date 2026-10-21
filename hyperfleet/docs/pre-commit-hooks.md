@@ -466,7 +466,7 @@ Each repo's `.pre-commit-config.yaml` remains the source of truth for hook selec
 
 - Actions are pinned to full commit SHAs, with release comments for maintenance. Hook revisions stay in the repo's pre-commit config.
 - The workflow uses `pull_request`, denies token permissions by default (`permissions: {}`), and grants `contents: read` only to the `pre-commit` job. Checkout credential persistence is disabled. It does not use `pull_request_target`, privileged tokens, or repository secrets.
-- Go module/build caching uses both root and tool-module checksums. `CGO_ENABLED=0` avoids optional native dependencies in the Go-based hook environments; this does not change the application build's FIPS or CGO policy.
+- Go module/build caching uses the available root and tool-module checksums. A separate cache saves `~/.cache/pre-commit`, keyed by runner OS/architecture, actual Go/Python versions, the pinned pre-commit version, and the pre-commit config hash, with no broad restore-key fallback. Cache hits can avoid rebuilding hook environments; the time saved depends on GitHub's cache scope and runtime conditions. `CGO_ENABLED=0` avoids optional native dependencies in the Go-based hook environments; this does not change the application build's FIPS or CGO policy.
 - A timeout bounds each run, and a new run cancels an older one for the same PR. Hook environments can still take time to compile on a fresh runner.
 - To reproduce a failure locally, use the repo-compatible Go toolchain, run required generation, and execute the command above. Review any formatter diff rather than having CI commit fixes.
 
