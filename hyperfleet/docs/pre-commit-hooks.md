@@ -442,7 +442,7 @@ The commit will be blocked until secrets are removed.
 
 The ten Go repositories use the same `.github/workflows/pre-commit.yml`: API, Adapter, Applier, Broker, E2E, Sentinel, Operator, Logger, Credential Provider, and Hooks. It runs on `pull_request` as a secondary feedback check. **Prow remains the merge gate**; do not add this workflow to branch-protection or ruleset required checks as part of this rollout.
 
-The workflow sets up Go from the consuming repo's `go.mod`, Python, and a pinned pre-commit version, then runs:
+The workflow sets up Go from the consuming repo's `go.mod`, Python, and a pinned pre-commit executable. It then uses the project's `make install-hooks` target to register Git hooks before running:
 
 ```bash
 pre-commit run --all-files --show-diff-on-failure
@@ -463,7 +463,7 @@ Each repo's `.pre-commit-config.yaml` remains the source of truth for hook selec
 ### Security and operation
 
 - Actions are pinned to full commit SHAs, with release comments for maintenance. Hook revisions stay in the repo's pre-commit config.
-- The workflow uses `pull_request`, read-only `contents` permission, and checkout with credential persistence disabled. It does not use `pull_request_target`, privileged tokens, or repository secrets.
+- The workflow uses `pull_request`, denies token permissions by default (`permissions: {}`), and grants `contents: read` only to the `pre-commit` job. Checkout credential persistence is disabled. It does not use `pull_request_target`, privileged tokens, or repository secrets.
 - Go module/build caching uses both root and tool-module checksums. `CGO_ENABLED=0` avoids optional native dependencies in the Go-based hook environments; this does not change the application build's FIPS or CGO policy.
 - A timeout bounds each run, and a new run cancels an older one for the same PR. Hook environments can still take time to compile on a fresh runner.
 - To reproduce a failure locally, use the repo-compatible Go toolchain, run required generation, and execute the command above. Review any formatter diff rather than having CI commit fixes.
