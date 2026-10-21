@@ -43,7 +43,7 @@ OWNERS
  ```yaml
 ref:
   as: openshift-hyperfleet-chart-deployment
-  from: hyperfleet-chart-src 
+  from: hyperfleet-chart-src
   grace_period: 10m
   commands: openshift-hyperfleet-chart-deployment-commands.sh
   resources:
@@ -54,7 +54,7 @@ ref:
   env:
   - name: # environment variable name
     default: # (optional) the value assigned if none is provided
-    documentation: # (optional) a textual description of the parameter. Markdown supported. 
+    documentation: # (optional) a textual description of the parameter. Markdown supported.
   credentials:
   - collection: ""
     namespace: test-credentials
@@ -71,7 +71,7 @@ ref:
 ```bash
 <Other steps>
 # HYPERFLEET_E2E_PATH is defined in above environment variable
-GCP_CREDENTIALS_FILE="${HYPERFLEET_E2E_PATH}/hcm-hyperfleet-e2e.json" 
+GCP_CREDENTIALS_FILE="${HYPERFLEET_E2E_PATH}/hcm-hyperfleet-e2e.json"
 
 ```
 

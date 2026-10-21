@@ -46,12 +46,12 @@ mkdir ~/.gcp
 # cp this downloaded key file to ~/.gcp/osd-css-admin.json
 
 # Execute gcloud auth
-gcloud auth activate-service-account --key-file=/Users/dawang/.gcp/osd-ccs-admin.json 
+gcloud auth activate-service-account --key-file=/Users/dawang/.gcp/osd-ccs-admin.json
 
 # Set the active default project
 gcloud config set project <PROJECT_ID>
 
-# Set quota project 
+# Set quota project
 gcloud auth application-default set-quota-project <PROJECT_ID>
 ```
 
@@ -182,7 +182,7 @@ Before creating resources with Config Connector, you must configure where to cre
 apiVersion: dns.cnrm.cloud.google.com/v1beta1
 kind: DNSManagedZone
 metadata:
-  name: dawang-anno-public-zone-dd  # Cloud DNS Zone name and k8s DNSManagedZone name 
+  name: dawang-anno-public-zone-dd  # Cloud DNS Zone name and k8s DNSManagedZone name
   namespace: dawang-dns-test        # The namespace where k8s CR created
   annotations:
     cnrm.cloud.google.com/project-id: "<PROJECT_ID>" # Specify which project Cloud DNS resource created
@@ -246,7 +246,7 @@ metadata:
 spec:
   name: "www.dawangannod.<subdomain>"
   type: "A"
-  ttl: 300 
+  ttl: 300
   rrdatas:
     - "192.0.2.2"
   managedZoneRef:
@@ -363,7 +363,7 @@ gcloud config list project
 # If not correct, set correct one
 gcloud config set project <PROJECT_ID>
 
-# Set quota project 
+# Set quota project
 gcloud auth application-default set-quota-project <PROJECT_ID>
 ```
 

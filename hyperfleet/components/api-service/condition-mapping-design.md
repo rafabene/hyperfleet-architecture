@@ -86,29 +86,29 @@ sequenceDiagram
     participant DB
     participant Mapper
     participant Resource
-    
+
     Note over Adapter,Resource: Adapter reports status
     Adapter->>API: PUT /statuses with conditions
     API->>DB: Store adapter_status row
-    
+
     Note over API,Mapper: Status aggregation (existing flow)
     API->>DB: Fetch all adapter_statuses
     API->>API: Compute aggregated conditions<br/>(Reconciled, LastKnownReconciled)
-    
+
     Note over API,Mapper: NEW: Condition mapping
     API->>Mapper: Apply mapping rules (all adapter conditions available)
-    
+
     loop For each rule
         Mapper->>Mapper: Evaluate when expression
         Mapper->>Mapper: Compute output (type, status, reason, message)
         Mapper-->>API: Return mapped condition
     end
-    
+
     API->>API: Append mapped conditions
     API->>DB: Update resource.status_conditions
     API->>Resource: Resource now has rich conditions
     API-->>Adapter: 200 OK
-    
+
     Note over Resource: Public GET shows all conditions
     Resource-->>Adapter: GET /clusters/ID<br/>status.conditions includes mapped
 ```
@@ -131,7 +131,7 @@ adapters:
     required:
       - rosa-adapter
       - gcp-adapter
-    
+
     conditions:
       # Example 1: Copy single adapter condition with transformation
       # Map key is the output_type (target condition type)
@@ -160,7 +160,7 @@ adapters:
             expression: statuses.filter(c, (c.adapter == "rosa-adapter" && c.type == "ControlPlaneReady") || (c.adapter == "gcp-adapter" && c.type == "QuotaAvailable")).all(c, c.status == "True") ? "Healthy" : "Degraded"
           message:
             expression: '"Cluster health based on ROSA control plane and GCP quota"'
-      
+
       # Example 3: Using data fields
       # Map key is the output_type (target condition type)
       GCPQuotaStatus:

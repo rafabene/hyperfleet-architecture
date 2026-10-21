@@ -38,10 +38,10 @@ metadata:
 data:
   # Broker type identifier
   BROKER_TYPE: "pubsub"
-  
+
   # Google Cloud project ID containing the Pub/Sub resources
   BROKER_PROJECT_ID: "your-gcp-project-id"
-  
+
   # Pub/Sub topic ID for publishing events
   BROKER_TOPIC_ID: "hyperfleet-cluster-events"
 
@@ -63,13 +63,13 @@ metadata:
 data:
   # Broker type identifier
   BROKER_TYPE: "awsSns"
-  
+
   # AWS region where SNS/SQS resources exist
   BROKER_REGION: "us-east-1"
-  
+
   # SNS topic ARN for publishing events (fan-out to multiple queues)
   BROKER_TOPIC_ARN: "arn:aws:sns:us-east-1:123456789012:hyperfleet-cluster-events"
-  
+
   # SNS topic name
   BROKER_TOPIC_NAME: "hyperfleet-cluster-events"
 
@@ -90,12 +90,12 @@ metadata:
 data:
   # Broker type identifier
   BROKER_TYPE: "rabbitmq"
-  
+
   # RabbitMQ connection details
   BROKER_HOST: "rabbitmq.hyperfleet-system.svc.cluster.local"
   BROKER_PORT: "5672"
   BROKER_VHOST: "/"
-  
+
   # Exchange configuration for message routing
   BROKER_EXCHANGE: "hyperfleet-events"
   BROKER_EXCHANGE_TYPE: "fanout"
@@ -200,10 +200,10 @@ data:
 #   type MessageBroker interface {
 #       // Publish sends a message to the specified topic/exchange
 #       Publish(ctx context.Context, topic string, message []byte) error
-#       
+#
 #       // Subscribe registers a handler for messages on a topic
 #       Subscribe(ctx context.Context, topic string, handler MessageHandler) error
-#       
+#
 #       // Close cleanup broker resources
 #       Close() error
 #   }
@@ -239,7 +239,7 @@ data:
 #    brokerConfigMap := loadTemplate(brokerType)
 #    brokerConfigMap.name = "hyperfleet-message-broker-config"
 #    brokerConfigMap.data["BROKER_TYPE"] = brokerType
-#    
+#
 #    // Set broker-specific fields
 #    switch brokerType {
 #    case "pubsub":
@@ -254,7 +254,7 @@ data:
 #        brokerConfigMap.data["BROKER_PORT"] = "5672"
 #        brokerConfigMap.data["BROKER_EXCHANGE"] = "hyperfleet-events"
 #    }
-#    
+#
 #    kubectl.Apply(brokerConfigMap)
 #
 # 5. Propagate broker connection details to adapter and sentinel ConfigMaps:
@@ -262,7 +262,7 @@ data:
 #    for _, adapter := range adapters {
 #        adapterConfigMap := getOrCreateConfigMap("hyperfleet-adapter-" + adapter.name + "-config")
 #        adapterConfigMap.data["BROKER_TYPE"] = brokerType
-#        
+#
 #        // Copy broker connection details and create adapter-specific resources
 #        switch brokerType {
 #        case "pubsub":
@@ -280,10 +280,10 @@ data:
 #            bindQueueToExchange(queueName, "hyperfleet-events", "cluster.#")
 #            adapterConfigMap.data["BROKER_QUEUE_NAME"] = queueName
 #        }
-#        
+#
 #        kubectl.Apply(adapterConfigMap)
 #    }
-#    
+#
 #    // Sentinel publishes to topic/exchange, doesn't need a queue
 #    sentinelConfigMap := getOrCreateConfigMap("hyperfleet-message-sentinel-config")
 #    sentinelConfigMap.data["BROKER_TYPE"] = brokerType
@@ -313,4 +313,3 @@ data:
 #            return nil, fmt.Errorf("unsupported broker type: %s", config.Type)
 #        }
 #    }
-

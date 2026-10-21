@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Platform Team
-Last Updated: 2026-06-16
+Last Updated: 2026-10-21
 ---
 
 # Pre-Commit Hooks Setup Guide
@@ -53,7 +53,7 @@ When a developer runs `git commit`, the pre-commit framework intercepts the oper
   pip install pre-commit
   ```
 
-- Go 1.25+ (for the `commitlint` hook and LeakTK secret scanning — both built automatically by pre-commit on first run)
+- A Go toolchain satisfying the pinned Go hooks' module requirements (both `commitlint` and LeakTK are built automatically by pre-commit on first run). In Go repositories, also match the consuming repo's `go.mod`, `tools/go.mod`, and supported Go versions of the pinned tools; a newer installed Go version is not automatically compatible. See [Go tooling fails with a newer installed Go version](#go-tooling-fails-with-a-newer-installed-go-version).
 - `make` targets (`lint`, `gofmt`, `go-vet`) in the consuming repo (for Go tooling hooks)
 
 **LeakTK builds with `CGO_ENABLED=0` by default** — no system dependencies required. This works on all platforms (Linux, macOS, Windows).
@@ -123,13 +123,13 @@ default_install_hook_types: [pre-commit, commit-msg]
 repos:
   # Secret scanning
   - repo: https://github.com/leaktk/leaktk
-    rev: e62a495260dc1e396fa586e51bbe1355f6fc7d9d # v0.3.3
+    rev: c6f5a11329736a8dc1551a84603f117bd9ed498e  # frozen: v0.3.12
     hooks:
       - id: leaktk.git.pre-commit
 
   # HyperFleet code quality hooks
   - repo: https://github.com/openshift-hyperfleet/hyperfleet-hooks
-    rev: 7f5119208e5cdee3f0c688881b6a4b803095f203 # v0.2.1
+    rev: d9aab6d723c9246bd2f63a982bf1d9cf0805b3a4  # frozen: v0.3.0
     hooks:
       - id: hyperfleet-commitlint
         stages: [commit-msg]
@@ -139,20 +139,23 @@ repos:
 
   # File hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-added-large-files
 ```
 
-The file hygiene hooks (`trailing-whitespace`, `end-of-file-fixer`, `check-added-large-files`) catch common issues — trailing whitespace, missing final newlines, and accidentally committed large binaries — before they reach PR review.
+The file hygiene hooks (`trailing-whitespace`, `end-of-file-fixer`, `check-added-large-files`) catch common issues — trailing whitespace, missing final newlines, and accidentally committed large binaries — before they reach PR review. `--markdown-linebreak-ext=md` preserves intentional two-space Markdown hard line breaks.
 
-> **Important:** All `rev` values **MUST** use full commit SHAs, not tags. Tags are mutable references that can be modified after publication (see [CVE-2025-30066](https://www.cve.org/CVERecord?id=CVE-2025-30066) for a real-world pre-commit hook supply chain attack). Add the tag as a trailing comment for readability (e.g., `# v0.3.3`). When updating versions, resolve the new tag to its SHA with:
+> **Important:** All remote hook `rev` values **MUST** use full 40-character Git SHAs, not mutable tags or branches (see [CVE-2025-30066](https://www.cve.org/CVERecord?id=CVE-2025-30066)). Use the trailing comment `# frozen: <tag>` so Renovate can extract the release version separately from its digest and preserve SHA pinning. Generate updates with:
 >
 > ```bash
-> git ls-remote --tags https://github.com/leaktk/leaktk.git v0.3.3
+> pre-commit autoupdate --freeze
 > ```
+>
+> Inspect every remote `rev` after updating: already-current entries can retain an old comment and need explicit conversion to `# frozen: <tag>`. For annotated tags, `--freeze` may pin the immutable tag-object SHA rather than the peeled commit SHA; both resolve to the release, but verify the tag and its target before accepting a change. See [Updating hook versions](#updating-hook-versions) for verification steps.
 >
 > **Note:** `default_install_hook_types: [pre-commit, commit-msg]` means a single `pre-commit install` command installs hooks for **both** the `pre-commit` and `commit-msg` stages. Without this setting, you would need to run `pre-commit install --hook-type commit-msg` separately to enable commit message validation.
 >
@@ -206,7 +209,7 @@ Add `pre-commit` to the prerequisites section in your `README.md`:
 ```markdown
 ### Prerequisites
 
-- Go 1.25 or later
+- Go toolchain matching the repository and pinned hooks/tools
 - Docker or Podman
 - Make
 - pre-commit
@@ -296,10 +299,10 @@ Both tools perform secret scanning using Gitleaks as the underlying engine. Here
 
 ##### Step 1: Ensure system requirements
 
-Verify that all team members have Go 1.25+ installed:
+Verify that all team members have a Go toolchain compatible with the pinned hook modules and the consuming repository's modules/tools:
 
 ```bash
-go version  # Should show 1.25.0 or later
+go version  # Compare with the pinned hooks' and consuming repo's requirements
 ```
 
 **LeakTK builds with `CGO_ENABLED=0` by default** — no additional system dependencies required. This works on all platforms (Linux, macOS, Windows).
@@ -335,10 +338,10 @@ repos:
     hooks:
       - id: rh-pre-commit
 
-# After (LeakTK) — resolve tag to SHA: git ls-remote --tags https://github.com/leaktk/leaktk.git v0.3.3
+# After (LeakTK) — SHA-pinned with the frozen release comment
 repos:
   - repo: https://github.com/leaktk/leaktk
-    rev: e62a495260dc1e396fa586e51bbe1355f6fc7d9d # v0.3.3
+    rev: c6f5a11329736a8dc1551a84603f117bd9ed498e  # frozen: v0.3.12
     hooks:
       - id: leaktk.git.pre-commit
 ```
@@ -347,7 +350,7 @@ repos:
 
 Inform all developers that:
 
-1. System requirements must be met (Go 1.25+ only — no other dependencies needed)
+1. System requirements must match the pinned hooks and the consuming repo's modules/tools
 2. They should reinstall hooks: `make install-hooks`
 3. The **first commit** will take 3-5 minutes (one-time compilation)
 4. Subsequent commits will run instantly (cached binary)
@@ -363,7 +366,7 @@ git commit -m "HYPERFLEET-XXX - chore: migrate from rh-pre-commit to LeakTK"
 
 If your repository enforces hooks in CI, update your pipeline configuration to use LeakTK instead of rh-pre-commit. The following steps apply regardless of CI platform (Prow, GitHub Actions, GitLab CI, etc.):
 
-1. **Ensure Go 1.25+ is available** in your CI environment
+1. **Ensure a compatible Go toolchain is available** in your CI environment, matching the pinned hook modules and consuming repo's modules/tools
    - Verify with `go version` or install if needed
 
 2. **Install pre-commit framework**:
@@ -390,7 +393,7 @@ If your repository enforces hooks in CI, update your pipeline configuration to u
    ```bash
    # Before (rh-pre-commit)
    rh-pre-commit run --all-files
-   
+
    # After (pre-commit with LeakTK)
    pre-commit run --all-files
    ```
@@ -461,7 +464,7 @@ gofmt: fmt ## Alias for fmt
 
 ### LeakTK compilation fails with "Go version too old"
 
-LeakTK requires Go 1.25+:
+Check the pinned LeakTK release's `go.mod` and the consuming repository's toolchain requirements rather than relying on a version copied from this guide:
 
 ```bash
 # Check version
@@ -510,6 +513,18 @@ pre-commit clean
 pre-commit install
 ```
 
+### Go tooling fails with a newer installed Go version
+
+The Go tooling hooks run the consuming repo's Make targets, so compatibility depends on that repo's `go.mod`, `tools/go.mod`, and pinned tools. A newer installed Go version can exceed the Go versions supported by its pinned golangci-lint.
+
+For example, a repo pinning golangci-lint v2.7.0 can fail on Go 1.27. If Go 1.26.0 satisfies that repo's module requirements, use this repo-specific workaround:
+
+```bash
+GOTOOLCHAIN=go1.26.0 pre-commit run --all-files
+```
+
+This is an example, not a fleet-wide Go version requirement. Use a compatible toolchain selected for the repo, or update the pinned linter through the repo's normal dependency review process; clearing the pre-commit cache does not fix an unsupported host toolchain.
+
 ### Skipping hooks temporarily
 
 In rare cases (e.g., merge commits), you can skip hooks:
@@ -522,17 +537,28 @@ Use this sparingly — CI will still validate the commit message on the PR.
 
 ### Updating hook versions
 
-To update hook versions, resolve the new tag to its commit SHA and update the `rev` field manually:
+Use frozen updates to retain SHA pinning while recording the release version:
 
 ```bash
-# Find the SHA for a new tag
-git ls-remote --tags https://github.com/leaktk/leaktk.git v0.4.0
+pre-commit autoupdate --freeze
 
-# Update .pre-commit-config.yaml with the new SHA
-# rev: <new-sha> # v0.4.0
+# Or update one hook source only
+pre-commit autoupdate --freeze --repo https://github.com/leaktk/leaktk
+
+# Verify both the tag object and peeled commit for annotated tags
+git ls-remote https://github.com/openshift-hyperfleet/hyperfleet-hooks.git \
+  'refs/tags/v0.3.0' 'refs/tags/v0.3.0^{}'
+
+git diff -- .pre-commit-config.yaml
+pre-commit validate-config
+pre-commit run --all-files
 ```
 
-> **Note:** Do not use `pre-commit autoupdate` — it replaces SHAs with tags, which weakens supply chain security. Always pin to commit SHAs.
+Every remote entry must have the form `rev: <40-character SHA>  # frozen: <tag>`. If `autoupdate --freeze` leaves an already-current entry unchanged, verify its release reference and normalize the comment explicitly. Do not remove an existing SHA pin or invent a version comment for an unverified reference.
+
+Renovate supports SHA-preserving updates for this format through [frozen digest support](https://github.com/renovatebot/renovate/pull/36693). Validate extraction and replacement with the Renovate version deployed by MintMaker before relying on automated updates. A local validator version or upstream image definition alone does not establish the deployed version. Keep normal human review and CI requirements; this format does not authorize auto-approval or automerge.
+
+> **Note:** Do not use plain `pre-commit autoupdate` without `--freeze`: it writes mutable tags. Existing comments such as `# v0.3.0` are not equivalent to `# frozen: v0.3.0` for Renovate's digest extraction.
 
 ---
 

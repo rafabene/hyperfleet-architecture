@@ -30,10 +30,10 @@ metadata:
 data:
   # Broker type identifier (framework uses this to select the right client)
   BROKER_TYPE: "pubsub"
-  
+
   # Google Cloud project ID containing the Pub/Sub subscription
   BROKER_PROJECT_ID: "your-gcp-project-id"
-  
+
   # Sentinel type identifier (framework uses this to select the right client)
   SENTINEL_TYPE: "example"
 
@@ -54,12 +54,12 @@ metadata:
 data:
   # Broker type identifier
   BROKER_TYPE: "rabbitmq"
-  
+
   # RabbitMQ connection details
   BROKER_HOST: "rabbitmq.hyperfleet-system.svc.local"
   BROKER_PORT: "5672"
   BROKER_VHOST: "/"
-  
+
   # Queue and exchange configuration
   BROKER_EXCHANGE: "hyperfleet-nodepool-events"
   BROKER_EXCHANGE_TYPE: "fanout"
@@ -138,7 +138,7 @@ data:
 #   type MessageBroker interface {
 #       // Publish sends a message to the specified topic/exchange
 #       Publish(ctx context.Context, topic string, message []byte) error
-#       
+#
 #       // Close cleanup broker resources
 #       Close() error
 #   }
@@ -159,13 +159,13 @@ data:
 #    for {
 #        // Poll HyperFleet API for resources
 #        clusters := fetchClustersWithShardFilter(config.ShardSelector)
-#        
+#
 #        for _, cluster := range clusters {
 #            // Check if reconciliation is needed based on max age
 #            if shouldReconcile(cluster, config.MaxAgeNotReady, config.MaxAgeReady) {
 #                // Create CloudEvent
 #                event := createCloudEvent(cluster)
-#                
+#
 #                // Publish to broker
 #                err := broker.Publish(ctx, "cluster-events", event)
 #                if err != nil {
@@ -173,7 +173,7 @@ data:
 #                }
 #            }
 #        }
-#        
+#
 #        // Wait for next poll interval
 #        time.Sleep(config.PollInterval)
 #    }
@@ -181,4 +181,3 @@ data:
 # The Sentinel doesn't need to know which broker implementation is being used.
 # The NewBroker function reads BROKER_TYPE from config and returns the
 # appropriate implementation. All broker-specific logic is handled internally.
-

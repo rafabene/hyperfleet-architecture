@@ -137,7 +137,7 @@ sequenceDiagram
     API->>DB: Store cluster adapter conditions
     API->>DB: Compute Reconciled=True (no nodepools remain)
     API->>DB: DELETE cluster record and adapter_statuses
-    
+
     alt Transaction succeeds
         DB-->>API: COMMIT successful
         API-->>CLAdapter: 200 OK

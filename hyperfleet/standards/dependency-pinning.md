@@ -411,7 +411,7 @@ jobs:
                 echo "::error::Generated code is out of sync. Run 'make generate' locally and commit the changes."
                 git diff --stat
                 exit 1
-          fi        
+          fi
 ```
 
 **Key points**:

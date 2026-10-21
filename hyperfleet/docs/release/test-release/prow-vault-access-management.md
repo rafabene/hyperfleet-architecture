@@ -97,8 +97,8 @@ Update the release repository configuration to include your new secret configura
     default: /var/run/hyperfleet-e2e/
   credentials:
   - collection: ""
-    namespace: test-credentials 
-    name: hyperfleet-e2e 
+    namespace: test-credentials
+    name: hyperfleet-e2e
     mount_path: /var/run/hyperfleet-e2e
 ```
 

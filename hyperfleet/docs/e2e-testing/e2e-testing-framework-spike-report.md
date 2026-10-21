@@ -234,7 +234,7 @@ Describe("Nodepool", Ordered, func() {
 ```markdown
 <!-- scenarios/data_flow.md -->
 ## Scenario: End-to-End Object Creation Data Flow
-**AI-Sync-ID:** E2E-FLOW-001  
+**AI-Sync-ID:** E2E-FLOW-001
 **Priority:** Critical
 ...
 ```
@@ -323,7 +323,7 @@ Run old tests on new framework to validate backward compatibility:
 git checkout release-1.2
 ./e2e-runner --env=staging.yaml  # v1.2.0 passes
 
-# Test backward compatibility  
+# Test backward compatibility
 git checkout release-1.1          # Old tests
 ./e2e-runner --env=staging.yaml   # Same v1.2.0 environment passes
 ```
