@@ -144,7 +144,7 @@ The following APIs **must be enabled** before cluster provisioning:
 
 ### 3.4 GCP Quota Validation (Post-MVP)
 
-**Implementation Reference**: [CS quota preflight logic](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L190-L191)
+**Implementation Reference**: [CS quota preflight logic](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L190-L191)  
 
 **Regional vCPU Quota Validation Flow**:
 
@@ -212,7 +212,7 @@ If Regional Limit = 100, Current Usage = 80:
 
 ### 3.5 Network Configuration Validation (Post-MVP)
 
-**Implementation Reference**: [CS network preflight](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L188-196)
+**Implementation Reference**: [CS network preflight](https://gitlab.cee.redhat.com/service/uhc-clusters-service/-/blob/master/cmd/clusters-service/service/gcp_preflight/preflight_service.go#L188-196)  
 
 #### VPC and Subnet Existence
 
@@ -777,7 +777,7 @@ Based on this spike, implementation tickets should have the following acceptance
 - [ ] Dockerfile builds successfully
 - [ ] Container image runs in K8s
 
-**GCP Validator** (Minimal validation logic):
+**GCP Validator** (Minimal validation logic):  
 
 - [ ] **Workload Identity Federation** (WIF) for GCP authentication
   - How to setup WIF to access customer's GCP project

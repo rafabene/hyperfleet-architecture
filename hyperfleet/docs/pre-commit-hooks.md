@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Platform Team
-Last Updated: 2026-10-20
+Last Updated: 2026-10-21
 ---
 
 # Pre-Commit Hooks Setup Guide
@@ -53,7 +53,7 @@ When a developer runs `git commit`, the pre-commit framework intercepts the oper
   pip install pre-commit
   ```
 
-- Go 1.26.0 for the hook versions below (both `commitlint` and LeakTK are built automatically by pre-commit on first run). Match the consuming repo's pinned tooling; if its golangci-lint does not support a newer installed Go version, prefix commands with `GOTOOLCHAIN=go1.26.0`.
+- A Go toolchain satisfying the pinned Go hooks' module requirements (both `commitlint` and LeakTK are built automatically by pre-commit on first run). In Go repositories, also match the consuming repo's `go.mod`, `tools/go.mod`, and supported Go versions of the pinned tools; a newer installed Go version is not automatically compatible. See [Go tooling fails with a newer installed Go version](#go-tooling-fails-with-a-newer-installed-go-version).
 - `make` targets (`lint`, `gofmt`, `go-vet`) in the consuming repo (for Go tooling hooks)
 
 **LeakTK builds with `CGO_ENABLED=0` by default** — no system dependencies required. This works on all platforms (Linux, macOS, Windows).
@@ -142,11 +142,12 @@ repos:
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-added-large-files
 ```
 
-The file hygiene hooks (`trailing-whitespace`, `end-of-file-fixer`, `check-added-large-files`) catch common issues — trailing whitespace, missing final newlines, and accidentally committed large binaries — before they reach PR review.
+The file hygiene hooks (`trailing-whitespace`, `end-of-file-fixer`, `check-added-large-files`) catch common issues — trailing whitespace, missing final newlines, and accidentally committed large binaries — before they reach PR review. `--markdown-linebreak-ext=md` preserves intentional two-space Markdown hard line breaks.
 
 > **Important:** All remote hook `rev` values **MUST** use full 40-character Git SHAs, not mutable tags or branches (see [CVE-2025-30066](https://www.cve.org/CVERecord?id=CVE-2025-30066)). Use the trailing comment `# frozen: <tag>` so Renovate can extract the release version separately from its digest and preserve SHA pinning. Generate updates with:
 >
@@ -208,7 +209,7 @@ Add `pre-commit` to the prerequisites section in your `README.md`:
 ```markdown
 ### Prerequisites
 
-- Go 1.26.0
+- Go toolchain matching the repository and pinned hooks/tools
 - Docker or Podman
 - Make
 - pre-commit
@@ -298,10 +299,10 @@ Both tools perform secret scanning using Gitleaks as the underlying engine. Here
 
 ##### Step 1: Ensure system requirements
 
-Verify that all team members have the Go version required by the pinned hooks and repository tools (Go 1.26.0 for the standard configuration above):
+Verify that all team members have a Go toolchain compatible with the pinned hook modules and the consuming repository's modules/tools:
 
 ```bash
-go version  # Use Go 1.26.0 for the standard configuration above
+go version  # Compare with the pinned hooks' and consuming repo's requirements
 ```
 
 **LeakTK builds with `CGO_ENABLED=0` by default** — no additional system dependencies required. This works on all platforms (Linux, macOS, Windows).
@@ -349,7 +350,7 @@ repos:
 
 Inform all developers that:
 
-1. System requirements must match the pinned hooks and tooling (Go 1.26.0 for the standard configuration above)
+1. System requirements must match the pinned hooks and the consuming repo's modules/tools
 2. They should reinstall hooks: `make install-hooks`
 3. The **first commit** will take 3-5 minutes (one-time compilation)
 4. Subsequent commits will run instantly (cached binary)
@@ -365,7 +366,7 @@ git commit -m "HYPERFLEET-XXX - chore: migrate from rh-pre-commit to LeakTK"
 
 If your repository enforces hooks in CI, update your pipeline configuration to use LeakTK instead of rh-pre-commit. The following steps apply regardless of CI platform (Prow, GitHub Actions, GitLab CI, etc.):
 
-1. **Ensure the required Go toolchain is available** in your CI environment (Go 1.26.0 for the standard configuration above)
+1. **Ensure a compatible Go toolchain is available** in your CI environment, matching the pinned hook modules and consuming repo's modules/tools
    - Verify with `go version` or install if needed
 
 2. **Install pre-commit framework**:
@@ -463,7 +464,7 @@ gofmt: fmt ## Alias for fmt
 
 ### LeakTK compilation fails with "Go version too old"
 
-Check the pinned LeakTK release's `go.mod` and the consuming repository's toolchain requirements. The standard configuration above uses Go 1.26.0:
+Check the pinned LeakTK release's `go.mod` and the consuming repository's toolchain requirements rather than relying on a version copied from this guide:
 
 ```bash
 # Check version
@@ -511,6 +512,18 @@ Pre-commit caches hook environments. Clear the cache and reinstall:
 pre-commit clean
 pre-commit install
 ```
+
+### Go tooling fails with a newer installed Go version
+
+The Go tooling hooks run the consuming repo's Make targets, so compatibility depends on that repo's `go.mod`, `tools/go.mod`, and pinned tools. A newer installed Go version can exceed the Go versions supported by its pinned golangci-lint.
+
+For example, a repo pinning golangci-lint v2.7.0 can fail on Go 1.27. If Go 1.26.0 satisfies that repo's module requirements, use this repo-specific workaround:
+
+```bash
+GOTOOLCHAIN=go1.26.0 pre-commit run --all-files
+```
+
+This is an example, not a fleet-wide Go version requirement. Use a compatible toolchain selected for the repo, or update the pinned linter through the repo's normal dependency review process; clearing the pre-commit cache does not fix an unsupported host toolchain.
 
 ### Skipping hooks temporarily
 

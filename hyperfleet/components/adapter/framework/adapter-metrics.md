@@ -109,7 +109,7 @@ For complete health and readiness endpoint standards, see [Health Endpoints Spec
 
 #### `hyperfleet_adapter_events_processed_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of CloudEvents processed by the adapter
 
 **Labels**:
@@ -137,7 +137,7 @@ hyperfleet_adapter_events_processed_total{component="adapter-validation",version
 
 #### `hyperfleet_adapter_event_processing_duration_seconds`
 
-**Type**: Histogram
+**Type**: Histogram  
 **Purpose**: Time taken to process a CloudEvent (end-to-end)
 
 **Labels**:
@@ -170,7 +170,7 @@ hyperfleet_adapter_event_processing_duration_seconds_count{component="adapter-va
 
 #### `hyperfleet_adapter_resources_created_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of Kubernetes resources created by the adapter
 
 **Labels**:
@@ -196,7 +196,7 @@ hyperfleet_adapter_resources_created_total{component="adapter-validation",versio
 
 #### `hyperfleet_adapter_resources_deleted_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of Kubernetes resources deleted by the adapter
 
 **Labels**:
@@ -223,7 +223,7 @@ hyperfleet_adapter_resources_deleted_total{component="adapter-validation",versio
 
 #### `hyperfleet_adapter_api_requests_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of API calls made by the adapter
 
 **Labels**:
@@ -253,7 +253,7 @@ hyperfleet_adapter_api_requests_total{component="adapter-validation",version="v1
 
 #### `hyperfleet_adapter_api_request_duration_seconds`
 
-**Type**: Histogram
+**Type**: Histogram  
 **Purpose**: Time taken for API requests
 
 **Labels**:
@@ -286,7 +286,7 @@ hyperfleet_adapter_api_request_duration_seconds_count{component="adapter-validat
 
 #### `hyperfleet_adapter_preconditions_evaluated_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of precondition evaluations
 
 **Labels**:
@@ -315,7 +315,7 @@ hyperfleet_adapter_preconditions_evaluated_total{component="adapter-validation",
 
 #### `hyperfleet_adapter_status_reports_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of status reports sent to HyperFleet API
 
 **Labels**:
@@ -346,7 +346,7 @@ hyperfleet_adapter_status_reports_total{component="adapter-validation",version="
 
 #### `hyperfleet_adapter_errors_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of errors encountered by the adapter
 
 **Labels**:
@@ -375,7 +375,7 @@ hyperfleet_adapter_errors_total{component="adapter-validation",version="v1.0.0",
 
 #### `hyperfleet_adapter_workload_status_total`
 
-**Type**: Counter
+**Type**: Counter  
 **Purpose**: Total number of workload status checks performed
 
 **Labels**:
@@ -402,7 +402,7 @@ hyperfleet_adapter_workload_status_total{component="adapter-validation",version=
 
 #### `hyperfleet_adapter_last_processed_timestamp_seconds`
 
-**Type**: Gauge
+**Type**: Gauge  
 **Purpose**: Unix timestamp of the last successfully processed event. Used as a "Dead Man's Switch" to detect if the adapter has silently stopped processing events.
 
 **Labels**:
