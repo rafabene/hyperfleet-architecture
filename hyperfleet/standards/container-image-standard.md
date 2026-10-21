@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Platform Team
-Last Updated: 2026-10-09
+Last Updated: 2026-10-20
 ---
 
 # HyperFleet Container Image Standard
@@ -55,7 +55,7 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 - Consistent with Red Hat OpenShift ecosystem
 - Regular security updates
 
-> **Note:** The Go toolset image does not include `make` by default. Install it as root, then switch back to the non-root user (see [Multi-Stage Build Pattern](#multi-stage-build-pattern)).
+> **Note:** The Go toolset image includes `make`. It comes with the image's `gcc`, which the `CGO_ENABLED=1` build also needs. Do not install `make` in the builder stage.
 
 ### Production Runtime
 
@@ -92,7 +92,6 @@ ARG BUILD_DATE=""
 ARG APP_VERSION="0.0.0-dev"
 
 USER root
-RUN dnf install -y make && dnf clean all
 WORKDIR /build
 RUN chown 1001:0 /build
 USER 1001
@@ -144,11 +143,10 @@ All container images **MUST** run as non-root users.
 
 ### Builder Stage (UBI9 Go Toolset)
 
-The UBI9 Go toolset image provides user `1001` by default. Temporarily switch to `root` only when installing system packages, then switch back:
+The UBI9 Go toolset image provides user `1001` by default. Switch to `root` only for steps that need it, such as creating `/build`, then switch back:
 
 ```dockerfile
 USER root
-RUN dnf install -y make && dnf clean all
 WORKDIR /build
 RUN chown 1001:0 /build
 USER 1001
@@ -290,7 +288,6 @@ ARG BUILD_DATE=""
 ARG APP_VERSION="0.0.0-dev"
 
 USER root
-RUN dnf install -y make && dnf clean all
 WORKDIR /build
 RUN chown 1001:0 /build
 USER 1001
