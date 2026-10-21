@@ -376,13 +376,13 @@ If your repository enforces hooks in CI, update your pipeline configuration to u
    pip install pre-commit
    ```
 
-3. **Run the repository's hook installation target** to ensure consistent setup:
+3. **Validate the repository's hook configuration**:
 
    ```bash
-   make install-hooks
+   pre-commit validate-config
    ```
 
-   This mirrors the developer workflow and ensures pre-commit hooks are registered. The first run compiles LeakTK (3-5 minutes) — cache to avoid recompilation on subsequent runs.
+   CI invokes pre-commit directly and does not need Git-hook registration. `make install-hooks` is for local automatic execution on `git commit`; `pre-commit run` prepares the configured hook environments without it.
 
 4. **Cache the pre-commit environment** to avoid recompiling LeakTK on every run
    - Cache directory: `~/.cache/pre-commit/`
@@ -442,7 +442,7 @@ The commit will be blocked until secrets are removed.
 
 The ten Go repositories share a baseline `.github/workflows/pre-commit.yml`: API, Adapter, Applier, Broker, E2E, Sentinel, Operator, Logger, Credential Provider, and Hooks. The API has the sole workflow exception: a code-generation step before the hooks. It runs on `pull_request` as a secondary feedback check. **Prow remains the merge gate**; do not add this workflow to branch-protection or ruleset required checks as part of this rollout.
 
-The workflow sets up Go from the consuming repo's `go.mod`, Python, and a pinned pre-commit executable. It then uses the project's `make install-hooks` target to register Git hooks before running:
+The workflow sets up Go from the consuming repo's `go.mod`, Python, and a pinned pre-commit executable, then invokes the hooks directly without `make install-hooks` or Git-hook registration:
 
 ```bash
 pre-commit run --all-files --show-diff-on-failure
