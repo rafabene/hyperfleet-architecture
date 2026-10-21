@@ -1,7 +1,7 @@
 ---
 Status: Active
 Owner: HyperFleet Platform Team
-Last Updated: 2026-10-15
+Last Updated: 2026-10-21
 ---
 
 # Prow CI/CD Cluster Documentation
@@ -17,6 +17,14 @@ This is the long-running reserved GKE cluster for Prow CI/CD job execution. This
 - **Cluster Name**: `hyperfleet-dev-prow`
 - **GCP Project**: `hcm-hyperfleet`
 - **Connect Command**: `gcloud container clusters get-credentials hyperfleet-dev-prow --zone us-central1-a --project hcm-hyperfleet`
+
+---
+
+## Merge gate and secondary checks
+
+Prow remains HyperFleet's merge gate. The Go repos also run the identical `.github/workflows/pre-commit.yml` on pull requests as a secondary, non-required feedback check; it does not replace Prow presubmits or add application builds/tests. See the [pre-commit CI guide](pre-commit-hooks.md#github-actions-secondary-gate) for the workflow, security controls, and coverage boundaries.
+
+In particular, `pre-commit run --all-files` does not execute commit-message hooks, and a staged-only LeakTK hook passing on a clean checkout is not proof of secret scanning. Prow PR-title coverage gaps and effective CI secret scanning are tracked separately in [HYPERFLEET-1817](https://redhat.atlassian.net/browse/HYPERFLEET-1817) and [HYPERFLEET-1819](https://redhat.atlassian.net/browse/HYPERFLEET-1819).
 
 ---
 

@@ -17,8 +17,9 @@ Last Updated: 2026-10-21
 3. [Available Hooks](#available-hooks)
 4. [Standard Configuration](#standard-configuration)
 5. [Migration Guide](#migration-guide)
-6. [Troubleshooting](#troubleshooting)
-7. [References](#references)
+6. [GitHub Actions secondary gate](#github-actions-secondary-gate)
+7. [Troubleshooting](#troubleshooting)
+8. [References](#references)
 
 ---
 
@@ -434,6 +435,40 @@ leaktk.git.pre-commit
 ```
 
 The commit will be blocked until secrets are removed.
+
+---
+
+## GitHub Actions secondary gate
+
+The ten Go repositories use the same `.github/workflows/pre-commit.yml`: API, Adapter, Applier, Broker, E2E, Sentinel, Operator, Logger, Credential Provider, and Hooks. It runs on `pull_request` as a secondary feedback check. **Prow remains the merge gate**; do not add this workflow to branch-protection or ruleset required checks as part of this rollout.
+
+The workflow sets up Go from the consuming repo's `go.mod`, Python, and a pinned pre-commit version, then runs:
+
+```bash
+pre-commit run --all-files --show-diff-on-failure
+```
+
+It first runs `make generate-all` only when that target exists, so the API's ignored OpenAPI models and mocks are available before formatting and static analysis. This is code generation for the hooks, not an application build or test suite. The workflow does not run application unit, integration, or live E2E tests.
+
+Each repo's `.pre-commit-config.yaml` remains the source of truth for hook selection and frozen revisions. The workflow does not add hooks missing from a repo's config; for example, Broker currently configures only the HyperFleet registry hooks.
+
+### Coverage boundaries
+
+| Check | Coverage |
+|-------|----------|
+| Formatting, lint, vet, file hygiene | Runs the configured `pre-commit`-stage hooks against all tracked files |
+| Commit messages and PR titles | `--all-files` does not execute `commit-msg`. Local installation covers commit messages; Prow validates PR titles only where its `validate-commits` presubmit is configured. The remaining five-repo rollout belongs to [HYPERFLEET-1817](https://redhat.atlassian.net/browse/HYPERFLEET-1817). |
+| LeakTK | The pinned `leaktk.git.pre-commit` hook examines staged changes. A passing hook on a clean CI index is not proof that PR content was scanned. Effective clean-checkout secret scanning belongs to [HYPERFLEET-1819](https://redhat.atlassian.net/browse/HYPERFLEET-1819); no additional native scanner is included in this workflow. |
+
+### Security and operation
+
+- Actions are pinned to full commit SHAs, with release comments for maintenance. Hook revisions stay in the repo's pre-commit config.
+- The workflow uses `pull_request`, read-only `contents` permission, and checkout with credential persistence disabled. It does not use `pull_request_target`, privileged tokens, or repository secrets.
+- Go module/build caching uses both root and tool-module checksums. `CGO_ENABLED=0` avoids optional native dependencies in the Go-based hook environments; this does not change the application build's FIPS or CGO policy.
+- A timeout bounds each run, and a new run cancels an older one for the same PR. Hook environments can still take time to compile on a fresh runner.
+- To reproduce a failure locally, use the repo-compatible Go toolchain, run required generation, and execute the command above. Review any formatter diff rather than having CI commit fixes.
+
+After rollout, attach green workflow runs for each repo and confirm that the next EPD dashboard scan recognizes `has_ci_workflows`. A workflow file alone does not prove a successful run. Reassess the secondary gate if the dashboard starts recognizing Prow directly; keep it only while it provides useful feedback.
 
 ---
 
